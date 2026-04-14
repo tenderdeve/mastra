@@ -205,9 +205,9 @@ export class InngestWorkflow<
         id: `workflow.${this.id}.cron`,
         retries: 0,
         cancelOn: [{ event: `cancel.workflow.${this.id}` }],
+        triggers: { cron: this.cronConfig?.cron ?? '' },
         ...this.flowControlConfig,
       },
-      { cron: this.cronConfig?.cron ?? '' },
       async () => {
         const run = await this.createRun();
         // @ts-expect-error - cron inputData type mismatch
@@ -221,7 +221,7 @@ export class InngestWorkflow<
     return this.cronFunction;
   }
 
-  getFunction() {
+  getFunction(): ReturnType<Inngest['createFunction']> {
     if (this.function) {
       return this.function;
     }
@@ -235,10 +235,10 @@ export class InngestWorkflow<
         id: `workflow.${this.id}`,
         retries: 0,
         cancelOn: [{ event: `cancel.workflow.${this.id}` }],
+        triggers: { event: `workflow.${this.id}` },
         // Spread flow control configuration
         ...this.flowControlConfig,
       },
-      { event: `workflow.${this.id}` },
       async ({ event, step, attempt, publish }) => {
         let {
           inputData,
@@ -515,7 +515,7 @@ export class InngestWorkflow<
     });
   }
 
-  getFunctions() {
+  getFunctions(): ReturnType<Inngest['createFunction']>[] {
     return [
       this.getFunction(),
       ...(this.cronConfig?.cron ? [this.createCronFunction()] : []),
