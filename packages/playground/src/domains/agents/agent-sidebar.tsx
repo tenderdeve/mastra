@@ -1,13 +1,21 @@
-import {
-  AgentMemory,
-  ChatThreads,
-  useCloneThread,
-  useDeleteThread,
-  useLeftSidebarTab,
-  useLinkComponent,
-} from '@mastra/playground-ui';
-import type { ChatThreadsProps } from '@mastra/playground-ui';
+import type { StorageThreadType } from '@mastra/core/memory';
 import { useState } from 'react';
+import { ChatThreads } from '@/domains/agents/components/chat-threads';
+import { AgentMemory } from '@/domains/agents/components/agent-information/agent-memory';
+import { useLeftSidebarTab } from '@/domains/agents/components/left-sidebar-context';
+import { useCloneThread, useDeleteThread } from '@/domains/memory/hooks/use-memory';
+import { useLinkComponent } from '@/lib/framework';
+
+export interface ChatThreadsProps {
+  threads: StorageThreadType[];
+  isLoading: boolean;
+  threadId: string;
+  onDelete: (threadId: string) => void;
+  onClone?: (threadId: string) => void;
+  isCloningThreadId?: string | null;
+  resourceId: string;
+  resourceType: 'agent' | 'network';
+}
 
 export function AgentSidebar({
   agentId,
