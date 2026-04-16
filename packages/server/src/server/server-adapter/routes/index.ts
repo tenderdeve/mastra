@@ -12,6 +12,7 @@ import type { AgentRoutes } from './agents';
 import { AUTH_ROUTES } from './auth';
 import { CONVERSATIONS_ROUTES } from './conversations';
 import { DATASETS_ROUTES } from './datasets';
+import { HEARTBEAT_ROUTES } from './heartbeat';
 import { LEGACY_ROUTES } from './legacy';
 import { LOGS_ROUTES } from './logs';
 import { MCP_ROUTES } from './mcp';
@@ -168,6 +169,7 @@ export const SERVER_ROUTES: readonly ServerRoute[] = [
   ...PROCESSOR_PROVIDER_ROUTES,
   ...SYSTEM_ROUTES,
   ...DATASETS_ROUTES,
+  ...HEARTBEAT_ROUTES,
 ];
 
 /**
@@ -202,6 +204,7 @@ export type ServerRoutes = readonly [
   ...typeof PROCESSOR_PROVIDER_ROUTES,
   ...typeof SYSTEM_ROUTES,
   ...typeof DATASETS_ROUTES,
+  ...typeof HEARTBEAT_ROUTES,
 ];
 
 // Export route builder and OpenAPI utilities

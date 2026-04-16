@@ -64,11 +64,27 @@ export type ThreadOMMetadata = {
 };
 
 /**
+ * Heartbeat configuration persisted in thread metadata.
+ * Stored at thread.metadata.mastra.heartbeat
+ */
+export type HeartbeatThreadMetadata = {
+  /** Whether heartbeat is enabled for this thread */
+  enabled: boolean;
+  /** Override interval for this thread (ms) */
+  intervalMs?: number;
+  /** Override prompt for this thread */
+  prompt?: string;
+  /** ISO string — updated after each heartbeat run */
+  lastRunAt?: string;
+};
+
+/**
  * Structure for Mastra-specific thread metadata.
  * Stored on thread.metadata.mastra
  */
 export type ThreadMastraMetadata = {
   om?: ThreadOMMetadata;
+  heartbeat?: HeartbeatThreadMetadata;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -110,6 +126,46 @@ export function setThreadOMMetadata(
         ...existingOM,
         ...omMetadata,
       },
+    },
+  };
+}
+
+/**
+ * Helper to get heartbeat metadata from a thread's metadata object.
+ * Returns undefined if not present or if the structure is invalid.
+ */
+export function getThreadHeartbeatMetadata(
+  threadMetadata?: Record<string, unknown>,
+): HeartbeatThreadMetadata | undefined {
+  if (!threadMetadata) return undefined;
+  const mastra = threadMetadata.mastra;
+  if (!isPlainObject(mastra)) return undefined;
+  const heartbeat = mastra.heartbeat;
+  if (!isPlainObject(heartbeat)) return undefined;
+  return heartbeat as HeartbeatThreadMetadata;
+}
+
+/**
+ * Helper to set heartbeat metadata on a thread's metadata object.
+ * Creates the nested structure if it doesn't exist.
+ * Returns a new metadata object (does not mutate the original).
+ *
+ * Also sets a top-level `heartbeat_enabled` key for efficient metadata filtering
+ * (nested object matching would require exact equality of the entire subtree).
+ */
+export function setThreadHeartbeatMetadata(
+  threadMetadata: Record<string, unknown> | undefined,
+  heartbeatMetadata: HeartbeatThreadMetadata,
+): Record<string, unknown> {
+  const existing = threadMetadata ?? {};
+  const existingMastra = isPlainObject(existing.mastra) ? existing.mastra : {};
+
+  return {
+    ...existing,
+    heartbeat_enabled: heartbeatMetadata.enabled,
+    mastra: {
+      ...existingMastra,
+      heartbeat: heartbeatMetadata,
     },
   };
 }

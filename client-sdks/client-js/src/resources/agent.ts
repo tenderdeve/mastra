@@ -43,6 +43,9 @@ import type {
   CompareVersionsResponse,
   DeleteAgentVersionResponse,
   RestoreAgentVersionResponse,
+  SetHeartbeatParams,
+  HeartbeatSuccessResponse,
+  ListHeartbeatsResponse,
 } from '../types';
 
 import { parseClientRequestContext, requestContextQueryString, toQueryParams } from '../utils';
@@ -2141,5 +2144,38 @@ export class Agent extends BaseResource {
       method: 'POST',
       body: params,
     });
+  }
+
+  // ── Heartbeat ──────────────────────────────────────────────────────────
+
+  /**
+   * Enable, update, or disable a heartbeat for a thread.
+   * @param params - Heartbeat configuration including threadId and optional overrides
+   * @returns Promise indicating success
+   */
+  setHeartbeat(params: SetHeartbeatParams): Promise<HeartbeatSuccessResponse> {
+    return this.request(`/agents/${this.agentId}/heartbeat`, {
+      method: 'PUT',
+      body: params,
+    });
+  }
+
+  /**
+   * Disable and remove the heartbeat for a specific thread.
+   * @param threadId - The thread to disable heartbeat for
+   * @returns Promise indicating success
+   */
+  deleteHeartbeat(threadId: string): Promise<HeartbeatSuccessResponse> {
+    return this.request(`/agents/${this.agentId}/heartbeat/${encodeURIComponent(threadId)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * List all thread IDs with active heartbeat timers for this agent.
+   * @returns Promise containing an array of thread IDs
+   */
+  listHeartbeats(): Promise<ListHeartbeatsResponse> {
+    return this.request(`/agents/${this.agentId}/heartbeats`);
   }
 }

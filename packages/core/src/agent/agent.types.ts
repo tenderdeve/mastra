@@ -8,6 +8,7 @@ import type { LoopConfig, LoopOptions, PrepareStepFunction } from '../loop/types
 import type { ObservabilityContext, TracingOptions } from '../observability';
 import type { InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '../processors';
 import type { RequestContext } from '../request-context';
+import type { StorageThreadType } from '../memory/types';
 import type { OutputWriter } from '../workflows/types';
 import type { MessageListInput } from './message-list';
 import type {
@@ -318,6 +319,76 @@ export interface NetworkRoutingConfig {
   verboseIntrospection?: boolean;
 }
 
+// ============================================================================
+// Heartbeat Types
+// ============================================================================
+
+/**
+ * Agent-level heartbeat defaults set on the Agent constructor.
+ * Defines the baseline config for any thread that opts into heartbeat.
+ */
+export interface AgentHeartbeatConfig {
+  /** Default interval between heartbeat runs (ms). Default: 1800000 (30m) */
+  intervalMs?: number;
+
+  /** Default prompt sent to the agent on each heartbeat turn */
+  prompt?: string;
+
+  /** Optional model override for heartbeat runs (e.g. a cheaper model) */
+  model?: MastraLanguageModel;
+
+  /** Called after each heartbeat turn — for logging, metrics, or custom delivery */
+  onHeartbeat?: (event: HeartbeatEvent) => void | Promise<void>;
+
+  /** Skip heartbeat if agent is already generating on this thread. Default: true */
+  skipWhenBusy?: boolean;
+
+  /** Additional execution options passed to agent.generate() during heartbeat */
+  executionOptions?: Partial<AgentExecutionOptionsBase<unknown>>;
+}
+
+/**
+ * Per-thread heartbeat overrides.
+ * Used in setHeartbeat() and on generate()/stream() heartbeat option.
+ */
+export interface HeartbeatThreadConfig {
+  /** Override interval for this thread (ms) */
+  intervalMs?: number;
+
+  /** Override prompt for this thread */
+  prompt?: string;
+}
+
+/**
+ * Input to agent.setHeartbeat().
+ * Enables, updates, or disables heartbeat for a specific thread.
+ */
+export type SetHeartbeatInput =
+  | ({ threadId: string; resourceId?: string; enabled?: true } & HeartbeatThreadConfig)
+  | { threadId: string; enabled: false };
+
+/**
+ * Heartbeat option accepted on generate() / stream().
+ * `true` enables heartbeat with agent defaults; an object provides per-thread overrides.
+ */
+export type HeartbeatOption = boolean | HeartbeatThreadConfig;
+
+/**
+ * Event passed to the onHeartbeat callback after each heartbeat turn.
+ */
+export interface HeartbeatEvent {
+  /** The agent that ran the heartbeat */
+  agent: any; // Agent type — using any to avoid circular ref
+  /** The thread the heartbeat ran on */
+  thread: StorageThreadType;
+  /** The generate() result */
+  response: { text: string };
+  /** Whether the response was delivered to a channel */
+  channelDelivered: boolean;
+  /** When this heartbeat completed */
+  timestamp: Date;
+}
+
 /**
  * Full configuration options for agent.network() execution.
  */
@@ -601,6 +672,13 @@ export type AgentExecutionOptionsBase<OUTPUT> = {
    * ```
    */
   delegation?: DelegationConfig;
+
+  /**
+   * Enable or configure heartbeat for this thread.
+   * `true` uses agent defaults; an object provides per-thread overrides.
+   * Only takes effect when `memory` is also provided (a thread context is required).
+   */
+  heartbeat?: HeartbeatOption;
 } & Partial<ObservabilityContext>;
 
 /**

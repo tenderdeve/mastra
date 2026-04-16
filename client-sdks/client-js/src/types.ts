@@ -2669,3 +2669,21 @@ export interface ExperimentReviewCounts {
   reviewed: number;
   complete: number;
 }
+
+// ── Heartbeat ──────────────────────────────────────────────────────────
+
+export interface SetHeartbeatParams {
+  threadId: string;
+  resourceId?: string;
+  enabled?: boolean;
+  intervalMs?: number;
+  prompt?: string;
+}
+
+export interface HeartbeatSuccessResponse {
+  success: boolean;
+}
+
+export interface ListHeartbeatsResponse {
+  threadIds: string[];
+}

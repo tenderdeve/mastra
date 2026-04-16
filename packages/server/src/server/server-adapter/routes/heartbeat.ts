@@ -1,0 +1,11 @@
+import {
+  SET_HEARTBEAT_ROUTE,
+  DELETE_HEARTBEAT_ROUTE,
+  LIST_HEARTBEATS_ROUTE,
+} from '../../handlers/heartbeat';
+
+export const HEARTBEAT_ROUTES = [
+  SET_HEARTBEAT_ROUTE,
+  DELETE_HEARTBEAT_ROUTE,
+  LIST_HEARTBEATS_ROUTE,
+] as const;

@@ -35,6 +35,13 @@ export type {
   // Network options
   NetworkOptions,
   NetworkRoutingConfig,
+  // Heartbeat types
+  AgentHeartbeatConfig,
+  HeartbeatThreadConfig,
+  SetHeartbeatInput,
+  HeartbeatOption,
+  HeartbeatEvent,
 } from './agent.types';
 
+export { isHeartbeatAck, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_HEARTBEAT_PROMPT } from './heartbeat';
 export type { MastraLanguageModel, MastraLegacyLanguageModel } from '../llm/model/shared.types';

@@ -1097,6 +1097,13 @@ export class Mastra<
       }
       void agentChannels.initialize(this);
     }
+
+    // Recover heartbeat timers from persisted thread metadata
+    if (mastraAgent.getHeartbeatConfig?.()) {
+      void mastraAgent.__recoverHeartbeats().catch(err => {
+        this.#logger?.debug(`Failed to recover heartbeats for agent ${agentKey}:`, err);
+      });
+    }
   }
 
   /**

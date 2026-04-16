@@ -6,6 +6,7 @@ import type { MastraDBMessage, MastraMessagePart } from '../agent/message-list';
 import type { IMastraLogger } from '../logger/logger';
 import type { Mastra } from '../mastra';
 import type { StorageThreadType } from '../memory/types';
+import { setThreadHeartbeatMetadata } from '../memory/types';
 import type { InputProcessor, InputProcessorOrWorkflow } from '../processors';
 import { isProcessorWorkflow } from '../processors';
 import { RequestContext } from '../request-context';
@@ -27,9 +28,18 @@ import {
 import { ChatChannelProcessor } from './processor';
 import { MastraStateAdapter } from './state-adapter';
 import type { ChannelContext, ThreadHistoryMessage } from './types';
+import { buildHeartbeatMetadata } from '../agent/heartbeat';
 
 /** Message content that can be posted to a channel. */
 export type PostableMessage = string | CardElement;
+
+/** Options for `agent.channels.send()`. */
+export interface ChannelSendOptions {
+  /** Override the platform (skip metadata lookup). */
+  platform?: string;
+  /** Override the external thread ID (skip metadata lookup). */
+  externalThreadId?: string;
+}
 
 /** Per-adapter configuration. */
 export interface ChannelAdapterConfig {
@@ -364,6 +374,8 @@ export class AgentChannels {
   private toolsEnabled: boolean;
   /** Channel tool names whose effects are already visible on the platform (skip rendering cards). */
   private channelToolNames!: Set<string>;
+  /** Mastra instance — stored during initialize() for storage access. */
+  private mastra: Mastra | null = null;
 
   constructor(config: ChannelConfig) {
     // Normalize: extract adapters and per-adapter configs
@@ -412,6 +424,66 @@ export class AgentChannels {
   }
 
   /**
+   * Send a message to whatever channel a thread is connected to.
+   * Looks up the platform and external thread ID from thread metadata.
+   *
+   * Returns `true` if the message was sent, `false` if the thread has no
+   * channel connection or channels aren't initialized.
+   *
+   * @example
+   * ```ts
+   * // Simple text
+   * await agent.channels.send(threadId, 'Something happened!');
+   *
+   * // With explicit overrides
+   * await agent.channels.send(threadId, 'Alert', {
+   *   platform: 'discord',
+   *   externalThreadId: 'discord:guild:channel:thread',
+   * });
+   * ```
+   */
+  async send(
+    threadId: string,
+    content: PostableMessage,
+    options?: ChannelSendOptions,
+  ): Promise<boolean> {
+    let platform = options?.platform;
+    let externalThreadId = options?.externalThreadId;
+
+    // Resolve platform + externalThreadId from thread metadata if not provided
+    if (!platform || !externalThreadId) {
+      const thread = await this.getThreadFromStorage(threadId);
+      if (!thread) {
+        this.log('info', `send(): Thread ${threadId} not found in storage`);
+        return false;
+      }
+
+      const metadata = thread.metadata as Record<string, unknown> | undefined;
+      platform = platform ?? (metadata?.channel_platform as string | undefined);
+      externalThreadId = externalThreadId ?? (metadata?.channel_externalThreadId as string | undefined);
+
+      if (!platform || !externalThreadId) {
+        this.log('info', `send(): Thread ${threadId} has no channel connection`);
+        return false;
+      }
+    }
+
+    const adapter = this.adapters[platform];
+    if (!adapter) {
+      this.log('info', `send(): No adapter for platform "${platform}"`);
+      return false;
+    }
+
+    try {
+      await adapter.postMessage(externalThreadId, content);
+      return true;
+    } catch (err) {
+      this.log('error', `send(): Failed to post to ${platform}: ${err}`);
+      return false;
+    }
+  }
+
+  /**
    * Get the underlying Chat SDK instance.
    * Available after Mastra initialization. Use this to register additional
    * event handlers or access adapter-specific methods.
@@ -432,6 +504,8 @@ export class AgentChannels {
    * Called by Mastra.addAgent after the server is ready.
    */
   async initialize(mastra: Mastra): Promise<void> {
+    this.mastra = mastra;
+
     // Resolve state adapter: custom > Mastra storage > in-memory fallback
     if (this.customState) {
       this.stateAdapter = this.customState;
@@ -719,6 +793,18 @@ export class AgentChannels {
   // ---------------------------------------------------------------------------
   // Private
   // ---------------------------------------------------------------------------
+
+  /**
+   * Fetch a thread from storage by its Mastra thread ID.
+   */
+  private async getThreadFromStorage(threadId: string): Promise<StorageThreadType | undefined> {
+    if (!this.mastra) return undefined;
+    const storage = this.mastra.getStorage();
+    const memoryStore = storage ? await storage.getStore('memory') : undefined;
+    if (!memoryStore) return undefined;
+    const thread = await memoryStore.getThreadById({ threadId });
+    return thread ?? undefined;
+  }
 
   /**
    * Resolve the adapter for the current conversation from request context.
@@ -1324,16 +1410,36 @@ export class AgentChannels {
       return threads[0]!;
     }
 
-    return memoryStore.saveThread({
+    // If the agent has heartbeat defaults, include heartbeat metadata on new channel threads
+    const heartbeatConfig = this.agent?.getHeartbeatConfig?.();
+    let threadMetadata: Record<string, unknown> = metadata;
+
+    if (heartbeatConfig) {
+      // Only mark as enabled — don't persist agent defaults into thread metadata
+      // so that agent-level config changes take effect automatically
+      const heartbeatMeta = buildHeartbeatMetadata();
+      threadMetadata = setThreadHeartbeatMetadata(threadMetadata, heartbeatMeta);
+    }
+
+    const thread = await memoryStore.saveThread({
       thread: {
         id: crypto.randomUUID(),
         title: `${platform} conversation`,
         resourceId,
         createdAt: new Date(),
         updatedAt: new Date(),
-        metadata,
+        metadata: threadMetadata,
       },
     });
+
+    // Auto-register the heartbeat timer on the agent for this new thread
+    if (heartbeatConfig && this.agent) {
+      void this.agent.setHeartbeat({ threadId: thread.id, resourceId }).catch(() => {
+        // Swallow — heartbeat registration is best-effort
+      });
+    }
+
+    return thread;
   }
 
   /**

@@ -3,6 +3,7 @@ export { formatZodError } from './handlers/error';
 export * as agents from './handlers/agents';
 export * as a2a from './handlers/a2a';
 export * as conversations from './handlers/conversations';
+export * as heartbeat from './handlers/heartbeat';
 export * as logs from './handlers/logs';
 export * as mcp from './handlers/mcp';
 export * as memory from './handlers/memory';

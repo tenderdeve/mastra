@@ -35,7 +35,8 @@ import { RegisteredLogger } from '../logger';
 import { networkLoop } from '../loop/network';
 import type { Mastra } from '../mastra';
 import type { MastraMemory } from '../memory/memory';
-import type { MemoryConfigInternal } from '../memory/types';
+import type { MemoryConfigInternal, StorageThreadType, HeartbeatThreadMetadata } from '../memory/types';
+import { getThreadHeartbeatMetadata, setThreadHeartbeatMetadata } from '../memory/types';
 import type { DefinitionSource, TracingProperties, ObservabilityContext } from '../observability';
 import {
   EntityType,
@@ -80,13 +81,23 @@ import { AgentLegacyHandler } from './agent-legacy';
 import type {
   AgentExecutionOptions,
   AgentExecutionOptionsBase,
+  AgentHeartbeatConfig,
+  HeartbeatEvent,
+  HeartbeatOption,
+  HeartbeatThreadConfig,
   InnerAgentExecutionOptions,
   MultiPrimitiveExecutionOptions,
   NetworkOptions,
+  SetHeartbeatInput,
   DelegationConfig,
   DelegationStartContext,
   DelegationCompleteContext,
 } from './agent.types';
+import {
+  resolveHeartbeatConfig,
+  buildHeartbeatMetadata,
+  calculateInitialDelay,
+} from './heartbeat';
 import { MessageList } from './message-list';
 import type { MessageInput, MessageListInput, UIMessageWithMetadata, MastraDBMessage } from './message-list';
 import { SaveQueueManager } from './save-queue';
@@ -95,6 +106,7 @@ import type {
   AgentConfig,
   AgentGenerateOptions,
   AgentStreamOptions,
+  AgentMemoryOption,
   ToolsetsInput,
   ToolsInput,
   AgentModelManagerConfig,
@@ -186,6 +198,12 @@ export class Agent<
   #requestContextSchema?: StandardSchemaWithJSON<TRequestContext>;
   readonly #options?: AgentCreateOptions;
   #legacyHandler?: AgentLegacyHandler;
+  /** Agent-level heartbeat defaults from constructor */
+  #heartbeatConfig?: AgentHeartbeatConfig;
+  /** Active heartbeat timers by threadId */
+  #heartbeatTimers = new Map<string, { timer: ReturnType<typeof setInterval>; config: { intervalMs: number; prompt: string }; resourceId: string }>();
+  /** Threads currently executing a generate/stream call (for skipWhenBusy) */
+  #busyThreads = new Set<string>();
 
   // This flag is for agent network messages. We should change the agent network formatting and remove this flag after.
   private _agentNetworkAppend = false;
@@ -316,6 +334,10 @@ export class Agent<
       this.#agentChannels?.__setAgent(this);
     }
 
+    if (config.heartbeat) {
+      this.#heartbeatConfig = config.heartbeat;
+    }
+
     if (config.browser) {
       this.#browser = config.browser;
     }
@@ -383,6 +405,305 @@ export class Agent<
    */
   hasOwnBrowser(): boolean {
     return Boolean(this.#browser);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Heartbeat
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the agent-level heartbeat config, if configured.
+   */
+  getHeartbeatConfig(): AgentHeartbeatConfig | undefined {
+    return this.#heartbeatConfig;
+  }
+
+  /**
+   * Enable, update, or disable a heartbeat for a specific thread.
+   *
+   * @example
+   * ```ts
+   * // Enable with defaults
+   * await agent.setHeartbeat({ threadId: 'thread-1' });
+   *
+   * // Enable with overrides
+   * await agent.setHeartbeat({ threadId: 'thread-1', intervalMs: 60_000 });
+   *
+   * // Disable
+   * await agent.setHeartbeat({ threadId: 'thread-1', enabled: false });
+   * ```
+   */
+  async setHeartbeat(input: SetHeartbeatInput): Promise<void> {
+    if (input.enabled === false) {
+      this.#stopHeartbeatTimer(input.threadId);
+      await this.#updateHeartbeatMetadata(input.threadId, { enabled: false });
+      return;
+    }
+
+    if (!this.#heartbeatConfig) {
+      throw new Error(
+        `Agent "${this.name}" has no heartbeat config. Set heartbeat defaults in the Agent constructor before enabling thread heartbeats.`,
+      );
+    }
+
+    const threadOverrides: HeartbeatThreadConfig = {
+      intervalMs: input.intervalMs,
+      prompt: input.prompt,
+    };
+
+    const resolved = resolveHeartbeatConfig(this.#heartbeatConfig, threadOverrides);
+
+    // Determine resourceId — from input, or from the persisted thread
+    let resourceId = input.resourceId;
+    if (!resourceId) {
+      const memory = await this.getMemory();
+      if (memory) {
+        const thread = await memory.getThreadById({ threadId: input.threadId });
+        resourceId = thread?.resourceId;
+      }
+    }
+    if (!resourceId) {
+      throw new Error(
+        `Cannot determine resourceId for thread "${input.threadId}". Pass resourceId explicitly or ensure the thread exists in storage.`,
+      );
+    }
+
+    // Persist only explicit per-thread overrides (not resolved/merged values)
+    // so that agent-level config changes take effect without updating every thread
+    await this.#updateHeartbeatMetadata(input.threadId, buildHeartbeatMetadata(threadOverrides));
+
+    // Start or restart the timer
+    this.#stopHeartbeatTimer(input.threadId);
+    this.#startHeartbeatTimer(input.threadId, resourceId, resolved);
+  }
+
+  /**
+   * Returns a list of thread IDs with active heartbeat timers.
+   */
+  getHeartbeats(): string[] {
+    return Array.from(this.#heartbeatTimers.keys());
+  }
+
+  /**
+   * Stop all heartbeat timers. Called during cleanup/destroy.
+   */
+  stopAllHeartbeats(): void {
+    for (const [threadId] of this.#heartbeatTimers) {
+      this.#stopHeartbeatTimer(threadId);
+    }
+  }
+
+  /**
+   * Recover heartbeat timers from persisted thread metadata.
+   * Called during Mastra initialization for agents with heartbeat config.
+   * @internal
+   */
+  async __recoverHeartbeats(): Promise<void> {
+    if (!this.#heartbeatConfig) return;
+
+    const memory = await this.getMemory();
+    if (!memory) return;
+
+    try {
+      const { threads } = await memory.listThreads({
+        filter: { metadata: { heartbeat_enabled: true } },
+        perPage: 1000,
+      });
+
+      for (const thread of threads) {
+        const hbMeta = getThreadHeartbeatMetadata(thread.metadata as Record<string, unknown>);
+        if (!hbMeta?.enabled) continue;
+
+        const resolved = resolveHeartbeatConfig(this.#heartbeatConfig!, {
+          intervalMs: hbMeta.intervalMs,
+          prompt: hbMeta.prompt,
+        });
+
+        const initialDelay = calculateInitialDelay(resolved.intervalMs, hbMeta.lastRunAt);
+
+        if (initialDelay === 0) {
+          // Fire immediately, then start interval
+          this.#startHeartbeatTimer(thread.id, thread.resourceId, resolved);
+        } else {
+          // Wait the remaining time, then fire, then start interval
+          const delayTimer = setTimeout(() => {
+            this.#startHeartbeatTimer(thread.id, thread.resourceId, resolved);
+          }, initialDelay);
+          delayTimer.unref();
+
+          // Store a placeholder timer entry so getHeartbeats() returns this thread
+          this.#heartbeatTimers.set(thread.id, {
+            timer: delayTimer as unknown as ReturnType<typeof setInterval>,
+            config: resolved,
+            resourceId: thread.resourceId,
+          });
+        }
+      }
+
+      if (threads.length > 0) {
+        this.logger.info(`Recovered ${threads.length} heartbeat timer(s)`);
+      }
+    } catch (err) {
+      this.logger.error(`Failed to recover heartbeats: ${err}`);
+    }
+  }
+
+  #startHeartbeatTimer(
+    threadId: string,
+    resourceId: string,
+    config: { intervalMs: number; prompt: string },
+  ): void {
+    const timer = setInterval(() => {
+      void this.#runHeartbeat(threadId, resourceId, config);
+    }, config.intervalMs);
+    timer.unref();
+
+    this.#heartbeatTimers.set(threadId, { timer, config, resourceId });
+    this.logger.info(`Heartbeat registered for thread ${threadId} (every ${config.intervalMs}ms)`);
+  }
+
+  #stopHeartbeatTimer(threadId: string): void {
+    const entry = this.#heartbeatTimers.get(threadId);
+    if (entry) {
+      clearInterval(entry.timer);
+      this.#heartbeatTimers.delete(threadId);
+      this.logger.info(`Heartbeat stopped for thread ${threadId}`);
+    }
+  }
+
+  async #runHeartbeat(
+    threadId: string,
+    resourceId: string,
+    _config: { intervalMs: number; prompt: string },
+  ): Promise<void> {
+    const skipWhenBusy = this.#heartbeatConfig?.skipWhenBusy !== false;
+    if (skipWhenBusy && this.#busyThreads.has(threadId)) {
+      this.logger.debug?.(`Heartbeat skipped for thread ${threadId} (busy)`);
+      return;
+    }
+
+    try {
+      this.#busyThreads.add(threadId);
+      this.logger.info(`Heartbeat firing for thread ${threadId}`);
+
+      // Re-resolve config against current agent defaults each time so that
+      // changes to the agent's heartbeat config take effect without restarting timers.
+      const memory = await this.getMemory();
+      let threadOverrides: HeartbeatThreadConfig | undefined;
+      if (memory) {
+        const thread = await memory.getThreadById({ threadId });
+        if (thread) {
+          const hbMeta = getThreadHeartbeatMetadata(thread.metadata as Record<string, unknown>);
+          threadOverrides = { intervalMs: hbMeta?.intervalMs, prompt: hbMeta?.prompt };
+        }
+      }
+
+      const resolved = this.#heartbeatConfig
+        ? resolveHeartbeatConfig(this.#heartbeatConfig, threadOverrides)
+        : _config;
+
+      const executionOptions = this.#heartbeatConfig?.executionOptions ?? {};
+
+      const result = await this.generate(resolved.prompt, {
+        ...executionOptions,
+        memory: {
+          thread: threadId,
+          resource: resourceId,
+        },
+      });
+
+      // Attempt channel delivery
+      let channelDelivered = false;
+      if (result.text && this.#agentChannels) {
+        channelDelivered = await this.#agentChannels.send(threadId, result.text);
+      }
+
+      // Update lastRunAt in metadata (preserve existing thread overrides)
+      await this.#updateHeartbeatMetadata(threadId, buildHeartbeatMetadata(threadOverrides, new Date().toISOString()));
+
+      // Call onHeartbeat lifecycle hook
+      if (this.#heartbeatConfig?.onHeartbeat) {
+        const memory = await this.getMemory();
+        let thread: StorageThreadType | undefined;
+        if (memory) {
+          thread = (await memory.getThreadById({ threadId })) ?? undefined;
+        }
+
+        const event: HeartbeatEvent = {
+          agent: this,
+          thread: thread ?? ({ id: threadId, resourceId } as StorageThreadType),
+          response: { text: result.text },
+          channelDelivered,
+          timestamp: new Date(),
+        };
+
+        try {
+          await this.#heartbeatConfig.onHeartbeat(event);
+        } catch (hookErr) {
+          this.logger.error(`onHeartbeat hook failed for thread ${threadId}: ${hookErr}`);
+        }
+      }
+    } catch (err) {
+      this.logger.error(`Heartbeat failed for thread ${threadId}: ${err}`);
+    } finally {
+      this.#busyThreads.delete(threadId);
+    }
+  }
+
+  async #updateHeartbeatMetadata(
+    threadId: string,
+    heartbeat: HeartbeatThreadMetadata,
+  ): Promise<void> {
+    const memory = await this.getMemory();
+    if (!memory) return;
+
+    try {
+      const memoryStore = await memory.storage.getStore('memory');
+      if (!memoryStore) return;
+
+      const thread = await memoryStore.getThreadById({ threadId });
+      if (!thread) return;
+
+      const newMetadata = setThreadHeartbeatMetadata(
+        thread.metadata as Record<string, unknown> | undefined,
+        heartbeat,
+      );
+
+      await memoryStore.updateThread({
+        id: threadId,
+        title: thread.title || '',
+        metadata: newMetadata,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to update heartbeat metadata for thread ${threadId}: ${err}`);
+    }
+  }
+
+  /**
+   * Auto-register a heartbeat when the heartbeat option is passed to generate()/stream().
+   * This is fire-and-forget — errors are logged but do not fail the call.
+   */
+  #maybeRegisterHeartbeat(options?: { heartbeat?: HeartbeatOption; memory?: AgentMemoryOption }): void {
+    if (!options?.heartbeat || !options?.memory) return;
+    if (!this.#heartbeatConfig) return;
+
+    const memOpt = options.memory;
+    const threadId = typeof memOpt.thread === 'string' ? memOpt.thread : memOpt.thread?.id;
+    if (!threadId) return;
+
+    // Already have a timer for this thread — nothing to do
+    if (this.#heartbeatTimers.has(threadId)) return;
+
+    const threadOverrides: HeartbeatThreadConfig =
+      typeof options.heartbeat === 'object' ? options.heartbeat : {};
+
+    void this.setHeartbeat({
+      threadId,
+      resourceId: memOpt.resource,
+      ...threadOverrides,
+    }).catch(err => {
+      this.logger.error(`Failed to auto-register heartbeat for thread ${threadId}: ${err}`);
+    });
   }
 
   /**
@@ -5069,6 +5390,9 @@ export class Agent<
       (options ?? {}) as Record<string, unknown>,
     ) as AgentExecutionOptions<any> & { model?: DynamicArgument<MastraModelConfig> };
 
+    // Auto-register heartbeat when opted-in via generate() options
+    this.#maybeRegisterHeartbeat(mergedOptions);
+
     const llm = await this.getLLM({
       requestContext: mergedOptions.requestContext,
       model: mergedOptions.model as DynamicArgument<MastraModelConfig, TRequestContext> | undefined,
@@ -5185,6 +5509,9 @@ export class Agent<
       defaultOptions as Record<string, unknown>,
       (streamOptions ?? {}) as Record<string, unknown>,
     ) as AgentExecutionOptions<OUTPUT> & { model?: DynamicArgument<MastraModelConfig> };
+
+    // Auto-register heartbeat when opted-in via stream() options
+    this.#maybeRegisterHeartbeat(mergedOptions);
 
     const llm = await this.getLLM({
       requestContext: mergedOptions.requestContext,

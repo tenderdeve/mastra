@@ -6,6 +6,7 @@ import { AgentEntityHeader } from '../agent-entity-header';
 import { AgentMetadata } from '../agent-metadata';
 import { AgentSettings } from '../agent-settings';
 import { BrowserSidebarTab } from '../browser-view/browser-sidebar-tab';
+import { AgentHeartbeat } from './agent-heartbeat';
 import { AgentMemory } from './agent-memory';
 import { useMemory } from '@/domains/memory/hooks';
 import { TracingRunOptions } from '@/domains/observability/components/tracing-run-options';
@@ -45,6 +46,7 @@ export function AgentInformation({ agentId, threadId }: AgentInformationProps) {
             <Tab value="overview">Overview</Tab>
             <Tab value="model-settings">Model Settings</Tab>
             {hasMemory && <Tab value="memory">Memory</Tab>}
+            {hasMemory && <Tab value="heartbeat">Heartbeat</Tab>}
             {agent?.requestContextSchema && <Tab value="request-context">Request Context</Tab>}
             <Tab value="tracing-options">Tracing Options</Tab>
           </TabList>
@@ -69,6 +71,12 @@ export function AgentInformation({ agentId, threadId }: AgentInformationProps) {
             </TabContent>
           )}
 
+          {hasMemory && (
+            <TabContent value="heartbeat">
+              <AgentHeartbeat agentId={agentId} threadId={threadId} />
+            </TabContent>
+          )}
+
           <TabContent value="tracing-options">
             <TracingRunOptions />
           </TabContent>
@@ -86,7 +94,7 @@ export interface UseAgentInformationTabArgs {
 }
 
 // Valid tab values that can be persisted
-const VALID_TABS = new Set(['overview', 'model-settings', 'memory', 'request-context', 'tracing-options']);
+const VALID_TABS = new Set(['overview', 'model-settings', 'memory', 'heartbeat', 'request-context', 'tracing-options']);
 
 export const useAgentInformationTab = ({ isMemoryLoading, hasMemory }: UseAgentInformationTabArgs) => {
   const [selectedTab, setSelectedTab] = useState<string>(() => {
@@ -100,8 +108,8 @@ export const useAgentInformationTab = ({ isMemoryLoading, hasMemory }: UseAgentI
   const effectiveTab = (() => {
     // Unknown tab values fall back to overview
     if (!VALID_TABS.has(selectedTab)) return 'overview';
-    // Memory tab requires memory to be available
-    if (selectedTab === 'memory' && !isMemoryLoading && !hasMemory) {
+    // Memory and heartbeat tabs require memory to be available
+    if ((selectedTab === 'memory' || selectedTab === 'heartbeat') && !isMemoryLoading && !hasMemory) {
       return 'overview';
     }
     return selectedTab;

@@ -3,6 +3,7 @@ import type { ProviderDefinedTool } from '@internal/external-types';
 import type { JSONSchema7 } from 'json-schema';
 import type { ZodSchema as ZodSchemaV3 } from 'zod/v3';
 import type { ZodType as ZodTypev4 } from 'zod/v4';
+import type { AgentHeartbeatConfig } from './agent.types';
 import type { MastraBrowser } from '../browser';
 import type { AgentChannels, ChannelConfig } from '../channels/agent-channels';
 import type { MastraScorer, MastraScorers, ScoringSamplingConfig } from '../evals';
@@ -306,6 +307,13 @@ export interface AgentConfig<
    * Voice settings for speech input and output.
    */
   voice?: MastraVoice;
+  /**
+   * Default heartbeat configuration for this agent.
+   * When set, threads that opt in (via generate/stream options, setHeartbeat, or
+   * auto-enable on channel threads) will periodically run agent.generate() on
+   * a timer.
+   */
+  heartbeat?: AgentHeartbeatConfig;
   /**
    * Messaging channels the agent communicates over (e.g. Slack, Discord).
    *
