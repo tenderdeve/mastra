@@ -6,6 +6,8 @@ import { MastraCompositeStore } from '@mastra/core/storage';
 import { AgentsLibSQL } from './domains/agents';
 import { BackgroundTasksLibSQL } from './domains/background-tasks';
 import { BlobsLibSQL } from './domains/blobs';
+import { ClaudeAgentPermissionRulesLibSQL } from './domains/claude-agent-permission-rules';
+import { ClaudeAgentSessionsLibSQL } from './domains/claude-agent-sessions';
 import { DatasetsLibSQL } from './domains/datasets';
 import { ExperimentsLibSQL } from './domains/experiments';
 import { MCPClientsLibSQL } from './domains/mcp-clients';
@@ -24,6 +26,8 @@ export {
   AgentsLibSQL,
   BackgroundTasksLibSQL,
   BlobsLibSQL,
+  ClaudeAgentPermissionRulesLibSQL,
+  ClaudeAgentSessionsLibSQL,
   DatasetsLibSQL,
   ExperimentsLibSQL,
   MCPClientsLibSQL,
@@ -167,6 +171,8 @@ export class LibSQLStore extends MastraCompositeStore {
     const skills = new SkillsLibSQL(domainConfig);
     const blobs = new BlobsLibSQL(domainConfig);
     const backgroundTasks = new BackgroundTasksLibSQL(domainConfig);
+    const claudeAgentSessions = new ClaudeAgentSessionsLibSQL(domainConfig);
+    const claudeAgentPermissionRules = new ClaudeAgentPermissionRulesLibSQL(domainConfig);
 
     this.stores = {
       scores,
@@ -184,6 +190,8 @@ export class LibSQLStore extends MastraCompositeStore {
       skills,
       blobs,
       backgroundTasks,
+      claudeAgentSessions,
+      claudeAgentPermissionRules,
     };
   }
 }
