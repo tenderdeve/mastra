@@ -20,6 +20,8 @@ import type {
   ExperimentResult,
 } from '../types';
 import type { AgentVersion } from './agents';
+import type { MastraClaudeAgentPermissionRule } from './claude-agent-permission-rules';
+import type { MastraClaudeAgentSession } from './claude-agent-sessions';
 import type { MCPClientVersion } from './mcp-clients';
 import type { MCPServerVersion } from './mcp-servers';
 import type { TraceEntry } from './observability';
@@ -79,6 +81,11 @@ export class InMemoryDB {
   // Background tasks domain
   readonly backgroundTasks = new Map<string, BackgroundTask>();
 
+  // Claude Agent SDK domain
+  readonly claudeAgentSessions = new Map<string, MastraClaudeAgentSession>();
+  /** Keyed by `${agentKey}::${resourceId ?? ''}::${toolName}`. */
+  readonly claudeAgentPermissionRules = new Map<string, MastraClaudeAgentPermissionRule>();
+
   /**
    * Clears all data from all collections.
    * Useful for testing.
@@ -115,5 +122,7 @@ export class InMemoryDB {
     this.experiments.clear();
     this.experimentResults.clear();
     this.backgroundTasks.clear();
+    this.claudeAgentSessions.clear();
+    this.claudeAgentPermissionRules.clear();
   }
 }

@@ -16,6 +16,8 @@ import type {
   DatasetsStorage,
   ExperimentsStorage,
   BackgroundTasksStorage,
+  ClaudeAgentSessionsStorage,
+  ClaudeAgentPermissionRulesStorage,
 } from './domains';
 
 /** Map of all storage domain interfaces available in a composite store. */
@@ -35,6 +37,8 @@ export type StorageDomains = {
   skills?: SkillsStorage;
   blobs?: BlobStore;
   backgroundTasks?: BackgroundTasksStorage;
+  claudeAgentSessions?: ClaudeAgentSessionsStorage;
+  claudeAgentPermissionRules?: ClaudeAgentPermissionRulesStorage;
 };
 
 /**
@@ -288,6 +292,8 @@ export class MastraCompositeStore extends MastraBase {
         skills: resolve('skills'),
         blobs: resolve('blobs'),
         backgroundTasks: resolve('backgroundTasks'),
+        claudeAgentSessions: resolve('claudeAgentSessions'),
+        claudeAgentPermissionRules: resolve('claudeAgentPermissionRules'),
       } as StorageDomains;
     }
     // Otherwise, subclasses set stores themselves
@@ -382,6 +388,14 @@ export class MastraCompositeStore extends MastraBase {
 
     if (this.stores?.backgroundTasks) {
       initTasks.push(this.stores.backgroundTasks.init());
+    }
+
+    if (this.stores?.claudeAgentSessions) {
+      initTasks.push(this.stores.claudeAgentSessions.init());
+    }
+
+    if (this.stores?.claudeAgentPermissionRules) {
+      initTasks.push(this.stores.claudeAgentPermissionRules.init());
     }
 
     this.hasInitialized = Promise.all(initTasks).then(() => true);

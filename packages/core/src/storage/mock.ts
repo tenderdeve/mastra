@@ -3,6 +3,8 @@ import type { StorageDomains } from './base';
 import { InMemoryAgentsStorage } from './domains/agents/inmemory';
 import { BackgroundTasksInMemory } from './domains/background-tasks/inmemory';
 import { InMemoryBlobStore } from './domains/blobs/inmemory';
+import { ClaudeAgentPermissionRulesInMemory } from './domains/claude-agent-permission-rules/inmemory';
+import { ClaudeAgentSessionsInMemory } from './domains/claude-agent-sessions/inmemory';
 import { DatasetsInMemory } from './domains/datasets/inmemory';
 import { ExperimentsInMemory } from './domains/experiments/inmemory';
 import { InMemoryDB } from './domains/inmemory-db';
@@ -70,6 +72,8 @@ export class InMemoryStore extends MastraCompositeStore {
       skills: new InMemorySkillsStorage({ db: this.#db }),
       blobs: new InMemoryBlobStore(),
       backgroundTasks: new BackgroundTasksInMemory({ db: this.#db }),
+      claudeAgentSessions: new ClaudeAgentSessionsInMemory({ db: this.#db }),
+      claudeAgentPermissionRules: new ClaudeAgentPermissionRulesInMemory({ db: this.#db }),
     };
   }
 

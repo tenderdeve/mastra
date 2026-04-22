@@ -36,6 +36,10 @@ export const TABLE_EXPERIMENTS = 'mastra_experiments';
 export const TABLE_EXPERIMENT_RESULTS = 'mastra_experiment_results';
 export const TABLE_BACKGROUND_TASKS = 'mastra_background_tasks';
 
+// Claude Agent SDK tables
+export const TABLE_CLAUDE_AGENT_SESSIONS = 'mastra_claude_agent_sessions';
+export const TABLE_CLAUDE_AGENT_PERMISSION_RULES = 'mastra_claude_agent_permission_rules';
+
 /** Union of all core table name constants. */
 export type TABLE_NAMES =
   | typeof TABLE_WORKFLOW_SNAPSHOT
@@ -65,7 +69,9 @@ export type TABLE_NAMES =
   | typeof TABLE_DATASET_VERSIONS
   | typeof TABLE_EXPERIMENTS
   | typeof TABLE_EXPERIMENT_RESULTS
-  | typeof TABLE_BACKGROUND_TASKS;
+  | typeof TABLE_BACKGROUND_TASKS
+  | typeof TABLE_CLAUDE_AGENT_SESSIONS
+  | typeof TABLE_CLAUDE_AGENT_PERMISSION_RULES;
 
 export const SCORERS_SCHEMA: Record<string, StorageColumn> = {
   id: { type: 'text', nullable: false, primaryKey: true },
@@ -459,6 +465,28 @@ export const EXPERIMENT_RESULTS_SCHEMA: Record<string, StorageColumn> = {
   createdAt: { type: 'timestamp', nullable: false },
 };
 
+export const CLAUDE_AGENT_SESSIONS_SCHEMA: Record<string, StorageColumn> = {
+  id: { type: 'text', nullable: false, primaryKey: true },
+  agentKey: { type: 'text', nullable: false },
+  resourceId: { type: 'text', nullable: true },
+  title: { type: 'text', nullable: true },
+  messages: { type: 'jsonb', nullable: false },
+  tags: { type: 'jsonb', nullable: true },
+  metadata: { type: 'jsonb', nullable: true },
+  forkedFrom: { type: 'text', nullable: true },
+  createdAt: { type: 'timestamp', nullable: false },
+  updatedAt: { type: 'timestamp', nullable: false },
+};
+
+export const CLAUDE_AGENT_PERMISSION_RULES_SCHEMA: Record<string, StorageColumn> = {
+  id: { type: 'text', nullable: false, primaryKey: true },
+  agentKey: { type: 'text', nullable: false },
+  resourceId: { type: 'text', nullable: true },
+  toolName: { type: 'text', nullable: false },
+  decision: { type: 'text', nullable: false },
+  updatedAt: { type: 'timestamp', nullable: false },
+};
+
 /**
  * Schema definitions for all core tables.
  */
@@ -562,6 +590,8 @@ export const TABLE_SCHEMAS: Record<TABLE_NAMES, Record<string, StorageColumn>> =
     startedAt: { type: 'timestamp', nullable: true },
     completedAt: { type: 'timestamp', nullable: true },
   },
+  [TABLE_CLAUDE_AGENT_SESSIONS]: CLAUDE_AGENT_SESSIONS_SCHEMA,
+  [TABLE_CLAUDE_AGENT_PERMISSION_RULES]: CLAUDE_AGENT_PERMISSION_RULES_SCHEMA,
 };
 
 /**

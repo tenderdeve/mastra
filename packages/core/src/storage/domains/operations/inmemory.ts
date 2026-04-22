@@ -41,6 +41,8 @@ export class StoreOperationsInMemory extends StoreOperations {
       mastra_experiments: new Map(),
       mastra_experiment_results: new Map(),
       mastra_background_tasks: new Map(),
+      mastra_claude_agent_sessions: new Map(),
+      mastra_claude_agent_permission_rules: new Map(),
     };
   }
 
