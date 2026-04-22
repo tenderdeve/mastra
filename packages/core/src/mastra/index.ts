@@ -6,6 +6,7 @@ import type { BundlerConfig } from '../bundler/types';
 import { InMemoryServerCache } from '../cache';
 import type { MastraServerCache } from '../cache';
 import type { AgentChannels } from '../channels/agent-channels';
+import type { ClaudeAgentLike } from '../claude-agents';
 import { DatasetsManager } from '../datasets/manager.js';
 import type { MastraDeployer } from '../deployer';
 import type { IMastraEditor } from '../editor';
@@ -125,6 +126,7 @@ export interface Config<
   >,
   TProcessors extends Record<string, Processor<any>> = Record<string, Processor<any>>,
   TMemory extends Record<string, MastraMemory> = Record<string, MastraMemory>,
+  TClaudeAgents extends Record<string, ClaudeAgentLike> = Record<string, ClaudeAgentLike>,
 > {
   /**
    * Agents are autonomous systems that can make decisions and take actions.
@@ -207,6 +209,14 @@ export interface Config<
    * MCP servers provide tools and resources that agents can use.
    */
   mcpServers?: TMCPServers;
+
+  /**
+   * Claude Agent SDK–backed agents. Registered under their own key space
+   * so they don't collide with `agents` (which targets AI-SDK-based agents).
+   * The `@mastra/claude-agent-sdk` integration provides the concrete
+   * `ClaudeAgent` class that implements this structural shape.
+   */
+  claudeAgents?: TClaudeAgents;
 
   /**
    * Bundler configuration for packaging and deployment.
@@ -344,9 +354,11 @@ export class Mastra<
   >,
   TProcessors extends Record<string, Processor<any>> = Record<string, Processor<any>>,
   TMemory extends Record<string, MastraMemory> = Record<string, MastraMemory>,
+  TClaudeAgents extends Record<string, ClaudeAgentLike> = Record<string, ClaudeAgentLike>,
 > {
   #vectors?: TVectors;
   #agents: TAgents;
+  #claudeAgents: TClaudeAgents;
   #logger: TLogger;
   #workflows: TWorkflows;
   #observability: ObservabilityEntrypoint;
@@ -714,6 +726,7 @@ export class Mastra<
     this.#mcpServers = {} as TMCPServers;
     this.#tts = {} as TTTS;
     this.#agents = {} as TAgents;
+    this.#claudeAgents = {} as TClaudeAgents;
     this.#scorers = {} as TScorers;
     this.#tools = {} as TTools;
     this.#processors = {} as TProcessors;
@@ -825,6 +838,14 @@ export class Mastra<
       Object.entries(config.agents).forEach(([key, agent]) => {
         if (agent != null) {
           this.addAgent(agent, key);
+        }
+      });
+    }
+
+    if (config?.claudeAgents) {
+      Object.entries(config.claudeAgents).forEach(([key, agent]) => {
+        if (agent != null) {
+          this.#addClaudeAgent(agent, key);
         }
       });
     }
@@ -988,6 +1009,122 @@ export class Mastra<
     }
 
     return this.resolveVersionedAgent(agent as TAgents[TAgentName], version);
+  }
+
+  /**
+   * Registers a Claude Agent SDK–backed agent under the given key. Called
+   * from the constructor for every entry in `config.claudeAgents`. Throws
+   * if the value is null/undefined (a symptom of config getters being
+   * misused via spread).
+   */
+  #addClaudeAgent(agent: ClaudeAgentLike, key: string): void {
+    if (agent == null) {
+      const error = new MastraError({
+        id: 'MASTRA_ADD_CLAUDE_AGENT_UNDEFINED',
+        domain: ErrorDomain.MASTRA,
+        category: ErrorCategory.USER,
+        text: `Cannot register null/undefined Claude agent under key '${key}'.`,
+        details: { status: 400, key },
+      });
+      this.#logger?.trackException(error);
+      throw error;
+    }
+    (this.#claudeAgents as Record<string, ClaudeAgentLike>)[key] = agent;
+    agent.__registerMastra?.(this);
+  }
+
+  /**
+   * Returns the map of registered Claude agents, keyed by registration key.
+   */
+  public getClaudeAgents(): TClaudeAgents {
+    return this.#claudeAgents;
+  }
+
+  /**
+   * Retrieves a registered Claude agent by its registration key.
+   *
+   * @throws {MastraError} When no agent is registered under the given key.
+   */
+  public getClaudeAgent<K extends keyof TClaudeAgents>(key: K): TClaudeAgents[K] {
+    const agent = this.#claudeAgents?.[key];
+    if (!agent) {
+      const error = new MastraError({
+        id: 'MASTRA_GET_CLAUDE_AGENT_BY_KEY_NOT_FOUND',
+        domain: ErrorDomain.MASTRA,
+        category: ErrorCategory.USER,
+        text: `Claude agent with key '${String(key)}' not found`,
+        details: {
+          status: 404,
+          key: String(key),
+          claudeAgents: Object.keys(this.#claudeAgents ?? {}).join(', '),
+        },
+      });
+      this.#logger?.trackException(error);
+      throw error;
+    }
+    return agent;
+  }
+
+  /**
+   * Retrieves a registered Claude agent by its `id`. Falls back to looking
+   * up by registration key if no agent matches by id, matching the lookup
+   * semantics of `getAgentById` for regular agents. Studio sends agent
+   * lookups by id since that's what the list endpoint returns.
+   */
+  public getClaudeAgentById(id: string): ClaudeAgentLike {
+    let agent = Object.values(this.#claudeAgents ?? {}).find(a => a?.id === id);
+    if (!agent) {
+      try {
+        agent = this.getClaudeAgent(id as keyof TClaudeAgents);
+      } catch {
+        // fall through to the dedicated not-found error below
+      }
+    }
+    if (!agent) {
+      const error = new MastraError({
+        id: 'MASTRA_GET_CLAUDE_AGENT_BY_ID_NOT_FOUND',
+        domain: ErrorDomain.MASTRA,
+        category: ErrorCategory.USER,
+        text: `Claude agent with id '${id}' not found`,
+        details: {
+          status: 404,
+          agentId: id,
+          claudeAgents: Object.keys(this.#claudeAgents ?? {}).join(', '),
+        },
+      });
+      this.#logger?.trackException(error);
+      throw error;
+    }
+    return agent;
+  }
+
+  /**
+   * Resolves an `idOrKey` to the canonical registration key. Server
+   * handlers use this at the edge so downstream storage / persistence
+   * code can key everything by a single stable identifier even though
+   * clients may send either the id or the key.
+   */
+  public resolveClaudeAgentKey(idOrKey: string): string {
+    const registry = (this.#claudeAgents ?? {}) as Record<string, ClaudeAgentLike>;
+    if (Object.prototype.hasOwnProperty.call(registry, idOrKey)) {
+      return idOrKey;
+    }
+    for (const [key, agent] of Object.entries(registry)) {
+      if (agent?.id === idOrKey) return key;
+    }
+    const error = new MastraError({
+      id: 'MASTRA_RESOLVE_CLAUDE_AGENT_KEY_NOT_FOUND',
+      domain: ErrorDomain.MASTRA,
+      category: ErrorCategory.USER,
+      text: `Claude agent '${idOrKey}' not found`,
+      details: {
+        status: 404,
+        idOrKey,
+        claudeAgents: Object.keys(registry).join(', '),
+      },
+    });
+    this.#logger?.trackException(error);
+    throw error;
   }
 
   /**
