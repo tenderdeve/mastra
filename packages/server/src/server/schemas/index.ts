@@ -19,6 +19,7 @@ export * from './agent-builder';
 export * from './agent-versions';
 export * from './agents';
 export * from './auth';
+export * from './claude-agents';
 export * from './common';
 export * from './conversations';
 export * from './datasets';

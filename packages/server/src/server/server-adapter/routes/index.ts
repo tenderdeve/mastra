@@ -11,6 +11,7 @@ import { AGENTS_ROUTES } from './agents';
 import type { AgentRoutes } from './agents';
 import { AUTH_ROUTES } from './auth';
 import { BACKGROUND_TASK_ROUTES } from './background-tasks';
+import { CLAUDE_AGENTS_ROUTES } from './claude-agents';
 import { CONVERSATIONS_ROUTES } from './conversations';
 import { DATASETS_ROUTES } from './datasets';
 import { LEGACY_ROUTES } from './legacy';
@@ -144,6 +145,7 @@ export type ServerRoute<
 export const SERVER_ROUTES: readonly ServerRoute[] = [
   ...AGENTS_ROUTES,
   ...AUTH_ROUTES,
+  ...CLAUDE_AGENTS_ROUTES,
   ...WORKFLOWS_ROUTES,
   ...TOOLS_ROUTES,
   ...PROCESSORS_ROUTES,
@@ -179,6 +181,7 @@ export const SERVER_ROUTES: readonly ServerRoute[] = [
 export type ServerRoutes = readonly [
   ...AgentRoutes,
   ...typeof AUTH_ROUTES,
+  ...typeof CLAUDE_AGENTS_ROUTES,
   ...typeof WORKFLOWS_ROUTES,
   ...typeof TOOLS_ROUTES,
   ...typeof PROCESSORS_ROUTES,
