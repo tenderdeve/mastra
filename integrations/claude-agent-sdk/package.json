@@ -53,6 +53,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.112",
     "@mastra/core": "workspace:*",
     "@mastra/schema-compat": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "catalog:"
   },
   "devDependencies": {

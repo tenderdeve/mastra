@@ -23,3 +23,6 @@ export type {
   QuestionRequest,
   QuestionResolution,
 } from './pending-registry';
+
+export { buildMastraToolsMcpServer, extractZodShape, wrapMastraToolForSdk } from './mcp-bridge';
+export type { AnyMastraTool, MastraToolExecutionContext, MastraToolsMcpServer } from './mcp-bridge';
