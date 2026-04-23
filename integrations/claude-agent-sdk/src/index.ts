@@ -26,3 +26,6 @@ export type {
 
 export { buildMastraToolsMcpServer, extractZodShape, wrapMastraToolForSdk } from './mcp-bridge';
 export type { AnyMastraTool, MastraToolExecutionContext, MastraToolsMcpServer } from './mcp-bridge';
+
+export { buildAgentDelegationTool, buildWorkflowDelegationTool, mergeDelegationTools } from './delegation';
+export type { AnyMastraAgent, AnyMastraWorkflow } from './delegation';
