@@ -29,3 +29,28 @@ export type { AnyMastraTool, MastraToolExecutionContext, MastraToolsMcpServer } 
 
 export { buildAgentDelegationTool, buildWorkflowDelegationTool, mergeDelegationTools } from './delegation';
 export type { AnyMastraAgent, AnyMastraWorkflow } from './delegation';
+
+export { sdkMessagesToUiMessages } from './translate';
+export type {
+  UiMessage,
+  UiMessagePart,
+  UiReasoningPart,
+  UiStepStartPart,
+  UiTextPart,
+  UiToolPart,
+} from './translate';
+
+export type {
+  ShellApprovalRequestEvent,
+  ShellApprovalResolvedEvent,
+  ShellErrorEvent,
+  ShellFinishEvent,
+  ShellMessageEvent,
+  ShellQuestionRequestEvent,
+  ShellQuestionResolvedEvent,
+  ShellSessionEvent,
+  ShellStreamEvent,
+} from './stream-events';
+
+export { shellStreamToMastraChunks } from './stream-translate';
+export type { ShellStreamToChunksOptions } from './stream-translate';
