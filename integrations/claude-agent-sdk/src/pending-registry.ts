@@ -202,6 +202,20 @@ export class PendingRegistry {
     }
   }
 
+  /**
+   * Reject a single pending entry by (sessionId, correlationId). Used to react
+   * to per-call `AbortSignal` aborts that the SDK propagates into
+   * `canUseTool` without tearing down the whole session. No-op if the entry
+   * is not found (already resolved or never existed).
+   */
+  cancelOne(sessionId: string, correlationId: string, reason: string = 'aborted'): void {
+    const key = compositeKey(sessionId, correlationId);
+    const entry = this.#entries.get(key);
+    if (!entry) return;
+    this.#entries.delete(key);
+    entry.reject(new Error(`Pending request cancelled: ${reason}`));
+  }
+
   /** Snapshot of every pending request for a session — useful for diagnostics. */
   listPending(sessionId: string): PendingRequest[] {
     const out: PendingRequest[] = [];

@@ -56,4 +56,23 @@ export { shellStreamToMastraChunks } from './stream-translate';
 export type { ShellStreamToChunksOptions } from './stream-translate';
 
 export { ClaudeAgent } from './claude-agent';
-export type { ClaudeAgentOptions, ClaudeAgentSystemPrompt } from './claude-agent';
+export type {
+  ClaudeAgentOptions,
+  ClaudeAgentStreamDeps,
+  ClaudeAgentStreamOptions,
+  ClaudeAgentSystemPrompt,
+  MastraLike,
+} from './claude-agent';
+
+export { runClaudeAgentStream } from './stream';
+
+export {
+  ASK_USER_QUESTION_TOOL_NAME,
+  NON_ESSENTIAL_SUPPRESSION_ENV,
+  buildQueryOptions,
+  normalizeSystemPrompt,
+} from './query-options';
+export type { BuildQueryOptionsInput } from './query-options';
+
+export { buildCanUseTool } from './can-use-tool';
+export type { BuildCanUseToolInput, CanUseToolLogger } from './can-use-tool';

@@ -1,9 +1,34 @@
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
+import {
+  ClaudeAgentPermissionRulesInMemory,
+  ClaudeAgentSessionsInMemory,
+  InMemoryDB,
+} from '@mastra/core/storage';
 import { createTool } from '@mastra/core/tools';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { ClaudeAgent } from './claude-agent';
+import type { MastraLike } from './claude-agent';
+
+function registerAgent(agent: ClaudeAgent) {
+  const db = new InMemoryDB();
+  const sessionsStore = new ClaudeAgentSessionsInMemory({ db });
+  const permissionRulesStore = new ClaudeAgentPermissionRulesInMemory({ db });
+  const mastra: MastraLike = {
+    getStorage: () =>
+      ({
+        getStore: async (name: string) => {
+          if (name === 'claudeAgentSessions') return sessionsStore;
+          if (name === 'claudeAgentPermissionRules') return permissionRulesStore;
+          return undefined;
+        },
+      }) as any,
+    resolveClaudeAgentKey: (idOrKey: string) => idOrKey,
+  };
+  agent.__registerMastra(mastra, agent.id);
+  return { sessionsStore, permissionRulesStore };
+}
 
 const aTool = () =>
   createTool({
@@ -150,5 +175,100 @@ describe('ClaudeAgent (MVP shell)', () => {
     expect(like.name).toBe('Demo');
     expect(like.description).toBe('d');
     expect(typeof like.__registerMastra).toBe('function');
+  });
+});
+
+describe('ClaudeAgent session CRUD facade', () => {
+  it('reads, lists, updates, deletes, and forks persisted sessions', async () => {
+    const agent = new ClaudeAgent({ id: 'demo' });
+    const { sessionsStore } = registerAgent(agent);
+
+    // Seed two sessions directly through the store.
+    await sessionsStore.saveSession({
+      id: 's-1',
+      agentKey: 'demo',
+      messages: [{ type: 'user', content: 'hi' }] as any,
+      title: 'first',
+    });
+    await sessionsStore.saveSession({
+      id: 's-2',
+      agentKey: 'demo',
+      messages: [] as any,
+      title: 'second',
+    });
+
+    // getSession
+    const s1 = await agent.getSession('s-1');
+    expect(s1?.id).toBe('s-1');
+    const missing = await agent.getSession('does-not-exist');
+    expect(missing).toBeNull();
+
+    // listSessions
+    const list = await agent.listSessions();
+    expect(list.sessions.map(s => s.id).sort()).toEqual(['s-1', 's-2']);
+
+    // updateSession
+    const renamed = await agent.updateSession('s-1', { title: 'renamed' });
+    expect(renamed?.title).toBe('renamed');
+
+    // forkSession
+    const forked = await agent.forkSession({ sourceId: 's-1', newId: 's-fork' });
+    expect(forked?.forkedFrom).toBe('s-1');
+    expect(forked?.id).toBe('s-fork');
+    expect(forked?.messages.length).toBe(1);
+
+    // deleteSession
+    await agent.deleteSession('s-2');
+    expect(await agent.getSession('s-2')).toBeNull();
+  });
+
+  it('throws when facade methods are called before registration', async () => {
+    const agent = new ClaudeAgent({ id: 'orphan' });
+    await expect(agent.getSession('x')).rejects.toThrow(/not registered with a Mastra instance/);
+    await expect(agent.listSessions()).rejects.toThrow(/not registered with a Mastra instance/);
+    await expect(agent.deleteSession('x')).rejects.toThrow(/not registered with a Mastra instance/);
+  });
+});
+
+describe('ClaudeAgent approval + question resolution', () => {
+  it('routes resolveApproval + resolveQuestion through the shared pending registry', async () => {
+    const agent = new ClaudeAgent({ id: 'demo' });
+    const registry = agent.__getRegistry();
+
+    const approvalPromise = registry.registerApproval({
+      kind: 'approval',
+      sessionId: 'sess-1',
+      correlationId: 'cid-1',
+      toolName: 'writeNote',
+      input: { body: 'x' },
+    });
+    agent.resolveApproval('sess-1', 'cid-1', { decision: 'allow' });
+    await expect(approvalPromise).resolves.toEqual({ decision: 'allow' });
+
+    const questionPromise = registry.registerQuestion({
+      kind: 'question',
+      sessionId: 'sess-1',
+      correlationId: 'cid-2',
+      questions: [
+        { id: 'q1', question: 'pick one', options: [{ label: 'a' }, { label: 'b' }] },
+      ],
+    });
+    agent.resolveQuestion('sess-1', 'cid-2', { answers: { q1: { selected: ['a'] } } });
+    await expect(questionPromise).resolves.toEqual({ answers: { q1: { selected: ['a'] } } });
+  });
+
+  it('cancels everything pending for a session', async () => {
+    const agent = new ClaudeAgent({ id: 'demo' });
+    const registry = agent.__getRegistry();
+
+    const p = registry.registerApproval({
+      kind: 'approval',
+      sessionId: 'sess-1',
+      correlationId: 'cid-a',
+      toolName: 't',
+      input: {},
+    });
+    agent.cancelAllPending('sess-1', 'user aborted');
+    await expect(p).rejects.toThrow(/user aborted/);
   });
 });
