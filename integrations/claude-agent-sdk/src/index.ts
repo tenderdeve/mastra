@@ -54,3 +54,6 @@ export type {
 
 export { shellStreamToMastraChunks } from './stream-translate';
 export type { ShellStreamToChunksOptions } from './stream-translate';
+
+export { ClaudeAgent } from './claude-agent';
+export type { ClaudeAgentOptions, ClaudeAgentSystemPrompt } from './claude-agent';
