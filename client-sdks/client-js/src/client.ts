@@ -84,6 +84,7 @@ import {
   ProcessorProvider,
   Workspace,
   Responses,
+  ClaudeAgent,
 } from './resources';
 import type {
   ListScoresBySpanParams,
@@ -174,6 +175,7 @@ import type {
   ListBackgroundTasksResponse,
   BackgroundTaskResponse,
   StreamBackgroundTasksParams,
+  ListClaudeAgentsResponse,
 } from './types';
 import { base64RequestContext, parseClientRequestContext, requestContextQueryString } from './utils';
 
@@ -1930,5 +1932,23 @@ export class MastraClient extends BaseResource {
         },
       }),
     );
+  }
+
+  // ============================================================================
+  // Claude Agents
+  // ============================================================================
+
+  /**
+   * Lists all Claude Agent SDK agents registered on this Mastra instance.
+   */
+  public listClaudeAgents(): Promise<ListClaudeAgentsResponse> {
+    return this.request('/claude-agents');
+  }
+
+  /**
+   * Returns a ClaudeAgent resource handle for the given agent id or registration key.
+   */
+  public getClaudeAgent(agentId: string): ClaudeAgent {
+    return new ClaudeAgent(this.options, agentId);
   }
 }

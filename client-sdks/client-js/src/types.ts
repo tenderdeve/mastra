@@ -2721,3 +2721,101 @@ export interface ExperimentReviewCounts {
   reviewed: number;
   complete: number;
 }
+
+// ============================================================================
+// Claude Agent SDK
+// ============================================================================
+
+export type ClaudeAgentPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk';
+
+export interface ClaudeAgentSummary {
+  id: string;
+  key: string;
+  name?: string;
+  description?: string;
+  model?: string;
+  agentCount: number;
+  workflowCount: number;
+  toolCount: number;
+}
+
+export interface ListClaudeAgentsResponse {
+  agents: ClaudeAgentSummary[];
+}
+
+export interface ClaudeAgentSessionResponse {
+  id: string;
+  agentKey: string;
+  resourceId?: string;
+  title?: string;
+  messages: unknown[];
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  forkedFrom?: string;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+export interface ListClaudeAgentSessionsParams {
+  resourceId?: string;
+  page?: number;
+  perPage?: number;
+}
+
+export interface ListClaudeAgentSessionsResponse {
+  sessions: ClaudeAgentSessionResponse[];
+  total: number;
+  page: number;
+  perPage: number;
+  hasMore: boolean;
+}
+
+export interface CreateClaudeAgentSessionParams {
+  sessionId?: string;
+  resourceId?: string;
+  title?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface StreamClaudeAgentTurnParams {
+  prompt: string;
+  resourceId?: string;
+  title?: string;
+  permissionMode?: ClaudeAgentPermissionMode;
+  requestContext?: Record<string, unknown>;
+}
+
+export interface ForkClaudeAgentSessionParams {
+  title?: string;
+  resourceId?: string;
+}
+
+export interface UpdateClaudeAgentSessionParams {
+  title?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ResolveClaudeAgentApprovalParams {
+  decision: 'allow' | 'deny';
+  updatedInput?: Record<string, unknown>;
+  message?: string;
+  remember?: boolean;
+}
+
+export interface ResolveClaudeAgentApprovalResponse {
+  resolved: boolean;
+}
+
+export interface ResolveClaudeAgentQuestionParams {
+  answers: Record<string, { selected: string[]; other?: string }>;
+}
+
+export interface ResolveClaudeAgentQuestionResponse {
+  resolved: boolean;
+}
+
+export interface DeleteClaudeAgentSessionResponse {
+  deleted: boolean;
+}
