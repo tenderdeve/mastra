@@ -27,6 +27,8 @@ import { WorkflowLayout } from './domains/workflows/workflow-layout';
 import { PostHogProvider } from './lib/analytics';
 import { Link } from './lib/link';
 import Agents from './pages/agents';
+import ClaudeAgents from './pages/claude-agents';
+import ClaudeAgentSessionPage from './pages/claude-agents/session';
 import Agent from './pages/agents/agent';
 import AgentSession from './pages/agents/agent/session';
 import AgentEvaluate from './pages/agents/agent-evaluate';
@@ -143,6 +145,11 @@ const paths: LinkComponentProviderProps['paths'] = {
   datasetExperimentLink: (datasetId: string, experimentId: string) =>
     `/datasets/${datasetId}/experiments/${experimentId}`,
   experimentLink: (experimentId: string) => `/experiments/${experimentId}`,
+  claudeAgentsLink: () => `/claude-agents`,
+  claudeAgentLink: (agentId: string) => `/claude-agents/${encodeURIComponent(agentId)}`,
+  claudeAgentSessionLink: (agentId: string, sessionId: string) =>
+    `/claude-agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`,
+  claudeAgentNewSessionLink: (agentId: string) => `/claude-agents/${encodeURIComponent(agentId)}/sessions/new`,
 };
 
 const RootLayout = () => {
@@ -221,6 +228,8 @@ const routes = [
       { path: '/traces/:traceId', element: <TraceDetails /> },
       { path: '/resources', element: <Resources /> },
       { path: '/agents', element: <Agents /> },
+      { path: '/claude-agents', element: <ClaudeAgents /> },
+      { path: '/claude-agents/:agentId/sessions/:sessionId', element: <ClaudeAgentSessionPage /> },
       {
         path: '/cms/agents/create',
         element: <CreateLayoutWrapper />,

@@ -50,6 +50,11 @@ type LinkComponentPaths = {
   datasetItemLink: (datasetId: string, itemId: string) => string;
   datasetExperimentLink: (datasetId: string, experimentId: string) => string;
   experimentLink: (experimentId: string) => string;
+
+  claudeAgentsLink: () => string;
+  claudeAgentLink: (agentId: string) => string;
+  claudeAgentSessionLink: (agentId: string, sessionId: string) => string;
+  claudeAgentNewSessionLink: (agentId: string) => string;
 };
 
 const LinkComponentContext = createContext<{
@@ -94,6 +99,10 @@ const LinkComponentContext = createContext<{
     datasetItemLink: () => '',
     datasetExperimentLink: () => '',
     experimentLink: () => '',
+    claudeAgentsLink: () => '',
+    claudeAgentLink: () => '',
+    claudeAgentSessionLink: () => '',
+    claudeAgentNewSessionLink: () => '',
   },
 });
 

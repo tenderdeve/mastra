@@ -58,6 +58,14 @@ const mainNavigation: SidebarSection[] = [
         requiredPermission: 'agents:read',
       },
       {
+        name: 'Claude Agents',
+        url: '/claude-agents',
+        icon: <AgentIcon />,
+        isOnMastraPlatform: false,
+        indent: true,
+        requiredPermission: 'agents:read',
+      },
+      {
         name: 'Prompts',
         url: '/prompts',
         icon: <FileTextIcon />,
