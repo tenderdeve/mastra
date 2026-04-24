@@ -76,3 +76,21 @@ export type { BuildQueryOptionsInput } from './query-options';
 
 export { buildCanUseTool } from './can-use-tool';
 export type { BuildCanUseToolInput, CanUseToolLogger } from './can-use-tool';
+
+// OTLP ingest pipeline
+export { convertOtlpBatch, mapSpanName, sanitizeAttributes } from './otel-ingest/converter';
+export type { MastraChildSpanDescriptor, MastraClaudeSpanType } from './otel-ingest/converter';
+export { buildOtelEnv, INGEST_ID_RESOURCE_KEY } from './otel-ingest/env';
+export type { BuildOtelEnvOptions } from './otel-ingest/env';
+export { getOrStartReceiver, startReceiver } from './otel-ingest/receiver';
+export type { IngestHandler, OtlpReceiverHandle } from './otel-ingest/receiver';
+export type { OtlpSpan, OtlpTracesRequest } from './otel-ingest/otlp-json';
+
+// Mastra-side tracing helpers
+export {
+  attachOtlpChildren,
+  emitEventSpan,
+  endAgentRunSpan,
+  startAgentRunSpan,
+} from './tracing';
+export type { EventSpanKind, StartAgentRunSpanOptions } from './tracing';

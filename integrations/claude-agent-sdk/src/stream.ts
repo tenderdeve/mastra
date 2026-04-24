@@ -49,10 +49,19 @@ import type { ClaudeAgent } from './claude-agent';
 import { mergeDelegationTools } from './delegation';
 import type { MastraToolExecutionContext } from './mcp-bridge';
 import { buildMastraToolsMcpServer } from './mcp-bridge';
+import { buildOtelEnv } from './otel-ingest/env';
+import { getOrStartReceiver  } from './otel-ingest/receiver';
+import type {OtlpReceiverHandle} from './otel-ingest/receiver';
 import type { PendingRegistry } from './pending-registry';
 import { buildQueryOptions } from './query-options';
 import type { ShellStreamEvent } from './stream-events';
 import { shellStreamToMastraChunks } from './stream-translate';
+import {
+  attachOtlpChildren,
+  emitEventSpan,
+  endAgentRunSpan,
+  startAgentRunSpan,
+} from './tracing';
 
 // ---------------------------------------------------------------------------
 // Public input/output
@@ -276,6 +285,42 @@ export async function* runClaudeAgentStream(
   }
   const abortController = options.abortController ?? new AbortController();
 
+  // ------------------------------------------------------------------
+  // Tracing + OTLP ingest
+  // ------------------------------------------------------------------
+  const toolNames = Object.keys(agent.getTools());
+  const subagentNames = Object.keys(agent.getAgents());
+  const agentRunSpan = startAgentRunSpan({
+    mastra: mastraRef as never,
+    requestContext,
+    agentId: agent.id,
+    agentName: agent.name ?? agent.id,
+    sessionId: mintedSessionId ?? placeholderSessionId,
+    model: agent.model,
+    cwd: agent.cwd,
+    permissionMode: permissionMode ?? agent.permissionMode,
+    toolNames,
+    subagentNames,
+  });
+
+  // Start the per-Mastra OTLP receiver (landmine #35) and register an ingest
+  // handler keyed on a fresh opaque id. The handler attaches inbound CLI
+  // spans as children of the AGENT_RUN span above.
+  const ingestId = newCorrelationId();
+  let receiver: OtlpReceiverHandle | undefined;
+  let otelEnv: Record<string, string> | undefined;
+  try {
+    receiver = await getOrStartReceiver(mastraRef as object, { logger: deps.logger });
+    receiver.registerIngest(ingestId, descriptors => {
+      attachOtlpChildren(agentRunSpan, descriptors);
+    });
+    otelEnv = buildOtelEnv({ endpoint: receiver.endpoint, ingestId });
+  } catch (err) {
+    deps.logger?.warn('[claude-agent] failed to start OTLP receiver', {
+      error: (err as Error).message,
+    });
+  }
+
   const mergedTools = mergeDelegationTools({
     tools: agent.getTools(),
     agents: agent.getAgents(),
@@ -296,7 +341,36 @@ export async function* runClaudeAgentStream(
     resourceId,
     registry: deps.registry,
     permissionRulesStore: deps.permissionRulesStore,
-    emit: ev => events.push(ev),
+    emit: ev => {
+      events.push(ev);
+      // Mirror approval/question lifecycle onto the AGENT_RUN span as
+      // short-lived event spans so the Studio trace panel shows the same
+      // lifecycle the UI surfaces.
+      switch (ev.type) {
+        case 'approval-request':
+          emitEventSpan(agentRunSpan, 'approval.requested', {
+            correlationId: ev.request.correlationId,
+            toolName: ev.request.toolName,
+          });
+          break;
+        case 'approval-resolved':
+          emitEventSpan(agentRunSpan, 'approval.resolved', {
+            approvalId: ev.approvalId,
+            decision: ev.decision,
+          });
+          break;
+        case 'question-request':
+          emitEventSpan(agentRunSpan, 'question.asked', {
+            correlationId: ev.request.correlationId,
+          });
+          break;
+        case 'question-resolved':
+          emitEventSpan(agentRunSpan, 'question.answered', {
+            questionId: ev.questionId,
+          });
+          break;
+      }
+    },
     logger: deps.logger,
     newCorrelationId,
   });
@@ -309,7 +383,7 @@ export async function* runClaudeAgentStream(
     sessionId: existing ? undefined : requestedSessionId,
     forkSession: existing ? forkSession : undefined,
     permissionMode,
-    extraEnv,
+    extraEnv: { ...(otelEnv ?? {}), ...(extraEnv ?? {}) },
   });
 
   // ------------------------------------------------------------------
@@ -384,6 +458,26 @@ export async function* runClaudeAgentStream(
     // Tear down pending approvals/questions tied to this session so dangling
     // `canUseTool` promises don't leak.
     deps.registry.cancelAll(mintedSessionId ?? placeholderSessionId, 'stream ended');
+
+    // Close the AGENT_RUN span and drop the OTLP ingest handler.
+    try {
+      endAgentRunSpan(agentRunSpan, {
+        isError: finishMeta.isError || !!terminalError,
+        totalCostUsd: finishMeta.totalCostUsd,
+        numTurns: finishMeta.numTurns,
+        durationMs: finishMeta.durationMs,
+        errorMessage: terminalError?.message,
+      });
+    } catch (err) {
+      deps.logger?.warn('[claude-agent] failed to close AGENT_RUN span', {
+        error: (err as Error).message,
+      });
+    }
+    try {
+      receiver?.unregisterIngest(ingestId);
+    } catch {
+      // best-effort
+    }
 
     // ----------------------------------------------------------------
     // Persistence
