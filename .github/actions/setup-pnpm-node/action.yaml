@@ -29,7 +29,7 @@ runs:
     - uses: pnpm/action-setup@v4
       name: Install pnpm
       with:
-        run_install: false
+        run_install: ${{ inputs.install-dependencies == 'true' && '[{"recursive":true,"args":["--frozen-lockfile","--ignore-scripts"]}]' || 'false' }}
         package_json_file: ${{ inputs.package-json-file || 'package.json' }}
         cache: ${{ inputs.package-manager-cache == 'true' }}
         cache_dependency_path: ${{ inputs.cache-dependency-path || 'pnpm-lock.yaml' }}
@@ -38,8 +38,3 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version: 22.13.0
-
-    - name: Install dependencies
-      if: ${{ inputs.install-dependencies == 'true' }}
-      shell: bash
-      run: pnpm install --frozen-lockfile --ignore-scripts
