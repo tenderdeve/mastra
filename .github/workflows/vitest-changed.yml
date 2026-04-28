@@ -95,7 +95,7 @@ jobs:
           echo "base_ref=$BASE_REF" >> $GITHUB_OUTPUT
 
       - name: Download prebuild outputs
-        uses: dawidd6/action-download-artifact@v10
+        uses: dawidd6/action-download-artifact@8305c0f1062bb0d184d09ef4493ecb9288447732 # v20
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           run_id: ${{ github.event.workflow_run.id }}
@@ -192,7 +192,7 @@ jobs:
           echo "base_ref=$BASE_REF" >> $GITHUB_OUTPUT
 
       - name: Download prebuild outputs
-        uses: dawidd6/action-download-artifact@v10
+        uses: dawidd6/action-download-artifact@8305c0f1062bb0d184d09ef4493ecb9288447732 # v20
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           run_id: ${{ github.event.workflow_run.id }}
@@ -604,10 +604,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, e2e-test]
     if: always() && github.event.workflow_run.conclusion == 'success'
-    # Minimal permissions - read-only access
-    permissions:
-      actions: read
-      contents: read
 
     steps:
       - name: Checkout PR code

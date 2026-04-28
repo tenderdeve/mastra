@@ -96,7 +96,7 @@ jobs:
             -T prebuild-output-paths.txt
 
       - name: Upload build outputs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: prebuild-outputs
           path: prebuild-outputs.tar.gz
