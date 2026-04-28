@@ -1108,4 +1108,136 @@ describe('ToolCallFilter', () => {
       expect(result.messages!).toHaveLength(2);
     });
   });
+
+  describe('integration: multi-step agent loop with ToolCallFilter', () => {
+    it('should filter tool call/result parts from step 1 before step 2 while preserving text', async () => {
+      const { loop } = await import('../../loop/loop');
+      const { stepCountIs } = await import('@internal/ai-sdk-v5');
+      const { convertArrayToReadableStream, mockValues, mockId } = await import('@internal/ai-sdk-v5/test');
+      const { MastraLanguageModelV2Mock } = await import('../../loop/test-utils/MastraLanguageModelV2Mock');
+      const { z } = await import('zod/v4');
+
+      const stepInputs: any[] = [];
+      let responseCount = 0;
+
+      const messageList = new MessageList();
+      messageList.add(
+        {
+          id: 'msg-user',
+          role: 'user',
+          content: [{ type: 'text', text: 'What is the weather in NYC?' }],
+        },
+        'input',
+      );
+
+      const result = await loop({
+        methodType: 'stream',
+        runId: 'test-toolcallfilter-integration',
+        models: [
+          {
+            id: 'test-model',
+            maxRetries: 0,
+            model: new MastraLanguageModelV2Mock({
+              doStream: async ({ prompt }: { prompt: unknown }) => {
+                stepInputs.push(prompt);
+
+                switch (responseCount++) {
+                  case 0:
+                    // Step 1: LLM calls the weather tool
+                    return {
+                      stream: convertArrayToReadableStream([
+                        {
+                          type: 'response-metadata',
+                          id: 'resp-0',
+                          modelId: 'mock-model-id',
+                          timestamp: new Date(0),
+                        },
+                        {
+                          type: 'tool-call',
+                          id: 'call-weather-1',
+                          toolCallId: 'call-weather-1',
+                          toolName: 'weather',
+                          input: '{ "city": "NYC" }',
+                        },
+                        {
+                          type: 'finish',
+                          finishReason: 'tool-calls',
+                          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+                        },
+                      ]),
+                    };
+                  case 1:
+                    // Step 2: LLM responds with text
+                    return {
+                      stream: convertArrayToReadableStream([
+                        {
+                          type: 'response-metadata',
+                          id: 'resp-1',
+                          modelId: 'mock-model-id',
+                          timestamp: new Date(1000),
+                        },
+                        { type: 'text-start', id: 'text-1' },
+                        { type: 'text-delta', id: 'text-1', delta: 'The weather in NYC is sunny.' },
+                        { type: 'text-end', id: 'text-1' },
+                        {
+                          type: 'finish',
+                          finishReason: 'stop',
+                          usage: { inputTokens: 10, outputTokens: 8, totalTokens: 18 },
+                        },
+                      ]),
+                    };
+                  default:
+                    throw new Error(`Unexpected response count: ${responseCount}`);
+                }
+              },
+            }),
+          },
+        ],
+        inputProcessors: [new ToolCallFilter()],
+        tools: {
+          weather: {
+            inputSchema: z.object({ city: z.string() }),
+            execute: async ({ city }: { city: string }) => `Sunny, 72°F in ${city}`,
+          },
+        },
+        messageList,
+        stopWhen: stepCountIs(3),
+        _internal: {
+          now: mockValues(0, 100, 500, 600, 1000),
+          generateId: mockId({ prefix: 'id' }),
+        },
+        agentId: 'test-agent',
+      });
+
+      await result.consumeStream();
+
+      // Should have had 2 LLM calls (step 1: tool call, step 2: text response)
+      expect(stepInputs).toHaveLength(2);
+
+      // Step 1 prompt: should contain the user message
+      const step1Prompt = stepInputs[0] as any[];
+      const step1UserMsg = step1Prompt.find((m: any) => m.role === 'user');
+      expect(step1UserMsg).toBeDefined();
+      expect(step1UserMsg.content.some((p: any) => p.type === 'text' && p.text.includes('NYC'))).toBe(true);
+
+      // Step 2 prompt: ToolCallFilter should have removed tool-call and tool-result parts
+      const step2Prompt = stepInputs[1] as any[];
+
+      // The user text message should still be present (non-tool context preserved)
+      const step2UserMsg = step2Prompt.find((m: any) => m.role === 'user');
+      expect(step2UserMsg).toBeDefined();
+      expect(step2UserMsg.content.some((p: any) => p.type === 'text' && p.text.includes('NYC'))).toBe(true);
+
+      // There should be NO assistant message with tool-call parts
+      const assistantMsgs = step2Prompt.filter((m: any) => m.role === 'assistant');
+      for (const msg of assistantMsgs) {
+        const hasToolCall = msg.content?.some((p: any) => p.type === 'tool-call');
+        expect(hasToolCall).toBeFalsy();
+      }
+
+      // There should be NO tool role messages (tool results)
+      const toolMsgs = step2Prompt.filter((m: any) => m.role === 'tool');
+      expect(toolMsgs).toHaveLength(0);
+    });
+  });
 });
