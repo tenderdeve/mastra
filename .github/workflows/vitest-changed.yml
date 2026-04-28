@@ -17,7 +17,10 @@ jobs:
   set-pending-status:
     name: Set Pending Status
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'mastra-ai/mastra' && github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      github.repository == 'mastra-ai/mastra' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     permissions:
       contents: read
       statuses: write
@@ -43,7 +46,10 @@ jobs:
     name: UNIT Test (Shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     needs: [set-pending-status]
-    if: ${{ github.repository == 'mastra-ai/mastra' && github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      github.repository == 'mastra-ai/mastra' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -128,7 +134,10 @@ jobs:
     name: E2E Test (${{ matrix.project }})
     runs-on: ubuntu-latest
     needs: [set-pending-status]
-    if: ${{ github.repository == 'mastra-ai/mastra' && github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      github.repository == 'mastra-ai/mastra' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     timeout-minutes: 30
     strategy:
       fail-fast: false
