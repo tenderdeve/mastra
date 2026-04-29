@@ -97,6 +97,7 @@ export {
   createProcessorPipelineTests,
   createVersionOverridesTests,
   createMemoryPersistenceTests,
+  createBackgroundTaskTests,
 } from './domains';
 
 // === Workflow exports ===

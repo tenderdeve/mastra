@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { createBackgroundTask } from '../../../../background-tasks/create';
+import { resolveBackgroundConfig } from '../../../../background-tasks/resolve-config';
+import type { ToolBackgroundConfig } from '../../../../background-tasks/types';
 import type { PubSub } from '../../../../events/pubsub';
 import type { Mastra } from '../../../../mastra';
 import type { MastraMemory } from '../../../../memory/memory';
@@ -272,8 +275,9 @@ export function createDurableToolCallStep() {
       // 3. Check for background task execution
       const bgManager = registryEntry?.backgroundTaskManager;
       const bgConfig = registryEntry?.backgroundTasksConfig;
-      const toolBgConfig = (tool as any).backgroundConfig;
-      const argsBackground = (args as any)?._background;
+      const toolBgConfig = (tool as any).backgroundConfig as ToolBackgroundConfig | undefined;
+      const llmBgOverrides =
+        typeof args === 'object' && args !== null && '_background' in args ? (args as any)._background : undefined;
 
       // Strip _background from args before execution (same as non-durable path)
       const cleanedArgs = { ...args };
@@ -289,61 +293,223 @@ export function createDurableToolCallStep() {
         };
       }
 
-      // Resolve whether to run in background
-      const bgToolsConfig = bgConfig?.tools;
-      const isToolEnabled =
-        bgToolsConfig === 'all' ||
-        (typeof bgToolsConfig === 'object' && bgToolsConfig !== null && (bgToolsConfig as any)[toolName]?.enabled);
-      const shouldRunBackground =
-        bgManager && bgConfig && !bgConfig.disabled && (argsBackground || toolBgConfig?.enabled || isToolEnabled);
+      // Resolve whether to run in background using the shared config resolver
+      if (bgManager && !bgConfig?.disabled && typeof cleanedArgs === 'object' && cleanedArgs !== null) {
+        const bgResolved = resolveBackgroundConfig({
+          llmBgOverrides,
+          toolName,
+          toolConfig: toolBgConfig,
+          agentConfig: bgConfig,
+          managerConfig: bgManager.config,
+        });
 
-      if (shouldRunBackground) {
-        try {
-          const { createBackgroundTask } = await import('../../../../background-tasks/create');
-          const bgTask = createBackgroundTask(bgManager, {
-            toolName,
-            toolCallId,
-            args: cleanedArgs,
-            agentId: initData.agentId,
-            runId,
-            context: {
-              executor: {
-                execute: async (taskArgs: any, taskContext: any) => {
-                  return tool.execute!(taskArgs, {
-                    toolCallId,
-                    messages: [],
-                    workspace,
-                    requestContext,
-                    abortSignal: taskContext?.abortSignal,
-                  });
+        if (bgResolved.runInBackground) {
+          try {
+            const bgTask = createBackgroundTask(bgManager, {
+              toolName,
+              toolCallId,
+              args: cleanedArgs,
+              agentId: initData.agentId,
+              threadId: state?.threadId,
+              resourceId: state?.resourceId,
+              runId,
+              timeoutMs: bgResolved.timeoutMs,
+              maxRetries: bgResolved.maxRetries,
+              context: {
+                executor: {
+                  execute: async (taskArgs: any, taskContext: any) => {
+                    return tool.execute!(taskArgs, {
+                      toolCallId,
+                      messages: [],
+                      workspace,
+                      requestContext,
+                      abortSignal: taskContext?.abortSignal,
+                    });
+                  },
                 },
+                onChunk: (chunk: any) => {
+                  if (!pubsub) return;
+                  try {
+                    const bgRunId = chunk.payload.runId;
+                    // Emit tool-call chunk so UIs can render the invocation inline
+                    if (bgRunId !== runId || (bgRunId === runId && resumeData)) {
+                      void emitChunkEvent(pubsub, bgRunId, {
+                        type: 'tool-call',
+                        runId: bgRunId,
+                        from: ChunkFrom.AGENT,
+                        payload: {
+                          toolCallId: chunk.payload.toolCallId,
+                          toolName: chunk.payload.toolName,
+                          args: cleanedArgs,
+                        },
+                      });
+                    }
+
+                    if (chunk.type === 'background-task-completed') {
+                      void emitChunkEvent(pubsub, bgRunId, {
+                        type: 'tool-result',
+                        runId: bgRunId,
+                        from: ChunkFrom.AGENT,
+                        payload: {
+                          toolCallId: chunk.payload.toolCallId,
+                          toolName: chunk.payload.toolName,
+                          args: cleanedArgs,
+                          result: chunk.payload.result,
+                        },
+                      });
+                    } else if (chunk.type === 'background-task-failed') {
+                      void emitChunkEvent(pubsub, bgRunId, {
+                        type: 'tool-error',
+                        runId: bgRunId,
+                        from: ChunkFrom.AGENT,
+                        payload: {
+                          toolCallId: chunk.payload.toolCallId,
+                          toolName: chunk.payload.toolName,
+                          error: chunk.payload.error,
+                          args: cleanedArgs,
+                        },
+                      });
+                    }
+                  } catch {
+                    // PubSub may be closed — ignore
+                  }
+                },
+
+                onResult: async (params: any) => {
+                  if (!messageList) return;
+
+                  const result =
+                    params.status === 'failed'
+                      ? `Background task failed: ${params.error?.message ?? 'Unknown error'}`
+                      : params.result;
+
+                  const updated = messageList.updateToolInvocation(
+                    {
+                      type: 'tool-invocation',
+                      toolInvocation: {
+                        state: 'result',
+                        toolCallId: params.toolCallId,
+                        toolName: params.toolName,
+                        args: cleanedArgs,
+                        result,
+                      },
+                    },
+                    {
+                      backgroundTasks: {
+                        [params.toolCallId]: {
+                          startedAt: params.startedAt,
+                          completedAt: params.completedAt,
+                          taskId: params.taskId,
+                        },
+                      },
+                    },
+                  );
+
+                  if (!updated) {
+                    if (params.runId !== runId || (params.runId === runId && resumeData)) {
+                      messageList.add(
+                        [
+                          {
+                            role: 'tool' as const,
+                            type: 'tool-call',
+                            id: crypto.randomUUID(),
+                            createdAt: new Date(),
+                            content: [
+                              {
+                                type: 'tool-call' as const,
+                                toolCallId: params.toolCallId,
+                                toolName: params.toolName,
+                                args: cleanedArgs,
+                              },
+                            ],
+                          },
+                        ],
+                        'response',
+                      );
+                    }
+                    messageList.add(
+                      [
+                        {
+                          role: 'tool' as const,
+                          content: [
+                            {
+                              type: 'tool-result' as const,
+                              toolCallId: params.toolCallId,
+                              toolName: params.toolName,
+                              result,
+                              isError: params.status === 'failed',
+                            },
+                          ],
+                        },
+                      ],
+                      'response',
+                    );
+                  }
+
+                  if (saveQueueManager && state?.threadId) {
+                    await saveQueueManager.flushMessages(messageList, state.threadId, state.memoryConfig);
+                  }
+                },
+
+                onExecution: async (params: any) => {
+                  if (!messageList) return;
+
+                  messageList.updateToolInvocation(
+                    {
+                      type: 'tool-invocation',
+                      toolInvocation: {
+                        state: 'call',
+                        toolCallId: params.toolCallId,
+                        toolName: params.toolName,
+                        args: cleanedArgs,
+                      },
+                    },
+                    {
+                      backgroundTasks: {
+                        [params.toolCallId]: {
+                          startedAt: params.startedAt,
+                          taskId: params.taskId,
+                        },
+                      },
+                    },
+                  );
+                },
+
+                onComplete: toolBgConfig?.onComplete ?? bgConfig?.onTaskComplete,
+                onFailed: toolBgConfig?.onFailed ?? bgConfig?.onTaskFailed,
               },
-            },
-          });
-          await bgTask.dispatch();
-          const taskResult = await bgManager.waitForNextTask([(bgTask as any).taskId ?? (bgTask as any).task?.id]);
-          if (taskResult?.status === 'completed') {
-            if (pubsub) {
-              await emitChunkEvent(pubsub, runId, {
-                type: 'tool-result',
-                runId,
-                from: ChunkFrom.AGENT,
-                payload: { toolCallId, toolName, args: cleanedArgs, result: taskResult.result },
-              });
+            });
+
+            const { task, fallbackToSync } = await bgTask.dispatch();
+
+            if (!fallbackToSync) {
+              // Emit background-task-started chunk via PubSub
+              if (pubsub) {
+                await emitChunkEvent(pubsub, runId, {
+                  type: 'background-task-started' as any,
+                  runId,
+                  from: ChunkFrom.AGENT,
+                  payload: {
+                    taskId: task.id,
+                    toolName,
+                    toolCallId,
+                  },
+                });
+              }
+
+              // Return placeholder result so the LLM can continue
+              return {
+                ...typedInput,
+                args: cleanedArgs,
+                result: `Background task started. Task ID: ${task.id}. The tool "${toolName}" is running in the background. You will be notified when it completes.`,
+              };
             }
-            return { ...typedInput, args: cleanedArgs, result: taskResult.result };
+            // fallbackToSync: concurrency limit hit, fall through to synchronous execution
+          } catch (bgError) {
+            logger?.debug?.(
+              `[DurableAgent] Background task dispatch failed for ${toolName}, falling back to sync: ${bgError}`,
+            );
           }
-          return {
-            ...typedInput,
-            args: cleanedArgs,
-            error: {
-              name: 'BackgroundTaskError',
-              message: String((taskResult as any)?.error ?? 'Background task failed'),
-            },
-          };
-        } catch (bgError) {
-          // Fall through to synchronous execution on background task failure
-          logger?.debug?.(`[DurableAgent] Background task failed for ${toolName}, falling back to sync: ${bgError}`);
         }
       }
 

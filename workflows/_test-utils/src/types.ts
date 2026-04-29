@@ -122,10 +122,11 @@ export type DurableAgentTestDomain =
   | 'memoryMetadata'
   // End-to-end tool workflow execution (approval, suspension, resume, foreach)
   | 'toolWorkflowExecution'
-  // Parity feature domains (processor pipeline, version overrides, memory persistence)
+  // Parity feature domains (processor pipeline, version overrides, memory persistence, background tasks)
   | 'processorPipeline'
   | 'versionOverrides'
-  | 'memoryPersistence';
+  | 'memoryPersistence'
+  | 'backgroundTasks';
 
 /**
  * Configuration for creating a DurableAgent test suite

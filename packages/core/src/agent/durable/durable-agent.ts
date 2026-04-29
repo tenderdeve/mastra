@@ -12,6 +12,7 @@ import type { MessageListInput } from '../message-list';
 import type { ToolsInput } from '../types';
 
 import { AGENT_STREAM_TOPIC } from './constants';
+import { runDurableStreamUntilIdle } from './durable-stream-until-idle';
 import { prepareForDurableExecution } from './preparation';
 import { ExtendedRunRegistry, globalRunRegistry } from './run-registry';
 import { createDurableAgentStream, emitErrorEvent } from './stream-adapter';
@@ -71,6 +72,8 @@ export interface DurableAgentStreamOptions<OUTPUT = undefined> {
   onError?: (error: Error) => void | Promise<void>;
   /** Callback when workflow suspends (e.g., for tool approval) */
   onSuspended?: (data: AgentSuspendedEventData) => void | Promise<void>;
+  /** When true, the in-loop background task check step skips waiting (streamUntilIdle sets this) */
+  _skipBgTaskWait?: boolean;
 }
 
 /**
@@ -215,6 +218,9 @@ export class DurableAgent<
 
   /** Mastra instance (set via __setMastra when registered) */
   #mastra: Mastra | undefined;
+
+  /** Active streamUntilIdle wrappers keyed by scope (threadId|resourceId) */
+  #activeStreamUntilIdle = new Map<string, () => void>();
 
   /** Timeout for auto-cleanup after stream finishes (0 = disabled) */
   readonly #cleanupTimeoutMs: number;
@@ -762,6 +768,26 @@ export class DurableAgent<
       }
     }
     return this.#workflow;
+  }
+
+  /**
+   * Stream until all background tasks complete and the agent is idle.
+   * Mirrors the regular Agent's streamUntilIdle but adapted for durable execution.
+   */
+  // @ts-expect-error - Intentionally different return type for durable execution
+  override async streamUntilIdle<OUTPUT = TOutput>(
+    messages: MessageListInput,
+    streamOptions?: DurableAgentStreamOptions<OUTPUT> & { maxIdleMs?: number },
+  ): Promise<DurableAgentStreamResult<OUTPUT>> {
+    return runDurableStreamUntilIdle<OUTPUT>(
+      this as unknown as DurableAgent<any, any, OUTPUT>,
+      messages,
+      streamOptions,
+      {
+        activeStreams: this.#activeStreamUntilIdle,
+        bgManager: this.#mastra?.backgroundTaskManager,
+      },
+    );
   }
 
   /**

@@ -26,7 +26,12 @@ import {
   baseIterationStateSchema,
   createBaseIterationStateUpdate,
 } from './shared';
-import { createDurableLLMExecutionStep, createDurableToolCallStep, createDurableLLMMappingStep } from './steps';
+import {
+  createDurableBackgroundTaskCheckStep,
+  createDurableLLMExecutionStep,
+  createDurableToolCallStep,
+  createDurableLLMMappingStep,
+} from './steps';
 
 /**
  * Options for creating a durable agentic workflow
@@ -94,6 +99,9 @@ export function createDurableAgenticWorkflow(options?: DurableAgenticWorkflowOpt
   // Create the LLM mapping step
   const llmMappingStep = createDurableLLMMappingStep();
 
+  // Create the background task check step
+  const backgroundTaskCheckStep = createDurableBackgroundTaskCheckStep();
+
   // Create the single iteration workflow (LLM -> Tool Calls -> Mapping)
   // Note: foreach runs with concurrency: 1 (sequential) because tool approval
   // and suspension require sequential execution to properly handle suspend/resume.
@@ -158,7 +166,9 @@ export function createDurableAgenticWorkflow(options?: DurableAgenticWorkflowOpt
     )
     // Step 5: Map tool results back to state
     .then(llmMappingStep)
-    // Step 6: Map back to iteration state format using shared function
+    // Step 6: Check for pending background tasks
+    .then(backgroundTaskCheckStep)
+    // Step 7: Map back to iteration state format using shared function
     .map(
       async ({ inputData, getInitData }) => {
         const executionOutput = inputData as DurableAgenticExecutionOutput;

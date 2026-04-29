@@ -1,4 +1,5 @@
 import {
+  createDurableBackgroundTaskCheckStep,
   createDurableLLMExecutionStep,
   createDurableLLMMappingStep,
   createDurableToolCallStep,
@@ -113,6 +114,9 @@ export function createInngestDurableAgenticWorkflow(options: InngestDurableAgent
 
   // Create the LLM mapping step - reuse from core
   const llmMappingStep = createDurableLLMMappingStep();
+
+  // Create the background task check step
+  const backgroundTaskCheckStep = createDurableBackgroundTaskCheckStep();
 
   // Create the single iteration workflow (LLM -> Tool Calls -> Mapping)
   const singleIterationWorkflow = createWorkflow({
@@ -259,7 +263,9 @@ export function createInngestDurableAgenticWorkflow(options: InngestDurableAgent
     )
     // Step 5: Map tool results back to state
     .then(llmMappingStep)
-    // Step 6: Map back to iteration state format using shared function
+    // Step 6: Check for pending background tasks
+    .then(backgroundTaskCheckStep)
+    // Step 7: Map back to iteration state format using shared function
     .map(
       async ({ inputData, getInitData }) => {
         const executionOutput = inputData as DurableAgenticExecutionOutput;

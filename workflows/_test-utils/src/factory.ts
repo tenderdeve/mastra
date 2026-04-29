@@ -66,6 +66,7 @@ import {
   createProcessorPipelineTests,
   createVersionOverridesTests,
   createMemoryPersistenceTests,
+  createBackgroundTaskTests,
 } from './domains';
 
 // Workflow domain imports (imported directly to avoid circular deps with domains/index)
@@ -363,6 +364,10 @@ export function createDurableAgentTestSuite(config: DurableAgentTestConfig) {
 
     if (!skip.memoryPersistence) {
       createMemoryPersistenceTests(context);
+    }
+
+    if (!skip.backgroundTasks) {
+      createBackgroundTaskTests(context);
     }
   });
 }

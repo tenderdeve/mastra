@@ -4,11 +4,13 @@ import { z } from 'zod';
 import type { PubSub } from '../../../../events/pubsub';
 import type { Mastra } from '../../../../mastra';
 import type { SpanType, AIModelGenerationSpan, ExportedSpan, IModelSpanTracker } from '../../../../observability';
+import { ProcessorRunner } from '../../../../processors/runner';
 import { execute } from '../../../../stream/aisdk/v5/execute';
 import { MastraModelOutput } from '../../../../stream/base/output';
 import type { TextDeltaPayload, ToolCallPayload } from '../../../../stream/types';
 import { createStep } from '../../../../workflows';
 import { PUBSUB_SYMBOL } from '../../../../workflows/constants';
+import { MessageList } from '../../../message-list';
 import type { MastraDBMessage } from '../../../message-list';
 import { isSupportedLanguageModel } from '../../../utils';
 import { DurableStepIds } from '../../constants';
@@ -503,7 +505,6 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             const registryEntry = globalRunRegistry.get(runId);
             if (registryEntry?.errorProcessors?.length) {
               try {
-                const { ProcessorRunner } = await import('../../../../processors/runner');
                 const runner = new ProcessorRunner({
                   inputProcessors: registryEntry.inputProcessors ?? [],
                   outputProcessors: registryEntry.outputProcessors ?? [],
@@ -512,7 +513,7 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                   agentName: typedInput.agentName ?? typedInput.agentId,
                   processorStates: registryEntry.processorStates,
                 });
-                const currentMessageList = new (await import('../../../message-list')).MessageList();
+                const currentMessageList = new MessageList();
                 currentMessageList.deserialize(typedInput.messageListState);
                 const { retry } = await runner.runProcessAPIError({
                   error: lastError,

@@ -169,6 +169,7 @@ export function serializeDurableOptions(options: {
   returnScorerData?: boolean;
   hasErrorProcessors?: boolean;
   structuredOutput?: SerializableDurableOptions['structuredOutput'];
+  skipBgTaskWait?: boolean;
 }): SerializableDurableOptions {
   // Normalize toolChoice to serializable form
   let serializedToolChoice: SerializableDurableOptions['toolChoice'];
@@ -197,6 +198,7 @@ export function serializeDurableOptions(options: {
     returnScorerData: options.returnScorerData,
     hasErrorProcessors: options.hasErrorProcessors,
     structuredOutput: options.structuredOutput,
+    skipBgTaskWait: options.skipBgTaskWait,
   };
 }
 

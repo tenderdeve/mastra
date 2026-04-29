@@ -95,6 +95,8 @@ export const baseIterationStateSchema = z.object({
   accumulatedUsage: accumulatedUsageSchema,
   // Last step result for continuation check
   lastStepResult: z.any().optional(),
+  // Background task tracking
+  backgroundTaskPending: z.boolean().optional(),
 });
 
 /**

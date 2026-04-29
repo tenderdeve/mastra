@@ -94,5 +94,6 @@ export function createBaseIterationStateUpdate(input: IterationStateUpdateInput)
     accumulatedSteps: [...currentState.accumulatedSteps, stepRecord],
     accumulatedUsage: newUsage,
     lastStepResult: executionOutput.stepResult,
+    backgroundTaskPending: executionOutput.backgroundTaskPending,
   };
 }

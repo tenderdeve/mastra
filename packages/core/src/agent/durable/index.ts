@@ -87,6 +87,9 @@ export { EventedAgent, isEventedAgentClass, type EventedAgentConfig } from './ev
 // Evented Agent factory
 export { createEventedAgent, isEventedAgent, type CreateEventedAgentOptions } from './create-evented-agent';
 
+// Stream until idle (durable variant)
+export { runDurableStreamUntilIdle, type DurableStreamUntilIdleDeps } from './durable-stream-until-idle';
+
 // Preparation utilities
 export { prepareForDurableExecution, type PreparationOptions, type PreparationResult } from './preparation';
 
@@ -161,6 +164,7 @@ export { createDurableAgenticWorkflow, type DurableAgenticWorkflowOptions } from
 
 // Workflow steps (for advanced customization)
 export {
+  createDurableBackgroundTaskCheckStep,
   createDurableLLMExecutionStep,
   createDurableToolCallStep,
   createDurableLLMMappingStep,

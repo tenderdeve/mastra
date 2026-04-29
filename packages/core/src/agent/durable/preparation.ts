@@ -317,6 +317,7 @@ export async function prepareForDurableExecution<OUTPUT = undefined>(
       returnScorerData: (execOptions as any)?.returnScorerData,
       hasErrorProcessors: errorProcessors.length > 0,
       structuredOutput: serializedStructuredOutput,
+      skipBgTaskWait: (execOptions as any)?._skipBgTaskWait,
     },
     state: {
       memoryConfig,

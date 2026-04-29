@@ -156,6 +156,8 @@ export interface SerializableDurableOptions {
   hasErrorProcessors?: boolean;
   /** Structured output configuration */
   structuredOutput?: SerializableStructuredOutput;
+  /** When true, the background task check step skips its in-loop wait (external driver handles continuation) */
+  skipBgTaskWait?: boolean;
 }
 
 /**
@@ -293,6 +295,8 @@ export interface DurableAgenticExecutionOutput {
   /** Processor retry tracking */
   processorRetryCount?: number;
   processorRetryFeedback?: string;
+  /** Whether background tasks are still running after this iteration */
+  backgroundTaskPending?: boolean;
 }
 
 /**
