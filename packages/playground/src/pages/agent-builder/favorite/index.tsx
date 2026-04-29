@@ -10,7 +10,7 @@ import {
   is401UnauthorizedError,
   is403ForbiddenError,
 } from '@mastra/playground-ui';
-import { LibraryIcon } from 'lucide-react';
+import { StarIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   AgentBuilderList,
@@ -18,17 +18,23 @@ import {
 } from '@/domains/agent-builder/components/agent-builder-list/agent-builder-list';
 import { useStoredAgents } from '@/domains/agents/hooks/use-stored-agents';
 
-export default function AgentBuilderLibraryPage() {
+export default function AgentBuilderFavoritePage() {
   const [search, setSearch] = useState('');
 
-  const listParams = useMemo<ListStoredAgentsParams>(() => ({ visibility: 'public' }), []);
+  const listParams = useMemo<ListStoredAgentsParams>(
+    () => ({
+      starredOnly: true,
+      orderBy: { field: 'updatedAt', direction: 'DESC' },
+    }),
+    [],
+  );
 
   const { data, isLoading, error } = useStoredAgents(listParams);
   const agents = data?.agents ?? [];
 
   const body = (() => {
     if (isLoading) {
-      return <AgentBuilderListSkeleton rowTestId="library-skeleton-row" />;
+      return <AgentBuilderListSkeleton rowTestId="favorite-skeleton-row" />;
     }
 
     if (error) {
@@ -48,7 +54,7 @@ export default function AgentBuilderLibraryPage() {
       }
       return (
         <div className="flex items-center justify-center pt-10">
-          <ErrorState title="Failed to load the library" message={error.message} />
+          <ErrorState title="Failed to load favorite agents" message={error.message} />
         </div>
       );
     }
@@ -57,15 +63,15 @@ export default function AgentBuilderLibraryPage() {
       return (
         <div className="flex items-center justify-center pt-16">
           <EmptyState
-            iconSlot={<LibraryIcon className="h-8 w-8 text-neutral3" />}
-            titleSlot="No public agents yet"
-            descriptionSlot="Mark an agent as Public to share it with the team library."
+            iconSlot={<StarIcon className="h-8 w-8 text-neutral3" />}
+            titleSlot="No favorite agents yet"
+            descriptionSlot="Star agents to keep them here for quick access."
           />
         </div>
       );
     }
 
-    return <AgentBuilderList agents={agents} search={search} rowTestId="library-agent-row" />;
+    return <AgentBuilderList agents={agents} search={search} rowTestId="favorite-agent-row" />;
   })();
 
   return (
@@ -74,13 +80,13 @@ export default function AgentBuilderLibraryPage() {
         <div className="flex items-start justify-between gap-4">
           <PageHeader>
             <PageHeader.Title>
-              <LibraryIcon /> Library
+              <StarIcon /> Favorites
             </PageHeader.Title>
-            <PageHeader.Description>Agents shared with the team library.</PageHeader.Description>
+            <PageHeader.Description>Agents you've starred in Agent Builder.</PageHeader.Description>
           </PageHeader>
         </div>
         <div className="max-w-120">
-          <ListSearch onSearch={setSearch} label="Filter library" placeholder="Filter by name or description" />
+          <ListSearch onSearch={setSearch} label="Filter favorites" placeholder="Filter by name or description" />
         </div>
       </EntityListPageLayout.Top>
 
