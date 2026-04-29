@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 
 import { Agent } from '@mastra/core/agent';
+import { createDurableAgent } from '@mastra/core/agent/durable';
 import type { MastraBrowser } from '@mastra/core/browser';
 import { Harness } from '@mastra/core/harness';
 import type {
@@ -67,12 +70,16 @@ import {
 } from './utils/project.js';
 import type { StorageConfig } from './utils/project.js';
 import { createStorage, createVectorStore } from './utils/storage-factory.js';
-import { acquireThreadLock, releaseThreadLock } from './utils/thread-lock.js';
 
 const PROVIDER_TO_OAUTH_ID: Record<string, string> = {
   anthropic: 'anthropic',
   openai: 'openai-codex',
 };
+
+function getDurableStreamsSocketPath(resourceId: string, rootPath: string): string {
+  const hash = createHash('sha256').update(`${resourceId}:${rootPath}:durable-streams-v2`).digest('hex').slice(0, 16);
+  return path.join(os.tmpdir(), `mastracode-${hash}.sock`);
+}
 
 export interface MastraCodeConfig {
   /** Working directory for project detection. Default: process.cwd() */
@@ -357,6 +364,7 @@ export async function createMastraCode(config?: MastraCodeConfig) {
     ],
     errorProcessors: [new StreamErrorRetryProcessor(), new PrefillErrorHandler(), new ProviderHistoryCompat()],
   });
+  const durableCodeAgent = createDurableAgent({ agent: codeAgent });
 
   const defaultSubagents = [exploreSubagent, planSubagent, executeSubagent];
 
@@ -367,21 +375,21 @@ export async function createMastraCode(config?: MastraCodeConfig) {
       default: true,
       defaultModelId: 'anthropic/claude-opus-4-6',
       color: mastra.green,
-      agent: codeAgent,
+      agent: durableCodeAgent as any,
     },
     {
       id: 'plan',
       name: 'Plan',
       defaultModelId: 'openai/gpt-5.2-codex',
       color: mastra.purple,
-      agent: codeAgent,
+      agent: durableCodeAgent as any,
     },
     {
       id: 'fast',
       name: 'Fast',
       defaultModelId: 'cerebras/zai-glm-4.7',
       color: mastra.orange,
-      agent: codeAgent,
+      agent: durableCodeAgent as any,
     },
   ];
 
@@ -448,6 +456,7 @@ export async function createMastraCode(config?: MastraCodeConfig) {
     const savedModel = effectiveDefaults[mode.id];
     return savedModel ? { ...mode, defaultModelId: savedModel } : mode;
   });
+  const durableStreamsSocketPath = getDurableStreamsSocketPath(project.resourceId, project.rootPath);
 
   // Map subagent types to mode models: explore→fast, plan→plan, execute→build
   const subagentModeMap: Record<string, string> = { explore: 'fast', plan: 'plan', execute: 'build' };
@@ -589,9 +598,10 @@ export async function createMastraCode(config?: MastraCodeConfig) {
       }
       return customModels;
     },
-    threadLock: {
-      acquire: acquireThreadLock,
-      release: releaseThreadLock,
+    durableStreams: {
+      unixSocketPath: durableStreamsSocketPath,
+      attachToActiveThread: true,
+      signalWhileRunning: true,
     },
   });
 

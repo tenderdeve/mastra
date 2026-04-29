@@ -16,8 +16,57 @@ import { isSupportedLanguageModel } from '../../../utils';
 import { DurableStepIds } from '../../constants';
 import { globalRunRegistry } from '../../run-registry';
 import { emitChunkEvent, emitStepStartEvent } from '../../stream-adapter';
-import type { DurableAgenticWorkflowInput, DurableLLMStepOutput, DurableToolCallInput } from '../../types';
+import type {
+  DurableAgenticWorkflowInput,
+  DurableAgentSignal,
+  DurableLLMStepOutput,
+  DurableToolCallInput,
+} from '../../types';
 import { resolveRuntimeDependencies, resolveModelFromListEntry } from '../../utils/resolve-runtime';
+
+function escapeXml(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function escapeXmlAttribute(value: string): string {
+  return escapeXml(value).replaceAll('"', '&quot;');
+}
+
+function signalToMessage(signal: DurableAgentSignal): MastraDBMessage {
+  const contentMetadata =
+    signal.type === 'system-reminder'
+      ? { systemReminder: { type: 'agent-signal', signalType: signal.type, ...signal.metadata } }
+      : signal.type === 'user-message'
+        ? undefined
+        : { agentSignal: { type: signal.type, ...signal.metadata } };
+
+  const contents =
+    signal.type === 'system-reminder'
+      ? `<system-reminder type="agent-signal">${escapeXml(signal.contents)}</system-reminder>`
+      : signal.type === 'user-message'
+        ? signal.contents
+        : `<agent-signal type="${escapeXmlAttribute(signal.type)}">${escapeXml(signal.contents)}</agent-signal>`;
+
+  return {
+    id: signal.id ?? `signal-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    role: 'user',
+    content: {
+      format: 2,
+      parts: [{ type: 'text', text: contents }],
+      ...(contentMetadata ? { metadata: contentMetadata } : {}),
+    },
+    createdAt: signal.createdAt ? new Date(signal.createdAt) : new Date(),
+  };
+}
+
+function drainGlobalSignals(runId: string): DurableAgentSignal[] {
+  const entry = globalRunRegistry.get(runId);
+  const signals = entry?.signalQueue ?? [];
+  if (entry) {
+    entry.signalQueue = [];
+  }
+  return signals;
+}
 
 /**
  * Input schema for the durable LLM execution step
@@ -116,7 +165,7 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
     inputSchema: durableLLMInputSchema,
     outputSchema: durableLLMOutputSchema,
     execute: async params => {
-      const { inputData, mastra, tracingContext, requestContext } = params;
+      const { inputData, mastra, tracingContext, requestContext, abortSignal } = params;
 
       // Access pubsub via symbol
       const pubsub = (params as any)[PUBSUB_SYMBOL] as PubSub | undefined;
@@ -184,8 +233,12 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               );
             }
 
-            // Get messages for LLM (using async llmPrompt for proper format conversion)
-            const inputMessages = (await messageList.get.all.aiV5.llmPrompt()) as LanguageModelV2Prompt;
+            const signals = drainGlobalSignals(runId);
+            if (signals.length > 0) {
+              messageList.add(signals.map(signalToMessage), 'input');
+            }
+
+            let currentMessageId = messageId;
 
             // 5. Prepare tools - cast through unknown as CoreTool and ToolSet are structurally compatible at runtime
             const toolSet = tools as unknown as ToolSet;
@@ -211,6 +264,61 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             const stepIndex = (inputData as any).stepIndex ?? 0;
             modelSpanTracker?.setStepIndex(stepIndex);
 
+            // Build structured output for AI SDK if configured
+            const structuredOutputConfig = execOptions.structuredOutput;
+            const structuredOutput =
+              structuredOutputConfig?.schema && !structuredOutputConfig?.structuringModelConfig
+                ? {
+                    schema: structuredOutputConfig.schema,
+                    jsonPromptInjection: structuredOutputConfig.jsonPromptInjection,
+                  }
+                : undefined;
+
+            const registryEntry = globalRunRegistry.get(runId);
+            const streamPubsub = registryEntry?.pubsub ?? pubsub;
+            const executionAbortSignal = registryEntry?.abortSignal ?? abortSignal;
+            if (registryEntry?.inputProcessors?.length) {
+              const { ProcessorRunner } = await import('../../../../processors/runner');
+              const inputStepWriter = streamPubsub
+                ? {
+                    custom: async (data: { type: string }) => {
+                      await emitChunkEvent(streamPubsub, runId, data as any);
+                    },
+                  }
+                : undefined;
+              const runner = new ProcessorRunner({
+                inputProcessors: registryEntry.inputProcessors,
+                outputProcessors: registryEntry.outputProcessors ?? [],
+                errorProcessors: registryEntry.errorProcessors ?? [],
+                logger: logger as any,
+                agentName: typedInput.agentName ?? typedInput.agentId,
+                processorStates: registryEntry.processorStates,
+              });
+              await runner.runProcessInputStep({
+                messageList,
+                stepNumber: stepIndex,
+                steps: (inputData as any).accumulatedSteps ?? [],
+                tracingContext: modelSpanTracker?.getTracingContext() ?? tracingContext,
+                requestContext,
+                model,
+                messageId: currentMessageId,
+                rotateResponseMessageId: () => {
+                  currentMessageId = crypto.randomUUID();
+                  return currentMessageId;
+                },
+                tools: toolSet,
+                toolChoice: execOptions.toolChoice as any,
+                modelSettings: { temperature: execOptions.temperature },
+                structuredOutput: structuredOutput as any,
+                retryCount: (inputData as any).processorRetryCount ?? 0,
+                abortSignal: executionAbortSignal,
+                writer: inputStepWriter,
+              });
+            }
+
+            // Get messages for LLM (using async llmPrompt for proper format conversion)
+            const inputMessages = (await messageList.get.all.aiV5.llmPrompt()) as LanguageModelV2Prompt;
+
             // Enable defer mode - step-finish won't auto-close the step span
             // This allows us to export the step span and close it later after tool execution
             modelSpanTracker?.setDeferStepClose(true);
@@ -228,16 +336,6 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             // 8. Start MODEL_STEP span at the beginning of LLM execution
             modelSpanTracker?.startStep();
 
-            // 9. Build structured output for AI SDK if configured
-            const structuredOutputConfig = execOptions.structuredOutput;
-            const structuredOutput =
-              structuredOutputConfig?.schema && !structuredOutputConfig?.structuringModelConfig
-                ? {
-                    schema: structuredOutputConfig.schema,
-                    jsonPromptInjection: structuredOutputConfig.jsonPromptInjection,
-                  }
-                : undefined;
-
             // 10. Execute LLM call
             const modelResult = execute({
               runId,
@@ -245,7 +343,7 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               inputMessages,
               tools: toolSet,
               toolChoice: execOptions.toolChoice as ToolChoice<ToolSet> | undefined,
-              options: {},
+              options: { abortSignal: executionAbortSignal },
               modelSettings: {
                 temperature: execOptions.temperature,
                 maxRetries: 0,
@@ -258,8 +356,8 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 request = r || {};
                 rawResponse = rr || {};
 
-                if (pubsub) {
-                  void emitStepStartEvent(pubsub, runId, {
+                if (streamPubsub) {
+                  void emitStepStartEvent(streamPubsub, runId, {
                     stepId: DurableStepIds.LLM_EXECUTION,
                     request,
                     warnings,
@@ -278,7 +376,7 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               },
               stream: modelResult as any,
               messageList,
-              messageId,
+              messageId: currentMessageId,
               options: {
                 runId,
                 tracingContext: modelSpanTracker?.getTracingContext() ?? tracingContext,
@@ -299,8 +397,8 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 // NOTE: Do NOT emit 'finish' chunks - they will be sent as a proper FINISH event
                 // at the end of the agentic loop. Emitting finish chunks here would cause
                 // the client's MastraModelOutput to close prematurely in multi-step workflows.
-                if (pubsub && chunk.type !== 'finish') {
-                  await emitChunkEvent(pubsub, runId, chunk);
+                if (streamPubsub && chunk.type !== 'finish') {
+                  await emitChunkEvent(streamPubsub, runId, chunk);
                 }
 
                 // Process different chunk types
@@ -413,7 +511,7 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               }
 
               const assistantMessage: MastraDBMessage = {
-                id: messageId,
+                id: currentMessageId,
                 role: 'assistant' as const,
                 content: {
                   format: 2,

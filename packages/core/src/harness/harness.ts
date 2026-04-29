@@ -1,4 +1,6 @@
 import type { Agent } from '../agent';
+import { UnixSocketDurableRunClient } from '../agent/durable';
+import type { DurableAgentActiveRun } from '../agent/durable';
 import type { ToolsInput, ToolsetsInput } from '../agent/types';
 import type { MastraBrowser } from '../browser/browser';
 import { Mastra } from '../mastra';
@@ -108,6 +110,11 @@ export class Harness<TState = {}> {
   private sessionGrantedCategories = new Set<string>();
   private sessionGrantedTools = new Set<string>();
   private displayState: HarnessDisplayState = defaultDisplayState();
+  private durableRunClient: UnixSocketDurableRunClient | undefined = undefined;
+  private publishingDurableRunId: string | null = null;
+  private followingDurableRunId: string | null = null;
+  private durableThreadUnsubscribe: (() => void) | undefined = undefined;
+  private durableThreadSubscriptionKey: string | undefined = undefined;
   #internalMastra: Mastra | undefined = undefined;
 
   constructor(config: HarnessConfig<TState>) {
@@ -115,6 +122,12 @@ export class Harness<TState = {}> {
     this.config = config;
     this.resourceId = config.resourceId ?? config.id;
     this.defaultResourceId = this.resourceId;
+    if (config.durableStreams?.unixSocketPath) {
+      this.durableRunClient = new UnixSocketDurableRunClient({
+        socketPath: config.durableStreams.unixSocketPath,
+        autoStartCoordinator: true,
+      });
+    }
 
     // Convert PublicSchema to StandardSchemaWithJSON at the boundary
     this.stateSchema = config.stateSchema ? toStandardSchema(config.stateSchema) : undefined;
@@ -175,6 +188,8 @@ export class Harness<TState = {}> {
    * Must be called before using the harness.
    */
   async init(): Promise<void> {
+    await this.durableRunClient?.connect();
+
     // Create an internal Mastra instance so agents have access to storage
     // (required for tool approval snapshot persistence/resume).
     // We init storage through Mastra's proxied storage so augmentWithInit
@@ -724,6 +739,7 @@ export class Harness<TState = {}> {
     }
 
     this.tokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    await this.watchActiveThreadRuns();
     this.emit({ type: 'thread_created', thread });
 
     return thread;
@@ -837,6 +853,7 @@ export class Harness<TState = {}> {
     this.currentThreadId = clonedThread.id;
     await this.loadThreadMetadata();
     this.tokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    await this.watchActiveThreadRuns();
     this.emit({ type: 'thread_created', thread: clonedThread });
 
     return clonedThread;
@@ -865,6 +882,7 @@ export class Harness<TState = {}> {
     this.currentThreadId = threadId;
 
     await this.loadThreadMetadata();
+    await this.watchActiveThreadRuns();
 
     this.emit({ type: 'thread_changed', threadId, previousThreadId });
   }
@@ -1323,6 +1341,153 @@ export class Harness<TState = {}> {
   // Message Handling
   // ===========================================================================
 
+  private isActiveDurableRun(run: DurableAgentActiveRun | undefined): run is DurableAgentActiveRun {
+    return !!run && run.status !== 'completed' && run.status !== 'error';
+  }
+
+  private createUserStreamMessage(
+    content: string,
+    files?: Array<{ data: string; mediaType: string; filename?: string }>,
+  ): HarnessMessage {
+    const messageContent: HarnessMessageContent[] = [{ type: 'text', text: content }];
+    for (const file of files ?? []) {
+      if (file.mediaType.startsWith('image/')) {
+        messageContent.push({ type: 'image', data: file.data, mimeType: file.mediaType });
+      } else {
+        messageContent.push({ type: 'file', data: file.data, mediaType: file.mediaType, filename: file.filename });
+      }
+    }
+    return { id: `user-${Date.now()}`, role: 'user', content: messageContent, createdAt: new Date() };
+  }
+
+  private createDurableRunEventStream(runId: string): {
+    fullStream: AsyncIterable<any>;
+    ready: Promise<void>;
+    cleanup: () => void;
+  } {
+    const queue: any[] = [];
+    let notify: (() => void) | undefined;
+    let done = false;
+    let unsubscribe: (() => void) | undefined;
+
+    const fullStream = (async function* () {
+      try {
+        while (!done || queue.length > 0) {
+          if (queue.length === 0) {
+            await new Promise<void>(resolve => {
+              notify = resolve;
+            });
+            notify = undefined;
+            continue;
+          }
+          const chunk = queue.shift();
+          if (chunk) yield chunk;
+        }
+      } finally {
+        unsubscribe?.();
+      }
+    })();
+
+    const ready =
+      this.durableRunClient
+        ?.subscribeRun(runId, event => {
+          queue.push(event);
+          if ((event as any)?.type === 'finish' || (event as any)?.type === 'error') {
+            done = true;
+          }
+          notify?.();
+        })
+        .then(fn => {
+          unsubscribe = fn;
+        }) ?? Promise.resolve();
+
+    return {
+      fullStream,
+      ready,
+      cleanup: () => {
+        done = true;
+        unsubscribe?.();
+        notify?.();
+      },
+    };
+  }
+
+  async watchActiveThreadRuns(): Promise<void> {
+    if (!this.currentThreadId || !this.durableRunClient || !this.config.durableStreams?.attachToActiveThread) return;
+
+    const key = `${this.resourceId}\0${this.currentThreadId}`;
+    if (this.durableThreadSubscriptionKey === key) return;
+
+    this.durableThreadUnsubscribe?.();
+    this.durableThreadUnsubscribe = await this.durableRunClient.subscribeThread(
+      { resourceId: this.resourceId, threadId: this.currentThreadId },
+      activeRun => {
+        if (!this.isActiveDurableRun(activeRun) || activeRun.ownerId === this.durableRunClient?.clientId) return;
+        void this.followActiveThreadRun();
+      },
+    );
+    this.durableThreadSubscriptionKey = key;
+    void this.followActiveThreadRun();
+  }
+
+  async followActiveThreadRun(): Promise<boolean> {
+    if (
+      !this.currentThreadId ||
+      !this.durableRunClient ||
+      !this.config.durableStreams?.attachToActiveThread ||
+      this.abortController ||
+      this.followingDurableRunId
+    ) {
+      return false;
+    }
+
+    const maybeActiveRun = await this.durableRunClient.getActiveRun({
+      resourceId: this.resourceId,
+      threadId: this.currentThreadId,
+    });
+    if (!this.isActiveDurableRun(maybeActiveRun) || maybeActiveRun.ownerId === this.durableRunClient.clientId)
+      return false;
+    const activeRun = maybeActiveRun;
+
+    const operationId = ++this.currentOperationId;
+    this.abortController = new AbortController();
+    this.followingDurableRunId = activeRun.runId;
+    this.emit({ type: 'agent_start' });
+    const requestContext = await this.buildRequestContext();
+    const followedStream = this.createDurableRunEventStream(activeRun.runId);
+
+    try {
+      await followedStream.ready;
+      this.emit({ type: 'thread_observing', threadId: this.currentThreadId, runId: activeRun.runId });
+      this.emit({ type: 'stream_attached', threadId: this.currentThreadId, runId: activeRun.runId });
+      const streamResult = await this.processStream({ fullStream: followedStream.fullStream }, requestContext);
+      if (this.currentOperationId === operationId) {
+        const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
+        this.emit({ type: 'agent_end', reason });
+      }
+      return true;
+    } catch (error) {
+      if (this.currentOperationId === operationId) {
+        this.emit({
+          type: 'error',
+          error: error instanceof Error ? error : new Error(String(error)),
+          retryable: false,
+        });
+        this.emit({ type: 'agent_end', reason: 'error' });
+      }
+      return false;
+    } finally {
+      followedStream.cleanup();
+      if (this.currentOperationId === operationId) {
+        this.abortController = null;
+        this.abortRequested = false;
+      }
+      if (this.followingDurableRunId === activeRun.runId) {
+        this.followingDurableRunId = null;
+      }
+    }
+  }
+
   /**
    * Send a message to the current agent.
    * Streams the response and emits events.
@@ -1345,14 +1510,55 @@ export class Harness<TState = {}> {
       this.currentThreadId = thread.id;
     }
 
+    const durableClient = this.durableRunClient;
+    const durableStreams = this.config.durableStreams;
+    const maybeActiveRun = durableClient
+      ? await durableClient.getActiveRun({ resourceId: this.resourceId, threadId: this.currentThreadId })
+      : undefined;
+    let activeRun = this.isActiveDurableRun(maybeActiveRun) ? maybeActiveRun : undefined;
+
+    if (activeRun && durableClient && activeRun.ownerId === durableClient.clientId && !this.abortController) {
+      await durableClient.failRun(activeRun.runId).catch(() => undefined);
+      activeRun = undefined;
+    }
+
+    if (activeRun && durableStreams?.signalWhileRunning) {
+      const signalType = durableStreams.signalType ?? 'user-message';
+      await durableClient!.publishRunEvent(activeRun.runId, {
+        type: 'data-user-message',
+        data: { message: this.createUserStreamMessage(content, files) },
+      });
+      await durableClient!.sendSignal({ type: signalType, contents: content }, { runId: activeRun.runId });
+      this.emit({ type: 'signal_sent', threadId: this.currentThreadId, runId: activeRun.runId, signalType });
+      return;
+    }
+
     const operationId = ++this.currentOperationId;
     this.abortController = new AbortController();
     this.currentTraceId = null;
     const agent = this.getCurrentAgent();
     this.emit({ type: 'agent_start' });
 
+    let claimedRunId: string | undefined;
+    let stopSignalHandler: (() => void) | undefined;
+    let followedStreamCleanup: (() => void) | undefined;
+
     try {
       const requestContext = await this.buildRequestContext(requestContextInput);
+
+      if (activeRun && durableStreams?.attachToActiveThread) {
+        const followedStream = this.createDurableRunEventStream(activeRun.runId);
+        followedStreamCleanup = followedStream.cleanup;
+        await followedStream.ready;
+        this.emit({ type: 'thread_observing', threadId: this.currentThreadId, runId: activeRun.runId });
+        this.emit({ type: 'stream_attached', threadId: this.currentThreadId, runId: activeRun.runId });
+        const streamResult = await this.processStream({ fullStream: followedStream.fullStream }, requestContext);
+        if (this.currentOperationId === operationId) {
+          const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
+          this.emit({ type: 'agent_end', reason });
+        }
+        return;
+      }
 
       const isYolo = (this.state as Record<string, unknown>).yolo === true;
 
@@ -1371,6 +1577,48 @@ export class Harness<TState = {}> {
         ...(tracingContext && { tracingContext }),
         ...(tracingOptions && { tracingOptions }),
       };
+
+      if (durableClient) {
+        const runId = this.generateId();
+        const claim = await durableClient.claimThread({
+          resourceId: this.resourceId,
+          threadId: this.currentThreadId,
+          runId,
+        });
+        if (!claim.claimed) {
+          if (durableStreams?.attachToActiveThread && claim.activeRun) {
+            const followedStream = this.createDurableRunEventStream(claim.activeRun.runId);
+            followedStreamCleanup = followedStream.cleanup;
+            await followedStream.ready;
+            this.emit({ type: 'thread_observing', threadId: this.currentThreadId, runId: claim.activeRun.runId });
+            this.emit({ type: 'stream_attached', threadId: this.currentThreadId, runId: claim.activeRun.runId });
+            const streamResult = await this.processStream({ fullStream: followedStream.fullStream }, requestContext);
+            if (this.currentOperationId === operationId) {
+              const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
+              this.emit({ type: 'agent_end', reason });
+            }
+            return;
+          }
+          throw new Error(
+            `Thread ${this.currentThreadId} is already running durable run ${claim.activeRun?.runId ?? 'unknown'}`,
+          );
+        }
+        claimedRunId = runId;
+        streamOptions.runId = runId;
+        this.emit({ type: 'thread_claimed', threadId: this.currentThreadId, runId });
+        stopSignalHandler = await durableClient.onSignal(runId, signal => {
+          if (typeof (agent as any).sendSignal === 'function') {
+            (agent as any).sendSignal(signal, { runId });
+          }
+        });
+      }
+
+      if (claimedRunId && durableClient) {
+        await durableClient.publishRunEvent(claimedRunId, {
+          type: 'data-user-message',
+          data: { message: this.createUserStreamMessage(content, files) },
+        });
+      }
 
       streamOptions.toolsets = await this.buildToolsets(requestContext);
 
@@ -1412,13 +1660,27 @@ export class Harness<TState = {}> {
           : (messageInput as any),
         streamOptions as any,
       );
+      this.publishingDurableRunId = claimedRunId ?? null;
       const streamResult = await this.processStream(response, requestContext);
+      this.publishingDurableRunId = null;
+
+      if (claimedRunId && durableClient) {
+        if (streamResult.suspended) {
+          await durableClient.suspendRun(claimedRunId);
+        } else {
+          await durableClient.completeRun(claimedRunId);
+        }
+      }
 
       if (this.currentOperationId === operationId) {
         const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
         this.emit({ type: 'agent_end', reason });
       }
     } catch (error) {
+      this.publishingDurableRunId = null;
+      if (claimedRunId && durableClient) {
+        await durableClient.failRun(claimedRunId).catch(() => undefined);
+      }
       if (this.currentOperationId !== operationId) return;
 
       if (error instanceof Error && error.name === 'AbortError') {
@@ -1455,6 +1717,10 @@ export class Harness<TState = {}> {
         this.emit({ type: 'agent_end', reason: 'error' });
       }
     } finally {
+      this.publishingDurableRunId = null;
+      stopSignalHandler?.();
+      followedStreamCleanup?.();
+
       if (this.currentOperationId === operationId) {
         this.abortController = null;
         this.abortRequested = false;
@@ -1771,6 +2037,9 @@ export class Harness<TState = {}> {
       if ('runId' in chunk && chunk.runId) {
         this.currentRunId = chunk.runId;
       }
+      if (this.publishingDurableRunId && this.durableRunClient) {
+        await this.durableRunClient.publishRunEvent(this.publishingDurableRunId, chunk).catch(() => {});
+      }
 
       switch (chunk.type) {
         case 'text-start': {
@@ -1980,6 +2249,15 @@ export class Harness<TState = {}> {
             currentMessage.stopReason = 'tool_use';
           } else {
             currentMessage.stopReason = 'complete';
+          }
+          break;
+        }
+
+        case 'data-user-message': {
+          const message = (chunk as any).data?.message as HarnessMessage | undefined;
+          if (message) {
+            this.emit({ type: 'message_start', message });
+            this.emit({ type: 'message_end', message });
           }
           break;
         }
@@ -2267,6 +2545,10 @@ export class Harness<TState = {}> {
 
   isRunning(): boolean {
     return this.abortController !== null;
+  }
+
+  canSendWhileRunning(): boolean {
+    return !!this.config.durableStreams?.signalWhileRunning;
   }
 
   getCurrentRunId(): string | null {
@@ -3284,6 +3566,7 @@ export class Harness<TState = {}> {
   async destroy(): Promise<void> {
     await this.stopHeartbeats();
     await this.destroyWorkspace();
+    await this.durableRunClient?.close();
   }
 
   // ===========================================================================

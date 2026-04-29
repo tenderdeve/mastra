@@ -82,6 +82,21 @@ describe('createDurableAgent factory', () => {
       expect(isLocalDurableAgent(durableAgent)).toBe(true);
     });
 
+    it('should not resolve dynamic models while wrapping an agent', () => {
+      const modelResolver = vi.fn(() => {
+        throw new Error('model should not resolve during durable agent construction');
+      });
+      const dynamicAgent = new Agent({
+        id: 'dynamic-agent',
+        name: 'Dynamic Agent',
+        instructions: 'You are a test agent',
+        model: modelResolver as any,
+      });
+
+      expect(() => createDurableAgent({ agent: dynamicAgent })).not.toThrow();
+      expect(modelResolver).not.toHaveBeenCalled();
+    });
+
     it('should fail isLocalDurableAgent for regular agent', () => {
       expect(isLocalDurableAgent(agent)).toBe(false);
       expect(isLocalDurableAgent(null)).toBe(false);

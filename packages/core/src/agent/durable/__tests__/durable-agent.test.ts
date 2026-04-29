@@ -838,12 +838,42 @@ describe('ExtendedRunRegistry', () => {
     expect(registry.has(runId)).toBe(true);
     expect(registry.getMessageList(runId)).toBe(messageList);
     expect(registry.getMemoryInfo(runId)).toEqual({ threadId: 'thread-1', resourceId: 'user-1' });
+    expect(registry.getRunIdForThread('user-1', 'thread-1')).toBe(runId);
+    expect(registry.getStatus(runId)).toBe('active');
     expect(registry.getModel(runId)).toBe(mockModel);
 
     registry.cleanup(runId);
     expect(registry.has(runId)).toBe(false);
     expect(registry.getMessageList(runId)).toBeUndefined();
     expect(registry.getMemoryInfo(runId)).toBeUndefined();
+    expect(registry.getRunIdForThread('user-1', 'thread-1')).toBeUndefined();
+    expect(registry.getStatus(runId)).toBeUndefined();
+  });
+
+  it('should preserve signal FIFO order and drop queued signals on cleanup', () => {
+    const registry = new ExtendedRunRegistry();
+    const runId = 'signal-run';
+    const messageList = new MessageList({ threadId: 'thread-1', resourceId: 'user-1' });
+    const mockModel = { provider: 'test', modelId: 'test-model' } as any;
+
+    registry.registerWithMessageList(
+      runId,
+      { tools: {}, saveQueueManager: undefined as any, model: mockModel },
+      messageList,
+      { threadId: 'thread-1', resourceId: 'user-1' },
+    );
+
+    registry.setStatus(runId, 'suspended');
+    expect(registry.getStatus(runId)).toBe('suspended');
+
+    registry.enqueueSignal(runId, { type: 'user-message', contents: 'first' });
+    registry.enqueueSignal(runId, { type: 'system-reminder', contents: 'second' });
+    expect(registry.drainSignals(runId).map(signal => signal.contents)).toEqual(['first', 'second']);
+    expect(registry.drainSignals(runId)).toEqual([]);
+
+    registry.enqueueSignal(runId, { type: 'user-message', contents: 'dropped' });
+    registry.cleanup(runId);
+    expect(registry.drainSignals(runId)).toEqual([]);
   });
 
   it('should inherit all RunRegistry functionality', () => {
@@ -1039,6 +1069,52 @@ describe('emit helper functions', () => {
     expect(received[0].type).toBe(AgentStreamEventTypes.SUSPENDED);
     expect(received[0].data.toolName).toBe('myTool');
     expect(received[0].data.type).toBe('approval');
+  });
+
+  it('propagates stream abort signals into durable model execution', async () => {
+    let receivedSignal: AbortSignal | undefined;
+    let resolveDoStream!: () => void;
+    const doStreamStarted = new Promise<void>(resolve => {
+      resolveDoStream = resolve;
+    });
+
+    const mockModel = new MockLanguageModelV2({
+      doStream: async ({ abortSignal }) => {
+        receivedSignal = abortSignal;
+        resolveDoStream();
+        await new Promise<void>(resolve => abortSignal?.addEventListener('abort', () => resolve(), { once: true }));
+        return {
+          stream: convertArrayToReadableStream([
+            { type: 'finish', finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 0 } },
+          ]),
+          rawCall: { rawPrompt: null, rawSettings: {} },
+        };
+      },
+    });
+
+    const baseAgent = new Agent({
+      id: 'abort-agent',
+      name: 'Abort Agent',
+      instructions: 'Test abort',
+      model: mockModel as LanguageModelV2,
+    });
+    const durableAgent = createDurableAgent({ agent: baseAgent, pubsub, cache: false });
+    const abortController = new AbortController();
+
+    const response = await durableAgent.stream('hi', { abortSignal: abortController.signal });
+    const drain = (async () => {
+      for await (const _chunk of response.fullStream) {
+        // drain stream
+      }
+    })();
+
+    await doStreamStarted;
+    abortController.abort();
+    await expect(
+      Promise.race([drain, new Promise((_, reject) => setTimeout(() => reject(new Error('abort timed out')), 1000))]),
+    ).resolves.toBeUndefined();
+    expect(receivedSignal?.aborted).toBe(true);
+    response.cleanup();
   });
 });
 
