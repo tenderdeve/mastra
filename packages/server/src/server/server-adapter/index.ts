@@ -847,7 +847,6 @@ export async function checkRouteFGA(
     typeof fgaConfig.resourceId === 'function'
       ? fgaConfig.resourceId(params, { requestContext })
       : fgaConfig.resourceId || (fgaConfig.resourceIdParam ? (params[fgaConfig.resourceIdParam] as string) : undefined);
-  const permission = fgaConfig.permission || `${fgaConfig.resourceType}:read`;
   if (!fgaConfig.resourceType || !resourceId) {
     return {
       status: 403,
@@ -855,6 +854,7 @@ export async function checkRouteFGA(
       message: 'FGA authorization denied: route FGA metadata is incomplete',
     };
   }
+  const permission = fgaConfig.permission || `${fgaConfig.resourceType}:${deriveFGAAction(route.method)}`;
 
   const authorized = await fgaProvider.check(user, {
     resource: { type: fgaConfig.resourceType, id: resourceId },
@@ -871,4 +871,19 @@ export async function checkRouteFGA(
   }
 
   return null;
+}
+
+function deriveFGAAction(method: string): string {
+  switch (method.toUpperCase()) {
+    case 'GET':
+      return 'read';
+    case 'DELETE':
+      return 'delete';
+    case 'POST':
+    case 'PUT':
+    case 'PATCH':
+      return 'write';
+    default:
+      return 'read';
+  }
 }

@@ -19,16 +19,16 @@ import { WorkOS } from '@workos-inc/node';
 const apiKey = process.env.WORKOS_API_KEY!;
 const orgId = process.env.MASTRA_ORGANIZATION_ID!;
 const membershipId = process.env.WORKOS_MEMBERSHIP_ID;
+const orgResourceId = process.env.WORKOS_ORG_RESOURCE_ID;
 
-if (!apiKey || !orgId || !membershipId) {
-  console.error('Missing required env vars: WORKOS_API_KEY, MASTRA_ORGANIZATION_ID, WORKOS_MEMBERSHIP_ID');
+if (!apiKey || !orgId || !membershipId || !orgResourceId) {
+  console.error(
+    'Missing required env vars: WORKOS_API_KEY, MASTRA_ORGANIZATION_ID, WORKOS_MEMBERSHIP_ID, WORKOS_ORG_RESOURCE_ID',
+  );
   process.exit(1);
 }
 
 const workos = new WorkOS(apiKey);
-
-// The org's authorization resource ID (parent for agent resources)
-const orgResourceId = 'authz_resource_01KFE9Q1KGK87RN8DW4X65BARM';
 
 // Agents this user CAN see and execute
 const operatorAgents = ['chef-agent', 'weather-agent', 'dynamic-agent'];

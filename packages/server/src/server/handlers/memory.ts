@@ -1232,8 +1232,13 @@ export const SAVE_MESSAGES_ROUTE = createRoute({
         if (!message.threadId || !message.resourceId) {
           continue;
         }
-        if (!resourceIdByThread.has(message.threadId)) {
+        const existingResourceId = resourceIdByThread.get(message.threadId);
+        if (!existingResourceId) {
           resourceIdByThread.set(message.threadId, message.resourceId);
+        } else if (existingResourceId !== message.resourceId) {
+          throw new HTTPException(400, {
+            message: 'All messages for the same threadId must use the same resourceId.',
+          });
         }
       }
 

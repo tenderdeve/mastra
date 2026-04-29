@@ -643,9 +643,31 @@ export class MastraServer extends MastraServerBase<HonoApp, HonoRequest, Context
         }
 
         // Check FGA authorization (EE feature)
+        let bodyParams: Record<string, unknown> = {};
+        const contentType = c.req.header('content-type');
+        if (contentType?.includes('application/json')) {
+          try {
+            const body = (await c.req.raw.clone().json()) as unknown;
+            if (body && typeof body === 'object' && !Array.isArray(body)) {
+              bodyParams = body as Record<string, unknown>;
+            }
+          } catch {
+            bodyParams = {};
+          }
+        } else if (
+          contentType?.includes('application/x-www-form-urlencoded') ||
+          contentType?.includes('multipart/form-data')
+        ) {
+          try {
+            bodyParams = Object.fromEntries(await c.req.raw.clone().formData());
+          } catch {
+            bodyParams = {};
+          }
+        }
         const fgaError = await checkRouteFGA(this.mastra, serverRoute, c.get('requestContext'), {
           ...c.req.param(),
           ...Object.fromEntries(new URL(c.req.url).searchParams.entries()),
+          ...bodyParams,
         });
         if (fgaError) {
           return c.json({ error: fgaError.error, message: fgaError.message }, fgaError.status as any);

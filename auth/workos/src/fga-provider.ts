@@ -31,11 +31,11 @@ export class WorkOSFGAMembershipResolutionError extends Error {
 
   constructor(user: WorkOSUser) {
     super(
-      `[MastraFGAWorkos] Cannot resolve organization membership for user ${user?.id ?? 'unknown'}. ` +
+      '[MastraFGAWorkos] Cannot resolve organization membership for user <redacted>. ' +
         'Ensure fetchMemberships is enabled on MastraAuthWorkos or provide organizationMembershipId on the user.',
     );
     this.name = 'WorkOSFGAMembershipResolutionError';
-    this.userId = user?.id;
+    this.userId = user?.id ? '<redacted>' : undefined;
   }
 }
 
@@ -354,9 +354,8 @@ export class MastraFGAWorkos implements IFGAManager<WorkOSUser> {
     if (user?.organizationMembershipId) return user.organizationMembershipId;
     if (!user?.memberships?.length) {
       console.warn(
-        '[MastraFGAWorkos] Cannot resolve organization membership for user %s. ' +
+        '[MastraFGAWorkos] Cannot resolve organization membership for user <redacted>. ' +
           'Ensure fetchMemberships is enabled on MastraAuthWorkos when using FGA.',
-        user?.id ?? 'unknown',
       );
       if (options?.strictMembershipResolution) {
         throw new WorkOSFGAMembershipResolutionError(user);
@@ -369,11 +368,10 @@ export class MastraFGAWorkos implements IFGAManager<WorkOSUser> {
       const match = user.memberships.find(m => m.organizationId === this.organizationId);
       if (match) return match.id;
 
-      console.warn(
-        '[MastraFGAWorkos] User %s does not belong to configured organization %s.',
-        user?.id ?? 'unknown',
-        this.organizationId,
-      );
+      console.warn('[MastraFGAWorkos] User <redacted> does not belong to configured organization <redacted>.');
+      if (options?.strictMembershipResolution) {
+        throw new WorkOSFGAMembershipResolutionError(user);
+      }
       return undefined;
     }
 

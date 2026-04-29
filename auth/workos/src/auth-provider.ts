@@ -198,27 +198,23 @@ export class MastraAuthWorkos
         if (payload?.sub) {
           try {
             const user = await this.workos.userManagement.getUser(payload.sub);
+            let memberships: OrganizationMembership[] | undefined;
 
             // Fetch memberships only when FGA is configured (fetchMemberships: true).
             if (this.fetchMemberships) {
-              const memberships = await this.getMemberships(user.id);
-
-              return this.mergeJwtPayloadUser(
-                {
-                  ...mapWorkOSUserToEEUser(user),
-                  workosId: user.id,
-                  organizationId: memberships[0]?.organizationId,
-                  memberships,
-                },
-                jwtUser,
-                { trustOrganizationClaims: this.trustJwtClaims },
-              );
+              try {
+                memberships = await this.getMemberships(user.id);
+              } catch {
+                memberships = undefined;
+              }
             }
 
             return this.mergeJwtPayloadUser(
               {
                 ...mapWorkOSUserToEEUser(user),
                 workosId: user.id,
+                organizationId: memberships?.[0]?.organizationId,
+                memberships,
               },
               jwtUser,
               { trustOrganizationClaims: this.trustJwtClaims },

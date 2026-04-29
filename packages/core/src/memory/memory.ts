@@ -571,7 +571,7 @@ https://mastra.ai/en/docs/memory/overview`,
    */
   static async checkThreadFGA(options: {
     mastra?: Mastra;
-    user: { id: string; [key: string]: unknown };
+    user: Record<string, unknown>;
     threadId: string;
     resourceId?: string;
     requestContext?: RequestContext;

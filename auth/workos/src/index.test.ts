@@ -73,6 +73,10 @@ describe('MastraAuthWorkos', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWithAuth.mockReset();
+    mockListOrganizationMemberships.mockReset();
+    mockGetUser.mockReset();
+    vi.mocked(verifyJwks).mockReset();
     // Reset environment variables
     delete process.env.WORKOS_API_KEY;
     delete process.env.WORKOS_CLIENT_ID;
@@ -82,6 +86,10 @@ describe('MastraAuthWorkos', () => {
     mockListOrganizationMemberships.mockResolvedValue({
       data: [{ role: { slug: 'admin' } }, { role: { slug: 'member' } }],
     });
+    vi.mocked(verifyJwks).mockResolvedValue({
+      sub: 'user123',
+      email: 'test@example.com',
+    } as JwtPayload);
     mockGetUser.mockResolvedValue({
       id: 'user123',
       email: 'test@example.com',
@@ -250,6 +258,33 @@ describe('MastraAuthWorkos', () => {
         organizationMembershipId: 'om_service',
       });
       expect((result as any)?.['urn:mastra:team_id']).toBe('team_a');
+    });
+
+    it('should keep bearer-token auth when optional membership enrichment fails', async () => {
+      mockWithAuth.mockResolvedValueOnce({
+        auth: { user: null },
+      });
+      mockListOrganizationMemberships.mockRejectedValueOnce(new Error('membership API unavailable'));
+      vi.mocked(verifyJwks).mockResolvedValueOnce({
+        sub: 'user123',
+        email: 'test@example.com',
+      } as JwtPayload);
+
+      const auth = new MastraAuthWorkos({
+        apiKey: mockApiKey,
+        clientId: mockClientId,
+        redirectUri: mockRedirectUri,
+        session: { cookiePassword: mockCookiePassword },
+        fetchMemberships: true,
+      });
+
+      const result = await auth.authenticateToken('valid-token', mockRequest);
+
+      expect(result).toMatchObject({
+        id: 'user123',
+        workosId: 'user123',
+      });
+      expect(result?.memberships).toBeUndefined();
     });
 
     it('should return null for invalid token', async () => {

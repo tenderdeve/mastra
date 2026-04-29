@@ -23,12 +23,14 @@ for (const line of envContent.split('\n')) {
 }
 
 const apiKey = process.env.WORKOS_API_KEY;
-// Ryan's Organization where the test membership lives
-const orgId = 'org_01KJAYPVYBVZA7YMZ7EKX6JXQ1';
-const membershipId = 'om_01KJBA2EPHH6QTYN703HMMBWEJ';
+const orgId = process.env.MASTRA_ORGANIZATION_ID;
+const membershipId = process.env.WORKOS_MEMBERSHIP_ID;
+const orgResourceId = process.env.WORKOS_ORG_RESOURCE_ID;
 
-if (!apiKey) {
-  console.error('Missing required env var: WORKOS_API_KEY');
+if (!apiKey || !orgId || !membershipId || !orgResourceId) {
+  console.error(
+    'Missing required env vars: WORKOS_API_KEY, MASTRA_ORGANIZATION_ID, WORKOS_MEMBERSHIP_ID, WORKOS_ORG_RESOURCE_ID',
+  );
   process.exit(1);
 }
 
@@ -37,9 +39,6 @@ const headers = {
   'Content-Type': 'application/json',
 };
 const BASE = 'https://api.workos.com';
-
-// Ryan's Organization authorization resource ID
-const orgResourceId = 'authz_resource_01KJAYPVZ6G1Q3MARCJFPG8D8T';
 
 // Agents this user CAN see and execute
 const operatorAgents = ['chef-agent', 'weather-agent', 'dynamic-agent'];

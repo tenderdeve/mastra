@@ -142,7 +142,11 @@ describe('MCP Server FGA checks', () => {
       require: vi
         .fn()
         .mockRejectedValue(
-          new FGADeniedError({ id: 'user-1' }, { type: 'tool', id: 'test-tool' }, MastraFGAPermissions.TOOLS_EXECUTE),
+          new FGADeniedError(
+            { id: 'user-1' },
+            { type: 'tool', id: JSON.stringify([mcpServer.getServerInfo().id, 'test-tool']) },
+            MastraFGAPermissions.TOOLS_EXECUTE,
+          ),
         ),
       filterAccessible: vi.fn(),
     };
@@ -158,7 +162,10 @@ describe('MCP Server FGA checks', () => {
     expect(execute).not.toHaveBeenCalled();
     expect(mockFGAProvider.require).toHaveBeenCalledWith(
       { id: 'user-1' },
-      { resource: { type: 'tool', id: 'test-tool' }, permission: MastraFGAPermissions.TOOLS_EXECUTE },
+      {
+        resource: { type: 'tool', id: JSON.stringify([mcpServer.getServerInfo().id, 'test-tool']) },
+        permission: MastraFGAPermissions.TOOLS_EXECUTE,
+      },
     );
   });
 
@@ -215,10 +222,10 @@ describe('MCP Server FGA checks', () => {
     const mockFGAProvider = {
       check: vi.fn(),
       require: vi.fn(async (_user: unknown, params: { resource: { id: string } }) => {
-        if (params.resource.id === 'denied') {
+        if (params.resource.id === JSON.stringify([mcpServer.getServerInfo().id, 'denied'])) {
           throw new FGADeniedError(
             { id: 'user-1' },
-            { type: 'tool', id: 'denied' },
+            { type: 'tool', id: JSON.stringify([mcpServer.getServerInfo().id, 'denied']) },
             MastraFGAPermissions.TOOLS_EXECUTE,
           );
         }
@@ -231,6 +238,29 @@ describe('MCP Server FGA checks', () => {
 
     expect(result.tools.map(tool => tool.name)).toEqual(['allowed']);
     expect(mockFGAProvider.require).toHaveBeenCalledTimes(2);
+  });
+
+  it('should expose outputSchema separately from inputSchema after FGA filtering', async () => {
+    mcpServer = new MCPServer({
+      name: 'test-server',
+      version: '1.0.0',
+      tools: { 'test-tool': testTool },
+    });
+    const mockFGAProvider = {
+      check: vi.fn(),
+      require: vi.fn(),
+      filterAccessible: vi.fn(),
+    };
+    mcpServer.__registerMastra(createMockMastra(mockFGAProvider) as any);
+
+    const result = await mcpServer.getToolListInfo(createRequestContext({ id: 'user-1' }) as any);
+
+    expect(result.tools[0]?.inputSchema).toMatchObject({
+      properties: { input: expect.any(Object) },
+    });
+    expect(result.tools[0]?.outputSchema).toMatchObject({
+      properties: { output: expect.any(Object) },
+    });
   });
 
   it('should return no tools when FGA is configured and list context has no user', async () => {

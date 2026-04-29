@@ -213,14 +213,55 @@ describe('MastraFGAWorkos', () => {
     });
 
     it('should throw a typed membership resolution error from require when memberships were not loaded', async () => {
-      await expect(
-        fga.require({ id: 'user-1' } as any, {
+      const error = await fga
+        .require({ id: 'user-1' } as any, {
           resource: { type: 'agent', id: 'agent-1' },
           permission: 'agents:execute',
-        }),
+        })
+        .catch(error => error);
+
+      expect(error).toBeInstanceOf(WorkOSFGAMembershipResolutionError);
+      expect(error.message).toContain('<redacted>');
+      expect(error.message).not.toContain('user-1');
+
+      expect(mockAuthorization.check).not.toHaveBeenCalled();
+    });
+
+    it('should throw a typed membership resolution error from require when configured organization membership is missing', async () => {
+      const scopedFga = new MastraFGAWorkos({
+        apiKey: 'sk_test_123',
+        clientId: 'client_test_123',
+        organizationId: 'org-expected',
+      });
+
+      await expect(
+        scopedFga.require(
+          {
+            id: 'user-1',
+            memberships: [{ id: 'om-other', organizationId: 'org-other' }],
+          },
+          {
+            resource: { type: 'agent', id: 'agent-1' },
+            permission: 'agents:execute',
+          },
+        ),
       ).rejects.toBeInstanceOf(WorkOSFGAMembershipResolutionError);
 
       expect(mockAuthorization.check).not.toHaveBeenCalled();
+    });
+
+    it('should not include raw identifiers in membership resolution warnings', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await fga.check({ id: 'user-1' } as any, {
+        resource: { type: 'agent', id: 'agent-1' },
+        permission: 'agents:execute',
+      });
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('<redacted>'));
+      expect(warn.mock.calls.flat().join(' ')).not.toContain('user-1');
+
+      warn.mockRestore();
     });
 
     it('should resolve membership from memberships array', async () => {

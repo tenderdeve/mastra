@@ -22,7 +22,7 @@ describe('FGA Middleware - checkRouteFGA', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const mod = await import('../../../server/server-adapter/index');
+    const mod = await import('../index');
     checkRouteFGA = mod.checkRouteFGA;
   });
 
@@ -99,6 +99,26 @@ describe('FGA Middleware - checkRouteFGA', () => {
     const result = await checkRouteFGA(mastra, route, requestContext as any, {});
     expect(result).toMatchObject({ status: 403, error: 'Forbidden' });
     expect(fgaProvider.check).not.toHaveBeenCalled();
+  });
+
+  it('should derive FGA permission from the route method when permission is omitted', async () => {
+    const fgaProvider = createMockFGAProvider(true);
+    const mastra = { getServer: () => ({ fga: fgaProvider }) };
+    const route = { method: 'DELETE', fga: { resourceType: 'agent', resourceIdParam: 'agentId' } } as any;
+    const requestContext = new Map<string, unknown>();
+    requestContext.set('user', { id: 'user-1' });
+
+    const result = await checkRouteFGA(mastra, route, requestContext as any, { agentId: 'agent-1' });
+
+    expect(result).toBeNull();
+    expect(fgaProvider.check).toHaveBeenCalledWith(
+      { id: 'user-1' },
+      {
+        resource: { type: 'agent', id: 'agent-1' },
+        permission: 'agent:delete',
+        context: { resourceId: 'agent-1', requestContext },
+      },
+    );
   });
 
   it('should use a custom resource ID resolver when configured', async () => {

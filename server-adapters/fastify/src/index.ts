@@ -721,6 +721,9 @@ export class MastraServer extends MastraServerBase<FastifyInstance, FastifyReque
         const fgaError = await checkRouteFGA(this.mastra, serverRoute, request.requestContext, {
           ...(request.params as Record<string, string>),
           ...(request.query as Record<string, string>),
+          ...(typeof request.body === 'object' && request.body !== null
+            ? (request.body as Record<string, unknown>)
+            : {}),
         });
         if (fgaError) {
           return reply.status(fgaError.status).send({ error: fgaError.error, message: fgaError.message });

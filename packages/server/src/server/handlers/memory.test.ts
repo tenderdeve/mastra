@@ -735,6 +735,49 @@ describe('Memory Handlers', () => {
       expect(spy).toHaveBeenCalled();
     });
 
+    it('should reject mixed resourceIds for the same threadId in one batch', async () => {
+      const threadId = 'mixed-resource-thread';
+      await mockMemory.createThread({ threadId, resourceId: 'resource-a' });
+
+      const messages: MastraMessageV1[] = [
+        {
+          id: 'msg-a',
+          content: 'Message A',
+          role: 'user',
+          createdAt: new Date(),
+          threadId,
+          type: 'text',
+          resourceId: 'resource-a',
+        },
+        {
+          id: 'msg-b',
+          content: 'Message B',
+          role: 'assistant',
+          createdAt: new Date(),
+          threadId,
+          type: 'text',
+          resourceId: 'resource-b',
+        },
+      ];
+
+      const mastra = new Mastra({
+        logger: false,
+        agents: {
+          'test-agent': mockAgent,
+        },
+      });
+
+      await expect(
+        SAVE_MESSAGES_ROUTE.handler({
+          ...createTestServerContext({ mastra }),
+          agentId: 'test-agent',
+          messages,
+        }),
+      ).rejects.toThrow(
+        new HTTPException(400, { message: 'All messages for the same threadId must use the same resourceId.' }),
+      );
+    });
+
     it('should deny message writes when FGA denies access to the target thread', async () => {
       await mockMemory.createThread({ threadId: 'locked-thread', resourceId: 'test-resource' });
 

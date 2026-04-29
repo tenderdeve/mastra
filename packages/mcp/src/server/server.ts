@@ -1948,7 +1948,7 @@ export class MCPServer extends MCPServerBase {
           name: tool.id || toolId,
           description: tool.description,
           inputSchema: this.convertSchema(tool.parameters),
-          outputSchema: this.convertSchema(tool.parameters),
+          outputSchema: this.convertSchema(tool.outputSchema),
           toolType: tool.mcp?.toolType,
           _meta: withMastraToolStrictMeta(tool.mcp?._meta, tool.strict),
         })),
@@ -1966,7 +1966,7 @@ export class MCPServer extends MCPServerBase {
         name: tool.id || toolId,
         description: tool.description,
         inputSchema: this.convertSchema(tool.parameters),
-        outputSchema: this.convertSchema(tool.parameters),
+        outputSchema: this.convertSchema(tool.outputSchema),
         toolType: tool.mcp?.toolType,
         _meta: withMastraToolStrictMeta(tool.mcp?._meta, tool.strict),
       })),
@@ -2065,15 +2065,16 @@ export class MCPServer extends MCPServerBase {
     }
 
     const { checkFGA, FGADeniedError, MastraFGAPermissions } = await import('@mastra/core/auth/ee');
+    const resourceId = JSON.stringify([this.id, toolId]);
     const user = requestContext?.get('user');
     if (!user) {
-      throw new FGADeniedError({ id: 'unknown' }, { type: 'tool', id: toolId }, MastraFGAPermissions.TOOLS_EXECUTE);
+      throw new FGADeniedError({ id: 'unknown' }, { type: 'tool', id: resourceId }, MastraFGAPermissions.TOOLS_EXECUTE);
     }
 
     await checkFGA({
       fgaProvider,
       user,
-      resource: { type: 'tool', id: toolId },
+      resource: { type: 'tool', id: resourceId },
       permission: MastraFGAPermissions.TOOLS_EXECUTE,
     });
   }
