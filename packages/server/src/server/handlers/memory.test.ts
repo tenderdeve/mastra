@@ -1756,6 +1756,45 @@ describe('Memory Handlers', () => {
       expect(mockMemory.deleteMessages).toHaveBeenCalledWith([{ id: 'msg-1' }, { id: 'msg-2' }]);
     });
 
+    it('should deny deleting messages when their thread cannot be verified for FGA', async () => {
+      await mockMemory.saveMessages({
+        messages: [
+          {
+            id: 'orphaned-message',
+            content: 'blocked',
+            role: 'user',
+            createdAt: new Date(),
+            threadId: 'missing-thread',
+            type: 'text',
+            resourceId: 'test-resource',
+          },
+        ] as MastraDBMessage[],
+      });
+
+      const mastra = new Mastra({
+        logger: false,
+        agents: {
+          'test-agent': mockAgent,
+        },
+      });
+      const require = vi.fn().mockResolvedValue(undefined);
+      vi.spyOn(mastra, 'getServer').mockReturnValue({ fga: { require } } as any);
+      const deleteSpy = vi.spyOn(mockMemory, 'deleteMessages');
+
+      const ctx = createTestContextWithReservedKeys({ mastra });
+      ctx.requestContext.set('user', { id: 'user-1' });
+
+      await expect(
+        DELETE_MESSAGES_ROUTE.handler({
+          ...ctx,
+          messageIds: ['orphaned-message'],
+          agentId: 'test-agent',
+        }),
+      ).rejects.toThrow(new HTTPException(403, { message: 'Access denied: unable to verify message thread access' }));
+      expect(require).not.toHaveBeenCalled();
+      expect(deleteSpy).not.toHaveBeenCalled();
+    });
+
     it('should handle errors from memory.deleteMessages', async () => {
       const mastra = new Mastra({
         logger: false,

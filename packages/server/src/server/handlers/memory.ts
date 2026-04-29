@@ -148,6 +148,43 @@ function paginateThreads({
   };
 }
 
+async function enforceDeleteMessagesThreadAccess({
+  mastra,
+  requestContext,
+  memoryStore,
+  messageIds,
+  effectiveResourceId,
+}: {
+  mastra: any;
+  requestContext?: RequestContext;
+  memoryStore: MemoryStorage;
+  messageIds: string[];
+  effectiveResourceId?: string;
+}): Promise<void> {
+  const { messages } = await memoryStore.listMessagesById({ messageIds });
+  const threadIds = [...new Set(messages.map(m => m.threadId).filter(Boolean))] as string[];
+
+  if (messages.some(message => !message.threadId)) {
+    throw new HTTPException(403, { message: 'Access denied: unable to verify message thread access' });
+  }
+
+  for (const threadId of threadIds) {
+    const thread = await memoryStore.getThreadById({ threadId });
+    if (!thread) {
+      throw new HTTPException(403, { message: 'Access denied: unable to verify message thread access' });
+    }
+
+    await enforceThreadAccess({
+      mastra,
+      requestContext,
+      threadId,
+      thread,
+      effectiveResourceId,
+      permission: MastraFGAPermissions.MEMORY_DELETE,
+    });
+  }
+}
+
 export function getTextContent(message: MastraDBMessage): string {
   if (typeof message.content === 'string') {
     return message.content;
@@ -1679,26 +1716,13 @@ export const DELETE_MESSAGES_ROUTE = createRoute({
           throw new HTTPException(400, { message: 'Memory is not initialized' });
         }
 
-        // Get messages to find their threads
-        const { messages } = await memoryStore.listMessagesById({ messageIds: stringIds });
-
-        // Collect unique thread IDs
-        const threadIds = [...new Set(messages.map(m => m.threadId).filter(Boolean))] as string[];
-
-        // Validate ownership of all threads
-        for (const threadId of threadIds) {
-          const thread = await memoryStore.getThreadById({ threadId });
-          if (thread) {
-            await enforceThreadAccess({
-              mastra,
-              requestContext,
-              threadId,
-              thread,
-              effectiveResourceId,
-              permission: MastraFGAPermissions.MEMORY_DELETE,
-            });
-          }
-        }
+        await enforceDeleteMessagesThreadAccess({
+          mastra,
+          requestContext,
+          memoryStore,
+          messageIds: stringIds,
+          effectiveResourceId,
+        });
       } else if (stringIds.length > 0) {
         const storage = memory?.storage || getStorageFromContext({ mastra });
         if (!storage) {
@@ -1708,20 +1732,12 @@ export const DELETE_MESSAGES_ROUTE = createRoute({
         if (!memoryStore) {
           throw new HTTPException(400, { message: 'Memory is not initialized' });
         }
-        const { messages } = await memoryStore.listMessagesById({ messageIds: stringIds });
-        const threadIds = [...new Set(messages.map(m => m.threadId).filter(Boolean))] as string[];
-        for (const threadId of threadIds) {
-          const thread = await memoryStore.getThreadById({ threadId });
-          if (thread) {
-            await enforceThreadAccess({
-              mastra,
-              requestContext,
-              threadId,
-              thread,
-              permission: MastraFGAPermissions.MEMORY_DELETE,
-            });
-          }
-        }
+        await enforceDeleteMessagesThreadAccess({
+          mastra,
+          requestContext,
+          memoryStore,
+          messageIds: stringIds,
+        });
       }
 
       if (memory) {

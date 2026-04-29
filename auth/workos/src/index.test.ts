@@ -83,8 +83,10 @@ describe('MastraAuthWorkos', () => {
     delete process.env.WORKOS_REDIRECT_URI;
     delete process.env.WORKOS_COOKIE_PASSWORD;
     // Reset default mock behavior
+    const memberships = [{ role: { slug: 'admin' } }, { role: { slug: 'member' } }];
     mockListOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'admin' } }, { role: { slug: 'member' } }],
+      data: memberships,
+      autoPagination: vi.fn().mockResolvedValue(memberships),
     });
     vi.mocked(verifyJwks).mockResolvedValue({
       sub: 'user123',
@@ -211,6 +213,9 @@ describe('MastraAuthWorkos', () => {
         jwtClaims: {
           organizationMembershipId: 'urn:mastra:organization_membership_id',
         },
+        mapJwtPayloadToUser: () => ({
+          memberships: [{ id: 'om_123', organizationId: 'org_123' }],
+        }),
       });
 
       const result = await auth.authenticateToken('valid-token', mockRequest);
@@ -222,6 +227,7 @@ describe('MastraAuthWorkos', () => {
       });
       expect(result?.organizationId).toBeUndefined();
       expect(result?.organizationMembershipId).toBeUndefined();
+      expect(result?.memberships).toBeUndefined();
     });
 
     it('should trust configured JWT claims for service tokens when getUser lookup does not apply', async () => {
@@ -384,8 +390,11 @@ describe('MastraAuthWorkos', () => {
           organizationId: undefined,
         },
       });
+      const memberships = [{ id: 'om-1', organizationId: 'org-1', role: { slug: 'admin' } }];
+      const autoPagination = vi.fn().mockResolvedValue(memberships);
       mockListOrganizationMemberships.mockResolvedValue({
-        data: [{ id: 'om-1', organizationId: 'org-1', role: { slug: 'admin' } }],
+        data: memberships,
+        autoPagination,
       });
 
       const auth = new MastraAuthWorkos({
@@ -408,6 +417,53 @@ describe('MastraAuthWorkos', () => {
         memberships: [{ id: 'om-1', organizationId: 'org-1' }],
       });
       expect(mockListOrganizationMemberships).toHaveBeenCalledTimes(1);
+      expect(autoPagination).toHaveBeenCalledTimes(1);
+    });
+
+    it('should cache the full auto-paginated memberships when fetchMemberships is enabled', async () => {
+      mockWithAuth.mockResolvedValue({
+        auth: {
+          user: { id: 'user123', email: 'test@example.com' },
+          organizationId: undefined,
+        },
+      });
+      const firstPageMemberships = [{ id: 'om-1', organizationId: 'org-1', role: { slug: 'admin' } }];
+      const allMemberships = [
+        ...firstPageMemberships,
+        { id: 'om-2', organizationId: 'org-2', role: { slug: 'member' } },
+      ];
+      const autoPagination = vi.fn().mockResolvedValue(allMemberships);
+      mockListOrganizationMemberships.mockResolvedValue({
+        data: firstPageMemberships,
+        autoPagination,
+      });
+
+      const auth = new MastraAuthWorkos({
+        apiKey: mockApiKey,
+        clientId: mockClientId,
+        redirectUri: mockRedirectUri,
+        session: { cookiePassword: mockCookiePassword },
+        fetchMemberships: true,
+      });
+
+      const firstUser = await auth.getCurrentUser(new Request('https://example.com/one'));
+      const secondUser = await auth.getCurrentUser(new Request('https://example.com/two'));
+
+      expect(firstUser).toMatchObject({
+        organizationId: 'org-1',
+        memberships: [
+          { id: 'om-1', organizationId: 'org-1' },
+          { id: 'om-2', organizationId: 'org-2' },
+        ],
+      });
+      expect(secondUser).toMatchObject({
+        memberships: [
+          { id: 'om-1', organizationId: 'org-1' },
+          { id: 'om-2', organizationId: 'org-2' },
+        ],
+      });
+      expect(mockListOrganizationMemberships).toHaveBeenCalledTimes(1);
+      expect(autoPagination).toHaveBeenCalledTimes(1);
     });
   });
 

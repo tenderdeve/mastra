@@ -69,7 +69,7 @@ export class MastraAuthWorkos
   protected trustJwtClaims: boolean;
   protected jwtClaimOptions?: MastraAuthWorkosOptions['jwtClaims'];
   protected mapJwtPayloadToUser?: MastraAuthWorkosOptions['mapJwtPayloadToUser'];
-  protected membershipCache: LRUCache<string, Promise<OrganizationMembership[]>>;
+  protected membershipCache: LRUCache<string, OrganizationMembership[]>;
 
   constructor(options?: MastraAuthWorkosOptions) {
     super({ name: options?.name ?? 'workos' });
@@ -108,7 +108,7 @@ export class MastraAuthWorkos
     this.trustJwtClaims = options?.trustJwtClaims ?? false;
     this.jwtClaimOptions = options?.jwtClaims;
     this.mapJwtPayloadToUser = options?.mapJwtPayloadToUser;
-    this.membershipCache = new LRUCache<string, Promise<OrganizationMembership[]>>({
+    this.membershipCache = new LRUCache<string, OrganizationMembership[]>({
       max: MEMBERSHIP_CACHE_MAX_SIZE,
       ttl: MEMBERSHIP_CACHE_TTL_MS,
     });
@@ -321,18 +321,18 @@ export class MastraAuthWorkos
       return cached;
     }
 
-    const membershipsPromise = this.workos.userManagement
-      .listOrganizationMemberships({
+    try {
+      const response = await this.workos.userManagement.listOrganizationMemberships({
         userId,
-      })
-      .then(result => result.data)
-      .catch(error => {
-        this.membershipCache.delete(userId);
-        throw error;
       });
 
-    this.membershipCache.set(userId, membershipsPromise);
-    return membershipsPromise;
+      const memberships = await response.autoPagination();
+      this.membershipCache.set(userId, memberships);
+      return memberships;
+    } catch (error) {
+      this.membershipCache.delete(userId);
+      throw error;
+    }
   }
 
   private async attachMembershipsIfNeeded(user: WorkOSUser): Promise<WorkOSUser> {
@@ -439,7 +439,7 @@ export class MastraAuthWorkos
       organizationMembershipId: trustOrganizationClaims
         ? (jwtUser.organizationMembershipId ?? user.organizationMembershipId)
         : user.organizationMembershipId,
-      memberships: user.memberships ?? jwtUser.memberships,
+      memberships: trustOrganizationClaims ? (user.memberships ?? jwtUser.memberships) : user.memberships,
       metadata: {
         ...jwtMetadata,
         ...(user.metadata ?? {}),

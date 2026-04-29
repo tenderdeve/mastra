@@ -391,6 +391,63 @@ describe('MastraFGAWorkos', () => {
       );
     });
 
+    it('should limit fallback per-resource checks to five concurrent requests and preserve order', async () => {
+      type DeferredCheck = { resolve: (value: { authorized: boolean }) => void };
+      const deferredChecks: DeferredCheck[] = [];
+      let activeChecks = 0;
+      let maxConcurrentChecks = 0;
+
+      mockAuthorization.check.mockImplementation(() => {
+        activeChecks += 1;
+        maxConcurrentChecks = Math.max(maxConcurrentChecks, activeChecks);
+
+        let resolveCheck: DeferredCheck['resolve'] = () => {};
+        const promise = new Promise<{ authorized: boolean }>(resolve => {
+          resolveCheck = resolve;
+        });
+        deferredChecks.push({ resolve: resolveCheck });
+
+        return promise.then(result => {
+          activeChecks -= 1;
+          return result;
+        });
+      });
+
+      const resources = Array.from({ length: 12 }, (_, index) => ({ id: `t-${index + 1}` }));
+      const resultPromise = fga.filterAccessible(testUser, resources, 'tool', 'tools:read');
+      const waitForStartedChecks = async (expected: number) => {
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          await Promise.resolve();
+          if (mockAuthorization.check.mock.calls.length === expected) return;
+        }
+        expect(mockAuthorization.check).toHaveBeenCalledTimes(expected);
+      };
+
+      await waitForStartedChecks(5);
+      expect(maxConcurrentChecks).toBe(5);
+
+      deferredChecks.slice(0, 5).forEach((deferred, index) => {
+        deferred.resolve({ authorized: index % 2 === 0 });
+      });
+
+      await waitForStartedChecks(10);
+      expect(maxConcurrentChecks).toBe(5);
+
+      deferredChecks.slice(5, 10).forEach((deferred, index) => {
+        deferred.resolve({ authorized: (index + 5) % 2 === 0 });
+      });
+
+      await waitForStartedChecks(12);
+      expect(maxConcurrentChecks).toBe(5);
+
+      deferredChecks.slice(10).forEach((deferred, index) => {
+        deferred.resolve({ authorized: (index + 10) % 2 === 0 });
+      });
+
+      await expect(resultPromise).resolves.toEqual(resources.filter((_, index) => index % 2 === 0));
+      expect(maxConcurrentChecks).toBe(5);
+    });
+
     it('should pass thread resourceId context through per-resource filtering', async () => {
       mockAuthorization.check.mockResolvedValueOnce({ authorized: true }).mockResolvedValueOnce({ authorized: false });
       const deriveId = vi.fn(({ resourceId }: { resourceId?: string }) => resourceId);

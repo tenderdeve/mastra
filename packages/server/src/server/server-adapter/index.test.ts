@@ -22,7 +22,7 @@ describe('FGA Middleware - checkRouteFGA', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const mod = await import('../index');
+    const mod = await import('./index');
     checkRouteFGA = mod.checkRouteFGA;
   });
 

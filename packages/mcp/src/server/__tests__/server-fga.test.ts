@@ -12,12 +12,12 @@ import { MCPServer } from '../server';
 /**
  * Tests for FGA authorization in MCP server tool execution.
  *
- * The MCP server checks FGA authorization before executing tools when:
- * 1. An FGA provider is configured on the mastra instance
- * 2. A user can be identified from the request context
+ * The MCP server checks FGA authorization before executing tools when an FGA
+ * provider is configured on the mastra instance.
  *
- * When no FGA provider is configured or no user context is available,
- * tool execution proceeds normally (backward compatible).
+ * When no FGA provider is configured, tool execution proceeds normally
+ * (backward compatible). When an FGA provider is configured and no user context
+ * is available, authorization fails closed.
  */
 
 function createMockMastra(fga?: any) {

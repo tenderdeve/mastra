@@ -25,6 +25,8 @@ import { WorkOS } from '@workos-inc/node';
 
 import type { MastraFGAWorkosOptions, FGAResourceMappingEntry, WorkOSUser } from './types';
 
+const FILTER_ACCESSIBLE_CHECK_CONCURRENCY = 5;
+
 export class WorkOSFGAMembershipResolutionError extends Error {
   readonly status = 500;
   readonly userId?: string;
@@ -177,19 +179,24 @@ export class MastraFGAWorkos implements IFGAManager<WorkOSUser> {
       });
     }
 
-    const checks = await Promise.all(
-      resources.map(async resource => {
-        const authorized = await this.check(user, {
-          resource: { type: resourceType, id: resource.id },
-          permission,
-          context:
-            'resourceId' in resource && typeof resource.resourceId === 'string'
-              ? { resourceId: resource.resourceId }
-              : undefined,
-        });
-        return { resource, authorized };
-      }),
-    );
+    const checks: Array<{ resource: T; authorized: boolean }> = [];
+    for (let start = 0; start < resources.length; start += FILTER_ACCESSIBLE_CHECK_CONCURRENCY) {
+      const batch = resources.slice(start, start + FILTER_ACCESSIBLE_CHECK_CONCURRENCY);
+      const batchChecks = await Promise.all(
+        batch.map(async resource => {
+          const authorized = await this.check(user, {
+            resource: { type: resourceType, id: resource.id },
+            permission,
+            context:
+              'resourceId' in resource && typeof resource.resourceId === 'string'
+                ? { resourceId: resource.resourceId }
+                : undefined,
+          });
+          return { resource, authorized };
+        }),
+      );
+      checks.push(...batchChecks);
+    }
 
     return checks.filter(c => c.authorized).map(c => c.resource);
   }
