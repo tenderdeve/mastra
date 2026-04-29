@@ -1,6 +1,7 @@
 /**
  * @license Mastra Enterprise License - see ee/LICENSE
  */
+import { MockLanguageModelV2 } from '@internal/ai-sdk-v5/test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { FGADeniedError } from '../../auth/ee/fga-check';
@@ -24,9 +25,26 @@ function createMockFGAProvider(authorized = true): IFGAProvider {
 function createMockMastra(fgaProvider?: IFGAProvider) {
   return {
     getServer: () => (fgaProvider ? { fga: fgaProvider } : {}),
+    getLogger: () => undefined,
     getMemory: () => undefined,
+    getStorage: () => undefined,
+    getWorkspace: () => undefined,
+    getVersionOverrides: () => undefined,
+    generateId: () => 'test-run-id',
     listGateways: () => [],
   } as any;
+}
+
+function createMockModel() {
+  return new MockLanguageModelV2({
+    doGenerate: async () => ({
+      rawCall: { rawPrompt: null, rawSettings: {} },
+      warnings: [],
+      finishReason: 'stop',
+      usage: { inputTokens: 5, outputTokens: 10, totalTokens: 15 },
+      content: [{ type: 'text', text: 'ok' }],
+    }),
+  });
 }
 
 describe('Agent FGA checks', () => {
@@ -72,19 +90,17 @@ describe('Agent FGA checks', () => {
 
     it('should not call FGA check when no FGA provider configured', async () => {
       const mastra = createMockMastra();
+      const model = createMockModel();
 
-      const agent = new Agent({ id: 'test-agent', name: 'test-agent', instructions: 'test', model: {} as any });
+      const agent = new Agent({ id: 'test-agent', name: 'test-agent', instructions: 'test', model });
       (agent as any).__registerMastra(mastra);
 
       const requestContext = new Map<string, unknown>();
       requestContext.set('user', { id: 'user-1' });
 
-      try {
-        await agent.generate('test', { requestContext: requestContext as any });
-      } catch {
-        // Expected to fail due to no real model
-      }
-      // Should not throw FGADeniedError
+      await agent.generate('test', { requestContext: requestContext as any });
+
+      expect(model.doGenerateCalls).toHaveLength(1);
     });
   });
 

@@ -61,67 +61,6 @@ describe('MCP Server FGA checks', () => {
     vi.clearAllMocks();
   });
 
-  it('should have mastra property accessible for FGA provider', () => {
-    mcpServer = new MCPServer({
-      name: 'test-server',
-      version: '1.0.0',
-      tools: { 'test-tool': testTool },
-    });
-
-    // mastra is undefined until registered
-    expect(mcpServer.mastra).toBeUndefined();
-
-    // After registration, mastra should be available
-    const mockMastra = createMockMastra({ check: vi.fn() });
-    mcpServer.__registerMastra(mockMastra as any);
-    expect(mcpServer.mastra).toBe(mockMastra);
-  });
-
-  it('should have access to FGA provider through mastra.getServer().fga', () => {
-    mcpServer = new MCPServer({
-      name: 'test-server',
-      version: '1.0.0',
-      tools: { 'test-tool': testTool },
-    });
-
-    const mockFGAProvider = {
-      check: vi.fn().mockResolvedValue(true),
-      require: vi.fn().mockResolvedValue(undefined),
-      filterAccessible: vi.fn().mockImplementation((_u: any, resources: any[]) => Promise.resolve(resources)),
-    };
-
-    const mockMastra = createMockMastra(mockFGAProvider);
-    mcpServer.__registerMastra(mockMastra as any);
-
-    const fga = mcpServer.mastra?.getServer?.()?.fga;
-    expect(fga).toBe(mockFGAProvider);
-  });
-
-  it('should return undefined fga when no FGA provider configured', () => {
-    mcpServer = new MCPServer({
-      name: 'test-server',
-      version: '1.0.0',
-      tools: { 'test-tool': testTool },
-    });
-
-    const mockMastra = createMockMastra();
-    mcpServer.__registerMastra(mockMastra as any);
-
-    const fga = mcpServer.mastra?.getServer?.()?.fga;
-    expect(fga).toBeUndefined();
-  });
-
-  it('should return undefined fga when no mastra instance', () => {
-    mcpServer = new MCPServer({
-      name: 'test-server',
-      version: '1.0.0',
-      tools: { 'test-tool': testTool },
-    });
-
-    const fga = mcpServer.mastra?.getServer?.()?.fga;
-    expect(fga).toBeUndefined();
-  });
-
   it('should enforce FGA in executeTool when requestContext has a user', async () => {
     const execute = vi.fn().mockResolvedValue({ output: 'success' });
     mcpServer = new MCPServer({

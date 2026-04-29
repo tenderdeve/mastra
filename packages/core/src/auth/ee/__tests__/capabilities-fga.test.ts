@@ -72,11 +72,8 @@ describe('FGA Capability Detection', () => {
       fga: fgaProvider,
     });
 
-    // In production without license, capabilities won't even be built (user won't be resolved)
-    // because getCurrentUser requires IUserProvider AND isLicensedOrCloud
-    if ('capabilities' in result) {
-      expect(result.capabilities.fga).toBe(false);
-    }
+    expect(result).toEqual({ enabled: true, login: null });
+    expect(auth.getCurrentUser).not.toHaveBeenCalled();
   });
 
   it('should include fga: true in dev environments without license', async () => {
