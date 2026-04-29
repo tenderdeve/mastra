@@ -1,6 +1,7 @@
 import {
   // Agent route objects
   LIST_AGENTS_ROUTE,
+  LIST_AGENTS_SUMMARY_ROUTE,
   GET_AGENT_BY_ID_ROUTE,
   CLONE_AGENT_ROUTE,
   GENERATE_AGENT_ROUTE,
@@ -44,6 +45,7 @@ export const AGENTS_ROUTES: readonly ServerRoute[] = [
   // Agent Core Routes
   // ============================================================================
   LIST_AGENTS_ROUTE,
+  LIST_AGENTS_SUMMARY_ROUTE,
   GET_PROVIDERS_ROUTE,
   GET_AGENT_BY_ID_ROUTE,
   CLONE_AGENT_ROUTE,
@@ -126,6 +128,7 @@ export const AGENTS_ROUTES: readonly ServerRoute[] = [
  */
 export type AgentRoutes = readonly [
   typeof LIST_AGENTS_ROUTE,
+  typeof LIST_AGENTS_SUMMARY_ROUTE,
   typeof GET_PROVIDERS_ROUTE,
   typeof GET_AGENT_BY_ID_ROUTE,
   typeof CLONE_AGENT_ROUTE,
