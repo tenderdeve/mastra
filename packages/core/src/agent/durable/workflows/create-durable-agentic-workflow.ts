@@ -277,10 +277,8 @@ export function createDurableAgenticWorkflow(options?: DurableAgenticWorkflowOpt
             !durableState.observationalMemory
           ) {
             try {
-              const memoryMessageList = registryEntry.messageList ?? new MessageList();
-              if (!registryEntry.messageList) {
-                memoryMessageList.deserialize(state.messageListState);
-              }
+              const memoryMessageList = new MessageList();
+              memoryMessageList.deserialize(state.messageListState);
 
               if (!durableState.threadExists) {
                 await registryEntry.memory.createThread?.({

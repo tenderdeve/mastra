@@ -10,6 +10,7 @@ import { MockLanguageModelV2, convertArrayToReadableStream } from '@internal/ai-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { EventEmitterPubSub } from '../../../events/event-emitter';
+import { MockMemory } from '../../../memory/mock';
 import { createTool } from '../../../tools';
 import { Agent } from '../../agent';
 import { createDurableAgent } from '../create-durable-agent';
@@ -155,6 +156,34 @@ describe('DurableAgent memory configuration', () => {
 
       expect(result.threadId).toBeUndefined();
       expect(result.resourceId).toBeUndefined();
+    });
+
+    it('should persist both user input and assistant response after a completed stream', async () => {
+      const mockMemory = new MockMemory();
+      const baseAgent = new Agent({
+        id: 'persist-response-agent',
+        name: 'Persist Response Agent',
+        instructions: 'Test response persistence',
+        model: createTextModel('assistant response') as LanguageModelV2,
+        memory: mockMemory,
+      });
+      const durableAgent = createDurableAgent({ agent: baseAgent, pubsub });
+
+      const result = await durableAgent.stream('user input', {
+        memory: { thread: 'thread-persist-response', resource: 'resource-persist-response' },
+      });
+      for await (const _chunk of result.fullStream as AsyncIterable<any>) {
+      }
+
+      const messages = await mockMemory.recall({
+        threadId: 'thread-persist-response',
+        resourceId: 'resource-persist-response',
+      });
+
+      expect(messages.messages.map(message => message.role)).toEqual(['user', 'assistant']);
+      expect(JSON.stringify(messages.messages[0]?.content)).toContain('user input');
+      expect(JSON.stringify(messages.messages[1]?.content)).toContain('assistant response');
+      result.cleanup();
     });
   });
 
