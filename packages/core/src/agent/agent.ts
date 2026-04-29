@@ -5353,7 +5353,6 @@ export class Agent<
     const mergedOptions = {
       ...defaultNetworkOptions,
       ...options,
-      // Deep merge nested objects
       routing: { ...defaultNetworkOptions?.routing, ...options?.routing },
       completion: { ...defaultNetworkOptions?.completion, ...options?.completion },
     };
@@ -5431,7 +5430,6 @@ export class Agent<
     const mergedOptions = {
       ...defaultNetworkOptions,
       ...options,
-      // Deep merge nested objects
       routing: { ...defaultNetworkOptions?.routing, ...options?.routing },
       completion: { ...defaultNetworkOptions?.completion, ...options?.completion },
     };
