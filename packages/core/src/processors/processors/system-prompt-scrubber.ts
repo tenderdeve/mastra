@@ -3,6 +3,7 @@ import { Agent, isSupportedLanguageModel } from '../../agent';
 import type { MastraDBMessage } from '../../agent/message-list';
 import { TripWire } from '../../agent/trip-wire';
 import type { MastraModelConfig } from '../../llm/model/shared.types';
+import type { Mastra } from '../../mastra';
 import type { ObservabilityContext } from '../../observability';
 import { resolveObservabilityContext } from '../../observability';
 import type { PublicSchema } from '../../schema';
@@ -10,7 +11,7 @@ import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
 import type { ProcessorCache } from '../processor-cache';
-import { createProcessorCacheKey } from '../processor-cache';
+import { createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -40,11 +41,13 @@ export interface SystemPromptScrubberOptions extends LastMessageOnlyOption {
   };
 
   /**
-   * Optional cache for storing detection results.
-   * When provided, the processor will check the cache before making LLM calls
-   * and store results after detection.
+   * Enable caching of detection results to avoid redundant LLM calls.
+   *
+   * - `true`: Use the Mastra instance's server cache (requires registering with Mastra)
+   * - `ProcessorCache`: Use a custom cache implementation
+   * - `undefined`/`false`: No caching (default)
    */
-  cache?: ProcessorCache;
+  cache?: boolean | ProcessorCache;
 }
 
 export interface SystemPromptDetectionResult {
@@ -75,6 +78,15 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
   public readonly id = 'system-prompt-scrubber';
   public readonly name = 'System Prompt Scrubber';
 
+  __registerMastra(mastra: Mastra<any, any, any, any, any, any, any, any, any, any>): void {
+    if (this.cacheEnabled === true) {
+      const serverCache = mastra.getServerCache();
+      if (serverCache) {
+        this.cache = createProcessorCacheFromServerCache(serverCache);
+      }
+    }
+  }
+
   private strategy: 'block' | 'warn' | 'filter' | 'redact';
   private customPatterns: string[];
   private includeDetections: boolean;
@@ -86,6 +98,7 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
   private lastMessageOnly: boolean;
   private structuredOutputOptions?: SystemPromptScrubberOptions['structuredOutputOptions'];
   private cache?: ProcessorCache;
+  private cacheEnabled: boolean | ProcessorCache;
 
   constructor(options: SystemPromptScrubberOptions) {
     if (!options.model) {
@@ -99,7 +112,10 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
     this.placeholderText = options.placeholderText || '[SYSTEM_PROMPT]';
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
-    this.cache = options.cache;
+    this.cacheEnabled = options.cache ?? false;
+    if (typeof options.cache === 'object') {
+      this.cache = options.cache;
+    }
 
     // Initialize instructions after customPatterns is set
     this.instructions = options.instructions || this.getDefaultInstructions();

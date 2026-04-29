@@ -6,6 +6,7 @@ import type { MastraDBMessage } from '../../agent/message-list';
 import { TripWire } from '../../agent/trip-wire';
 import type { ProviderOptions } from '../../llm/model/provider-options';
 import type { MastraModelConfig } from '../../llm/model/shared.types';
+import type { Mastra } from '../../mastra';
 import type { ObservabilityContext } from '../../observability';
 import { resolveObservabilityContext } from '../../observability';
 import type { PublicSchema } from '../../schema';
@@ -13,7 +14,7 @@ import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
 import type { ProcessorCache } from '../processor-cache';
-import { createProcessorCacheKey } from '../processor-cache';
+import { createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -150,11 +151,13 @@ export interface PIIDetectorOptions extends LastMessageOnlyOption {
   providerOptions?: ProviderOptions;
 
   /**
-   * Optional cache for storing detection results.
-   * When provided, the processor will check the cache before making LLM calls
-   * and store results after detection.
+   * Enable caching of detection results to avoid redundant LLM calls.
+   *
+   * - `true`: Use the Mastra instance's server cache (requires registering with Mastra)
+   * - `ProcessorCache`: Use a custom cache implementation
+   * - `undefined`/`false`: No caching (default)
    */
-  cache?: ProcessorCache;
+  cache?: boolean | ProcessorCache;
 }
 
 /**
@@ -168,6 +171,15 @@ export class PIIDetector implements Processor<'pii-detector'> {
   readonly id = 'pii-detector';
   readonly name = 'PII Detector';
 
+  __registerMastra(mastra: Mastra<any, any, any, any, any, any, any, any, any, any>): void {
+    if (this.cacheEnabled === true) {
+      const serverCache = mastra.getServerCache();
+      if (serverCache) {
+        this.cache = createProcessorCacheFromServerCache(serverCache);
+      }
+    }
+  }
+
   private detectionAgent: Agent;
   private detectionTypes: string[];
   private threshold: number;
@@ -179,6 +191,7 @@ export class PIIDetector implements Processor<'pii-detector'> {
   private structuredOutputOptions?: PIIDetectorOptions['structuredOutputOptions'];
   private providerOptions?: ProviderOptions;
   private cache?: ProcessorCache;
+  private cacheEnabled: boolean | ProcessorCache;
 
   // Default PII types based on common privacy regulations and comprehensive PII detection
   private static readonly DEFAULT_DETECTION_TYPES = [
@@ -207,7 +220,10 @@ export class PIIDetector implements Processor<'pii-detector'> {
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
     this.providerOptions = options.providerOptions;
-    this.cache = options.cache;
+    this.cacheEnabled = options.cache ?? false;
+    if (typeof options.cache === 'object') {
+      this.cache = options.cache;
+    }
 
     // Create internal detection agent
     this.detectionAgent = new Agent({

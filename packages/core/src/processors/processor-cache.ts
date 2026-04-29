@@ -1,24 +1,27 @@
 import { createHash } from 'node:crypto';
 
+import type { MastraServerCache } from '../cache';
+
 /**
- * Cache interface for processors that use LLM-based detection.
+ * Lightweight cache interface for processors that use LLM-based detection.
  *
- * Implementations can use any backend (Redis, Memcached, etc.) to cache
- * detection results and avoid redundant LLM calls for identical content.
+ * When `cache: true` is set on an LLM-based processor, the Mastra instance's
+ * server cache (MastraServerCache) is automatically adapted to this interface.
+ *
+ * You can also provide a custom implementation directly.
  *
  * @example
  * ```typescript
- * import { RedisProcessorCache } from '@mastra/redis';
- *
- * const cache = new RedisProcessorCache({
- *   connectionString: 'redis://localhost:6379',
- *   ttlSeconds: 3600,
- *   maxEntries: 10000,
- * });
- *
+ * // Simplest: use the Mastra server cache
  * const moderation = new ModerationProcessor({
  *   model: 'openai/gpt-4o-mini',
- *   cache,
+ *   cache: true, // uses mastra.getServerCache()
+ * });
+ *
+ * // Custom implementation
+ * const moderation = new ModerationProcessor({
+ *   model: 'openai/gpt-4o-mini',
+ *   cache: myCustomCacheImpl,
  * });
  * ```
  */
@@ -59,4 +62,20 @@ export function createProcessorCacheKey(
     .digest('hex')
     .slice(0, 8);
   return `processor:${processorId}:${configHash}:${contentHash}`;
+}
+
+/**
+ * Create a ProcessorCache adapter from a MastraServerCache instance.
+ * This bridges the generic server cache to the processor-specific cache interface.
+ */
+export function createProcessorCacheFromServerCache(serverCache: MastraServerCache): ProcessorCache {
+  return {
+    async get<T>(key: string): Promise<T | undefined> {
+      const value = await serverCache.get(key);
+      return value as T | undefined;
+    },
+    async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+      await serverCache.set(key, value, ttlSeconds !== undefined ? ttlSeconds * 1000 : undefined);
+    },
+  };
 }

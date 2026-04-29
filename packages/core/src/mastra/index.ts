@@ -140,6 +140,25 @@ export interface Config<
   storage?: MastraCompositeStore;
 
   /**
+   * Server cache for temporary data, processor detection results, and workflow stream buffers.
+   * Defaults to InMemoryServerCache if not provided.
+   * Use RedisServerCache from @mastra/redis for distributed caching.
+   *
+   * LLM-based processors (moderation, PII detector, etc.) can opt into caching by setting
+   * `cache: true` in their options, which uses this cache to avoid redundant LLM calls.
+   *
+   * @example
+   * ```typescript
+   * import { RedisServerCache } from '@mastra/redis';
+   *
+   * const mastra = new Mastra({
+   *   cache: new RedisServerCache({ connectionString: 'redis://localhost:6379' }),
+   * });
+   * ```
+   */
+  cache?: MastraServerCache;
+
+  /**
    * Vector stores for semantic search and retrieval-augmented generation (RAG).
    * Used for storing and querying embeddings.
    */
@@ -614,8 +633,8 @@ export class Mastra<
     // can correlate logs to the active span. Must happen before any agent runs.
     initContextStorage();
 
-    // This is only used internally for server handlers that require temporary persistence
-    this.#serverCache = new InMemoryServerCache();
+    // Server cache for temporary persistence (workflow stream buffers, processor caching, etc.)
+    this.#serverCache = config?.cache ?? new InMemoryServerCache();
 
     // Set the editor if provided and register this Mastra instance with it
     this.#editor = config?.editor;
