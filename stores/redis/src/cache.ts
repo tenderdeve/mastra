@@ -193,14 +193,14 @@ export class RedisServerCache extends MastraServerCache {
       await this.ensureConnected();
       // Scan for all keys with our prefix and delete them
       const pattern = `${this.keyPrefix}:*`;
-      let cursor = 0;
+      let cursor = '0';
       do {
         const result = await this.client.scan(cursor, { MATCH: pattern, COUNT: 100 });
         cursor = result.cursor;
         if (result.keys.length > 0) {
           await this.client.del(result.keys);
         }
-      } while (cursor !== 0);
+      } while (cursor !== '0');
       // Also clear the LRU tracking set
       await this.client.del(this.lruKey());
     } catch {
