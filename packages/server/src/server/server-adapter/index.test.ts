@@ -115,7 +115,7 @@ describe('FGA Middleware - checkRouteFGA', () => {
       { id: 'user-1' },
       {
         resource: { type: 'agent', id: 'agent-1' },
-        permission: 'agent:delete',
+        permission: 'agents:delete',
         context: { resourceId: 'agent-1', requestContext },
       },
     );

@@ -213,7 +213,7 @@ export class MastraAuthWorkos
               {
                 ...mapWorkOSUserToEEUser(user),
                 workosId: user.id,
-                organizationId: memberships?.[0]?.organizationId,
+                organizationId: this.getSingleMembershipOrganizationId(memberships),
                 memberships,
               },
               jwtUser,
@@ -268,7 +268,7 @@ export class MastraAuthWorkos
       if (this.fetchMemberships) {
         try {
           memberships = await this.getMemberships(auth.user.id);
-          organizationId ??= memberships[0]?.organizationId;
+          organizationId ??= this.getSingleMembershipOrganizationId(memberships);
         } catch {
           // Ignore membership fetch errors
         }
@@ -344,12 +344,16 @@ export class MastraAuthWorkos
       const memberships = await this.getMemberships(user.workosId);
       return {
         ...user,
-        organizationId: user.organizationId ?? memberships[0]?.organizationId,
+        organizationId: user.organizationId ?? this.getSingleMembershipOrganizationId(memberships),
         memberships,
       };
     } catch {
       return user;
     }
+  }
+
+  private getSingleMembershipOrganizationId(memberships?: OrganizationMembership[]): string | undefined {
+    return memberships?.length === 1 ? memberships[0]?.organizationId : undefined;
   }
 
   private resolveJwtPayloadUser(payload: JwtPayload | null): WorkOSUser | null {

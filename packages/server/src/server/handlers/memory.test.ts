@@ -18,6 +18,7 @@ import {
   DELETE_MESSAGES_ROUTE,
   DELETE_THREAD_ROUTE,
   UPDATE_THREAD_ROUTE,
+  CLONE_THREAD_ROUTE,
   SEARCH_MEMORY_ROUTE,
   getTextContent,
 } from './memory';
@@ -2451,6 +2452,44 @@ describe('Memory Handlers', () => {
         // Should return correct-thread (middleware value)
         expect(result.id).toBe('correct-thread');
         expect(spy).toHaveBeenCalledWith({ threadId: 'correct-thread' });
+      });
+    });
+
+    describe('CLONE_THREAD_ROUTE - ownership validation', () => {
+      it('should use the source thread resourceId for FGA write checks when resourceId is omitted', async () => {
+        const mastra = new Mastra({
+          logger: false,
+          agents: { 'test-agent': mockAgent },
+        });
+        const require = vi.fn().mockResolvedValue(undefined);
+        vi.spyOn(mastra, 'getServer').mockReturnValue({ fga: { require } } as any);
+        await mockMemory.createThread({ threadId: 'source-thread', resourceId: 'user-a', title: 'Source' });
+        const cloneSpy = vi.spyOn(mockMemory, 'cloneThread');
+
+        const ctx = createTestContextWithReservedKeys({ mastra });
+        const user = { id: 'user-1' };
+        ctx.requestContext.set('user', user);
+
+        const result = await CLONE_THREAD_ROUTE.handler({
+          ...ctx,
+          agentId: 'test-agent',
+          threadId: 'source-thread',
+          newThreadId: 'clone-thread',
+        });
+
+        expect(require).toHaveBeenCalledWith(user, {
+          resource: { type: 'thread', id: 'clone-thread' },
+          permission: 'memory:write',
+          context: expect.objectContaining({ resourceId: 'user-a' }),
+        });
+        expect(cloneSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sourceThreadId: 'source-thread',
+            newThreadId: 'clone-thread',
+            resourceId: 'user-a',
+          }),
+        );
+        expect(result.thread.resourceId).toBe('user-a');
       });
     });
 

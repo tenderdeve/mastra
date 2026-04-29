@@ -11,6 +11,7 @@ Added `MastraFGAWorkos` provider for Fine-Grained Authorization using the WorkOS
 - Organization scoping that denies access when the user is not a member of the configured organization
 - Bearer-token / verified JWT support that carries service-token FGA context such as organization membership IDs, while ignoring JWT-derived memberships unless organization claims are trusted
 - Membership caching and batched accessible-resource discovery for lower per-request latency
+- Tenant inference and parent-resource filtering for scoped access checks
 - Paginated organization membership lookup and limited concurrent FGA checks when filtering accessible resources
 - Typed permission constants accepted in `permissionMapping`
 

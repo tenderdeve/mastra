@@ -1579,6 +1579,7 @@ export const CLONE_THREAD_ROUTE = createRoute({
       if (!sourceThread) {
         throw new HTTPException(404, { message: 'Source thread not found' });
       }
+      const cloneResourceId = effectiveResourceId ?? sourceThread.resourceId ?? undefined;
       await enforceThreadAccess({
         mastra,
         requestContext,
@@ -1590,15 +1591,13 @@ export const CLONE_THREAD_ROUTE = createRoute({
         mastra,
         requestContext,
         threadId: effectiveNewThreadId,
-        effectiveResourceId,
+        effectiveResourceId: cloneResourceId,
         permission: MastraFGAPermissions.MEMORY_WRITE,
       });
-
       const result = await memory.cloneThread({
         sourceThreadId: effectiveThreadId!,
         newThreadId: effectiveNewThreadId,
-        // Use effective resourceId for the cloned thread
-        resourceId: effectiveResourceId,
+        resourceId: cloneResourceId,
         title,
         metadata,
         options,

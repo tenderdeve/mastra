@@ -219,6 +219,16 @@ export interface FGAResourceMappingEntry {
   /** The FGA resource type slug in WorkOS */
   fgaResourceType: string;
   /**
+   * Parent FGA resource type slug used for batched WorkOS resource discovery.
+   *
+   * Set this when `deriveId` returns a parent resource ID without a concrete
+   * child resource ID. For example, an agent mapping with
+   * `fgaResourceType: 'team-agent'` can use `parentFgaResourceType: 'team'`.
+   */
+  parentFgaResourceType?: string;
+  /** Alias for parentFgaResourceType. */
+  parentResourceTypeSlug?: string;
+  /**
    * Derive the FGA resource ID from request/user context.
    * Return `undefined` to fall back to the raw Mastra resource ID.
    */

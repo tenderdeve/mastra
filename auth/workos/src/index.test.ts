@@ -293,6 +293,37 @@ describe('MastraAuthWorkos', () => {
       expect(result?.memberships).toBeUndefined();
     });
 
+    it('should not infer organizationId from multiple fetched memberships during bearer-token auth', async () => {
+      mockWithAuth.mockResolvedValueOnce({
+        auth: { user: null },
+      });
+      const memberships = [
+        { id: 'om-1', organizationId: 'org-1', role: { slug: 'admin' } },
+        { id: 'om-2', organizationId: 'org-2', role: { slug: 'member' } },
+      ];
+      mockListOrganizationMemberships.mockResolvedValueOnce({
+        data: memberships,
+        autoPagination: vi.fn().mockResolvedValue(memberships),
+      });
+      vi.mocked(verifyJwks).mockResolvedValueOnce({
+        sub: 'user123',
+        email: 'test@example.com',
+      } as JwtPayload);
+
+      const auth = new MastraAuthWorkos({
+        apiKey: mockApiKey,
+        clientId: mockClientId,
+        redirectUri: mockRedirectUri,
+        session: { cookiePassword: mockCookiePassword },
+        fetchMemberships: true,
+      });
+
+      const result = await auth.authenticateToken('valid-token', mockRequest);
+
+      expect(result?.organizationId).toBeUndefined();
+      expect(result?.memberships).toEqual(memberships);
+    });
+
     it('should return null for invalid token', async () => {
       mockWithAuth.mockResolvedValueOnce({
         auth: { user: null },
@@ -449,13 +480,14 @@ describe('MastraAuthWorkos', () => {
       const firstUser = await auth.getCurrentUser(new Request('https://example.com/one'));
       const secondUser = await auth.getCurrentUser(new Request('https://example.com/two'));
 
+      expect(firstUser?.organizationId).toBeUndefined();
       expect(firstUser).toMatchObject({
-        organizationId: 'org-1',
         memberships: [
           { id: 'om-1', organizationId: 'org-1' },
           { id: 'om-2', organizationId: 'org-2' },
         ],
       });
+      expect(secondUser?.organizationId).toBeUndefined();
       expect(secondUser).toMatchObject({
         memberships: [
           { id: 'om-1', organizationId: 'org-1' },

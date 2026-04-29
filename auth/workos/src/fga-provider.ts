@@ -403,13 +403,14 @@ export class MastraFGAWorkos implements IFGAManager<WorkOSUser> {
   ): { externalId: string; typeSlug: string } | undefined {
     const mapping = this.getResourceMapping(resourceType);
     const externalId = mapping?.deriveId?.({ user });
-    if (!mapping?.fgaResourceType || !externalId) {
+    const parentTypeSlug = mapping?.parentFgaResourceType ?? mapping?.parentResourceTypeSlug;
+    if (!mapping?.fgaResourceType || !externalId || !parentTypeSlug || parentTypeSlug === mapping.fgaResourceType) {
       return undefined;
     }
 
     return {
       externalId,
-      typeSlug: mapping.fgaResourceType,
+      typeSlug: parentTypeSlug,
     };
   }
 

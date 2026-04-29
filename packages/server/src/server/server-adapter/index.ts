@@ -854,7 +854,10 @@ export async function checkRouteFGA(
       message: 'FGA authorization denied: route FGA metadata is incomplete',
     };
   }
-  const permission = fgaConfig.permission || `${fgaConfig.resourceType}:${deriveFGAAction(route.method)}`;
+  const permission =
+    fgaConfig.permission ||
+    (route.path ? getEffectivePermission(route) : null) ||
+    `${getFGAResourcePermissionSlug(fgaConfig.resourceType)}:${deriveFGAAction(route.method)}`;
 
   const authorized = await fgaProvider.check(user, {
     resource: { type: fgaConfig.resourceType, id: resourceId },
@@ -886,4 +889,15 @@ function deriveFGAAction(method: string): string {
     default:
       return 'read';
   }
+}
+
+function getFGAResourcePermissionSlug(resourceType: string): string {
+  const resourcePermissionSlugs: Record<string, string> = {
+    agent: 'agents',
+    workflow: 'workflows',
+    tool: 'tools',
+    thread: 'memory',
+  };
+
+  return resourcePermissionSlugs[resourceType] ?? resourceType;
 }
