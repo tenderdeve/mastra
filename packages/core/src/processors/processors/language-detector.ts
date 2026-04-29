@@ -9,6 +9,8 @@ import type { ObservabilityContext } from '../../observability';
 import { resolveObservabilityContext } from '../../observability';
 import { standardSchemaToJSONSchema } from '../../schema';
 import type { Processor } from '../index';
+import type { ProcessorCache } from '../processor-cache';
+import { createProcessorCacheKey } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -113,6 +115,13 @@ export interface LanguageDetectorOptions extends LastMessageOnlyOption {
    * ```
    */
   providerOptions?: ProviderOptions;
+
+  /**
+   * Optional cache for storing detection results.
+   * When provided, the processor will check the cache before making LLM calls
+   * and store results after detection.
+   */
+  cache?: ProcessorCache;
 }
 
 /**
@@ -136,6 +145,7 @@ export class LanguageDetector implements Processor<'language-detector'> {
   private translationQuality: 'speed' | 'quality' | 'balanced';
   private lastMessageOnly: boolean;
   private providerOptions?: ProviderOptions;
+  private cache?: ProcessorCache;
 
   // Default target language
   private static readonly DEFAULT_TARGET_LANGUAGES = ['English', 'en'];
@@ -191,6 +201,7 @@ export class LanguageDetector implements Processor<'language-detector'> {
     this.translationQuality = options.translationQuality || 'quality';
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.providerOptions = options.providerOptions;
+    this.cache = options.cache;
 
     // Create internal detection and translation agent
     this.detectionAgent = new Agent({
@@ -285,6 +296,18 @@ export class LanguageDetector implements Processor<'language-detector'> {
     content: string,
     observabilityContext?: ObservabilityContext,
   ): Promise<LanguageDetectionResult> {
+    if (this.cache) {
+      const cacheKey = createProcessorCacheKey(this.id, content, {
+        targetLanguages: this.targetLanguages,
+        threshold: this.threshold,
+        strategy: this.strategy,
+      });
+      const cached = await this.cache.get<LanguageDetectionResult>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const prompt = this.createDetectionPrompt(content);
 
     try {
@@ -329,6 +352,15 @@ export class LanguageDetector implements Processor<'language-detector'> {
 
       if (result.translated_text && !result.confidence) {
         result.confidence = 0.95;
+      }
+
+      if (this.cache) {
+        const cacheKey = createProcessorCacheKey(this.id, content, {
+          targetLanguages: this.targetLanguages,
+          threshold: this.threshold,
+          strategy: this.strategy,
+        });
+        await this.cache.set(cacheKey, result).catch(() => {});
       }
 
       return result;

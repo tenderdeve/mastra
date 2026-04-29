@@ -11,6 +11,8 @@ import type { PublicSchema } from '../../schema';
 import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
+import type { ProcessorCache } from '../processor-cache';
+import { createProcessorCacheKey } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -103,6 +105,22 @@ export interface ModerationOptions extends LastMessageOnlyOption {
    * ```
    */
   providerOptions?: ProviderOptions;
+
+  /**
+   * Optional cache for storing detection results.
+   * When provided, the processor will check the cache before making LLM calls
+   * and store results after detection. This can significantly reduce cost and latency
+   * for repeated content.
+   *
+   * @example
+   * ```typescript
+   * import { RedisProcessorCache } from '@mastra/redis';
+   *
+   * const cache = new RedisProcessorCache({ connectionString: 'redis://localhost:6379' });
+   * const moderation = new ModerationProcessor({ model: 'openai/gpt-4o-mini', cache });
+   * ```
+   */
+  cache?: ProcessorCache;
 }
 
 /**
@@ -125,6 +143,7 @@ export class ModerationProcessor implements Processor<'moderation'> {
   private lastMessageOnly: boolean;
   private structuredOutputOptions?: ModerationOptions['structuredOutputOptions'];
   private providerOptions?: ProviderOptions;
+  private cache?: ProcessorCache;
 
   // Default OpenAI moderation categories
   private static readonly DEFAULT_CATEGORIES = [
@@ -150,6 +169,7 @@ export class ModerationProcessor implements Processor<'moderation'> {
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
     this.providerOptions = options.providerOptions;
+    this.cache = options.cache;
 
     // Create internal moderation agent
     this.moderationAgent = new Agent({
@@ -275,6 +295,18 @@ export class ModerationProcessor implements Processor<'moderation'> {
     isStream = false,
     observabilityContext?: ObservabilityContext,
   ): Promise<ModerationResult> {
+    if (this.cache) {
+      const cacheKey = createProcessorCacheKey(this.id, content, {
+        categories: this.categories,
+        threshold: this.threshold,
+        isStream,
+      });
+      const cached = await this.cache.get<ModerationResult>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const prompt = this.createModerationPrompt(content, isStream);
 
     try {
@@ -326,6 +358,15 @@ export class ModerationProcessor implements Processor<'moderation'> {
         });
 
         result = response.object as ModerationResult;
+      }
+
+      if (this.cache) {
+        const cacheKey = createProcessorCacheKey(this.id, content, {
+          categories: this.categories,
+          threshold: this.threshold,
+          isStream,
+        });
+        await this.cache.set(cacheKey, result).catch(() => {});
       }
 
       return result;

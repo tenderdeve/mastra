@@ -12,6 +12,8 @@ import type { PublicSchema } from '../../schema';
 import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
+import type { ProcessorCache } from '../processor-cache';
+import { createProcessorCacheKey } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -146,6 +148,13 @@ export interface PIIDetectorOptions extends LastMessageOnlyOption {
    * ```
    */
   providerOptions?: ProviderOptions;
+
+  /**
+   * Optional cache for storing detection results.
+   * When provided, the processor will check the cache before making LLM calls
+   * and store results after detection.
+   */
+  cache?: ProcessorCache;
 }
 
 /**
@@ -169,6 +178,7 @@ export class PIIDetector implements Processor<'pii-detector'> {
   private lastMessageOnly: boolean;
   private structuredOutputOptions?: PIIDetectorOptions['structuredOutputOptions'];
   private providerOptions?: ProviderOptions;
+  private cache?: ProcessorCache;
 
   // Default PII types based on common privacy regulations and comprehensive PII detection
   private static readonly DEFAULT_DETECTION_TYPES = [
@@ -197,6 +207,7 @@ export class PIIDetector implements Processor<'pii-detector'> {
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
     this.providerOptions = options.providerOptions;
+    this.cache = options.cache;
 
     // Create internal detection agent
     this.detectionAgent = new Agent({
@@ -272,6 +283,19 @@ export class PIIDetector implements Processor<'pii-detector'> {
    * Detect PII using the internal agent
    */
   private async detectPII(content: string, observabilityContext?: ObservabilityContext): Promise<PIIDetectionResult> {
+    if (this.cache) {
+      const cacheKey = createProcessorCacheKey(this.id, content, {
+        detectionTypes: this.detectionTypes,
+        threshold: this.threshold,
+        strategy: this.strategy,
+        redactionMethod: this.redactionMethod,
+      });
+      const cached = await this.cache.get<PIIDetectionResult>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const prompt = this.createDetectionPrompt(content);
 
     try {
@@ -359,6 +383,16 @@ export class PIIDetector implements Processor<'pii-detector'> {
             redacted_value: detection.redacted_value || this.redactValue(detection.value, detection.type),
           }));
         }
+      }
+
+      if (this.cache) {
+        const cacheKey = createProcessorCacheKey(this.id, content, {
+          detectionTypes: this.detectionTypes,
+          threshold: this.threshold,
+          strategy: this.strategy,
+          redactionMethod: this.redactionMethod,
+        });
+        await this.cache.set(cacheKey, result).catch(() => {});
       }
 
       return result;

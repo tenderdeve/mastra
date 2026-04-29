@@ -10,6 +10,8 @@ import type { ObservabilityContext } from '../../observability';
 import type { PublicSchema } from '../../schema';
 import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { Processor } from '../index';
+import type { ProcessorCache } from '../processor-cache';
+import { createProcessorCacheKey } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -93,6 +95,13 @@ export interface PromptInjectionOptions extends LastMessageOnlyOption {
    * ```
    */
   providerOptions?: ProviderOptions;
+
+  /**
+   * Optional cache for storing detection results.
+   * When provided, the processor will check the cache before making LLM calls
+   * and store results after detection.
+   */
+  cache?: ProcessorCache;
 }
 
 /**
@@ -114,6 +123,7 @@ export class PromptInjectionDetector implements Processor<'prompt-injection-dete
   private lastMessageOnly: boolean;
   private structuredOutputOptions?: PromptInjectionOptions['structuredOutputOptions'];
   private providerOptions?: ProviderOptions;
+  private cache?: ProcessorCache;
 
   // Default detection categories based on OWASP LLM01 and common attack patterns
   private static readonly DEFAULT_DETECTION_TYPES = [
@@ -133,6 +143,7 @@ export class PromptInjectionDetector implements Processor<'prompt-injection-dete
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
     this.providerOptions = options.providerOptions;
+    this.cache = options.cache;
 
     this.detectionAgent = new Agent({
       id: 'prompt-injection-detector',
@@ -211,6 +222,18 @@ export class PromptInjectionDetector implements Processor<'prompt-injection-dete
     content: string,
     observabilityContext?: ObservabilityContext,
   ): Promise<PromptInjectionResult> {
+    if (this.cache) {
+      const cacheKey = createProcessorCacheKey(this.id, content, {
+        detectionTypes: this.detectionTypes,
+        threshold: this.threshold,
+        strategy: this.strategy,
+      });
+      const cached = await this.cache.get<PromptInjectionResult>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const prompt = this.createDetectionPrompt(content);
     try {
       const model = await this.detectionAgent.getModel();
@@ -274,6 +297,15 @@ export class PromptInjectionDetector implements Processor<'prompt-injection-dete
           throw new Error('Legacy output returned no object');
         }
         result = response.object as PromptInjectionResult;
+      }
+
+      if (this.cache) {
+        const cacheKey = createProcessorCacheKey(this.id, content, {
+          detectionTypes: this.detectionTypes,
+          threshold: this.threshold,
+          strategy: this.strategy,
+        });
+        await this.cache.set(cacheKey, result).catch(() => {});
       }
 
       return result;

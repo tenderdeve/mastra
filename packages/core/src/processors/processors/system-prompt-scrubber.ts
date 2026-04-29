@@ -9,6 +9,8 @@ import type { PublicSchema } from '../../schema';
 import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
+import type { ProcessorCache } from '../processor-cache';
+import { createProcessorCacheKey } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -36,6 +38,13 @@ export interface SystemPromptScrubberOptions extends LastMessageOnlyOption {
      */
     jsonPromptInjection?: boolean;
   };
+
+  /**
+   * Optional cache for storing detection results.
+   * When provided, the processor will check the cache before making LLM calls
+   * and store results after detection.
+   */
+  cache?: ProcessorCache;
 }
 
 export interface SystemPromptDetectionResult {
@@ -76,6 +85,7 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
   private detectionAgent: Agent;
   private lastMessageOnly: boolean;
   private structuredOutputOptions?: SystemPromptScrubberOptions['structuredOutputOptions'];
+  private cache?: ProcessorCache;
 
   constructor(options: SystemPromptScrubberOptions) {
     if (!options.model) {
@@ -89,6 +99,7 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
     this.placeholderText = options.placeholderText || '[SYSTEM_PROMPT]';
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
+    this.cache = options.cache;
 
     // Initialize instructions after customPatterns is set
     this.instructions = options.instructions || this.getDefaultInstructions();
@@ -261,6 +272,18 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
     text: string,
     observabilityContext?: ObservabilityContext,
   ): Promise<SystemPromptDetectionResult> {
+    if (this.cache) {
+      const cacheKey = createProcessorCacheKey(this.id, text, {
+        strategy: this.strategy,
+        customPatterns: this.customPatterns,
+        redactionMethod: this.redactionMethod,
+      });
+      const cached = await this.cache.get<SystemPromptDetectionResult>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     try {
       const model = await this.detectionAgent.getModel();
 
@@ -313,6 +336,15 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
         });
 
         result = response.object as SystemPromptDetectionResult;
+      }
+
+      if (this.cache) {
+        const cacheKey = createProcessorCacheKey(this.id, text, {
+          strategy: this.strategy,
+          customPatterns: this.customPatterns,
+          redactionMethod: this.redactionMethod,
+        });
+        await this.cache.set(cacheKey, result).catch(() => {});
       }
 
       return result;
