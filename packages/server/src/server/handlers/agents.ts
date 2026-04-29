@@ -1036,11 +1036,25 @@ export const LIST_AGENTS_SUMMARY_ROUTE = createRoute({
     try {
       const logger = mastra.getLogger();
       const codeAgents = mastra.listAgents();
+      const editor = mastra.getEditor?.();
 
       const summaries: Record<string, { id: string; name: string; description?: string }> = {};
       for (const [id, agent] of Object.entries(codeAgents)) {
         try {
-          summaries[id] = toAgentSummary(id, agent);
+          // Apply stored overrides so summaries reflect studio-edited
+          // name/description. This mirrors the LIST_AGENTS_ROUTE handler.
+          // `applyStoredOverrides` merges static fields only — it does not
+          // invoke any per-request dynamic getter — so it preserves the
+          // request-context-independent guarantee of this endpoint.
+          let mergedAgent = agent;
+          if (editor) {
+            try {
+              mergedAgent = await editor.agent.applyStoredOverrides(agent);
+            } catch (error) {
+              logger.debug('Failed to apply stored overrides for agent summary', { agentId: id, error });
+            }
+          }
+          summaries[id] = toAgentSummary(id, mergedAgent);
         } catch (error) {
           logger.warn('Failed to summarize agent', { agentId: id, error });
         }
@@ -1048,7 +1062,6 @@ export const LIST_AGENTS_SUMMARY_ROUTE = createRoute({
 
       // Include stored agents (mirroring LIST_AGENTS_ROUTE), but only read static fields.
       try {
-        const editor = mastra.getEditor?.();
         let storedAgentsResult;
         try {
           storedAgentsResult = await editor?.agent.list();
