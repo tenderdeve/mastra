@@ -178,10 +178,20 @@ export async function resolveRuntimeDependencies(options: ResolveRuntimeOptions)
  * isSupportedLanguageModel check with a descriptive error message.
  */
 export function resolveModel(config: SerializableModelConfig, _mastra?: Mastra): MastraLanguageModel {
+  const metadataError = () => {
+    throw new Error(
+      `Model ${config.provider}/${config.modelId} is a metadata-only stub. ` +
+        `The actual model instance should be resolved from the run registry.`,
+    );
+  };
+
   return {
     provider: config.provider,
     modelId: config.modelId,
     specificationVersion: config.specificationVersion ?? 'v2',
+    supportedUrls: {},
+    doGenerate: metadataError,
+    doStream: metadataError,
     __metadataOnly: true,
   } as MastraLanguageModel;
 }
