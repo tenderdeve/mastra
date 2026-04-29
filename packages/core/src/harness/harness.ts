@@ -1342,7 +1342,7 @@ export class Harness<TState = {}> {
   // ===========================================================================
 
   private isActiveDurableRun(run: DurableAgentActiveRun | undefined): run is DurableAgentActiveRun {
-    return !!run && run.status !== 'completed' && run.status !== 'error';
+    return !!run && run.status !== 'completed' && run.status !== 'error' && run.status !== 'aborted';
   }
 
   private createUserStreamMessage(
@@ -1360,7 +1360,10 @@ export class Harness<TState = {}> {
     return { id: `user-${Date.now()}`, role: 'user', content: messageContent, createdAt: new Date() };
   }
 
-  private createDurableRunEventStream(runId: string): {
+  private createDurableRunEventStream(
+    runId: string,
+    options?: { abortSignal?: AbortSignal },
+  ): {
     fullStream: AsyncIterable<any>;
     ready: Promise<void>;
     cleanup: () => void;
@@ -1369,6 +1372,27 @@ export class Harness<TState = {}> {
     let notify: (() => void) | undefined;
     let done = false;
     let unsubscribe: (() => void) | undefined;
+    let removeAbortListener: (() => void) | undefined;
+
+    const cleanup = () => {
+      done = true;
+      unsubscribe?.();
+      removeAbortListener?.();
+      notify?.();
+    };
+
+    if (options?.abortSignal) {
+      if (options.abortSignal.aborted) {
+        done = true;
+      } else {
+        const onAbort = () => {
+          queue.push({ type: 'error', payload: { error: { name: 'AbortError', message: 'aborted' } } });
+          cleanup();
+        };
+        options.abortSignal.addEventListener('abort', onAbort, { once: true });
+        removeAbortListener = () => options.abortSignal?.removeEventListener('abort', onAbort);
+      }
+    }
 
     const fullStream = (async function* () {
       try {
@@ -1384,7 +1408,7 @@ export class Harness<TState = {}> {
           if (chunk) yield chunk;
         }
       } finally {
-        unsubscribe?.();
+        cleanup();
       }
     })();
 
@@ -1404,11 +1428,7 @@ export class Harness<TState = {}> {
     return {
       fullStream,
       ready,
-      cleanup: () => {
-        done = true;
-        unsubscribe?.();
-        notify?.();
-      },
+      cleanup,
     };
   }
 
@@ -1454,7 +1474,9 @@ export class Harness<TState = {}> {
     this.followingDurableRunId = activeRun.runId;
     this.emit({ type: 'agent_start' });
     const requestContext = await this.buildRequestContext();
-    const followedStream = this.createDurableRunEventStream(activeRun.runId);
+    const followedStream = this.createDurableRunEventStream(activeRun.runId, {
+      abortSignal: this.abortController.signal,
+    });
 
     try {
       await followedStream.ready;
@@ -1462,7 +1484,11 @@ export class Harness<TState = {}> {
       this.emit({ type: 'stream_attached', threadId: this.currentThreadId, runId: activeRun.runId });
       const streamResult = await this.processStream({ fullStream: followedStream.fullStream }, requestContext);
       if (this.currentOperationId === operationId) {
-        const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
+        const reason = streamResult.suspended
+          ? 'suspended'
+          : streamResult.aborted || this.abortRequested
+            ? 'aborted'
+            : 'complete';
         this.emit({ type: 'agent_end', reason });
       }
       return true;
@@ -1547,14 +1573,20 @@ export class Harness<TState = {}> {
       const requestContext = await this.buildRequestContext(requestContextInput);
 
       if (activeRun && durableStreams?.attachToActiveThread) {
-        const followedStream = this.createDurableRunEventStream(activeRun.runId);
+        const followedStream = this.createDurableRunEventStream(activeRun.runId, {
+          abortSignal: this.abortController.signal,
+        });
         followedStreamCleanup = followedStream.cleanup;
         await followedStream.ready;
         this.emit({ type: 'thread_observing', threadId: this.currentThreadId, runId: activeRun.runId });
         this.emit({ type: 'stream_attached', threadId: this.currentThreadId, runId: activeRun.runId });
         const streamResult = await this.processStream({ fullStream: followedStream.fullStream }, requestContext);
         if (this.currentOperationId === operationId) {
-          const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
+          const reason = streamResult.suspended
+            ? 'suspended'
+            : streamResult.aborted || this.abortRequested
+              ? 'aborted'
+              : 'complete';
           this.emit({ type: 'agent_end', reason });
         }
         return;
@@ -1587,14 +1619,20 @@ export class Harness<TState = {}> {
         });
         if (!claim.claimed) {
           if (durableStreams?.attachToActiveThread && claim.activeRun) {
-            const followedStream = this.createDurableRunEventStream(claim.activeRun.runId);
+            const followedStream = this.createDurableRunEventStream(claim.activeRun.runId, {
+              abortSignal: this.abortController.signal,
+            });
             followedStreamCleanup = followedStream.cleanup;
             await followedStream.ready;
             this.emit({ type: 'thread_observing', threadId: this.currentThreadId, runId: claim.activeRun.runId });
             this.emit({ type: 'stream_attached', threadId: this.currentThreadId, runId: claim.activeRun.runId });
             const streamResult = await this.processStream({ fullStream: followedStream.fullStream }, requestContext);
             if (this.currentOperationId === operationId) {
-              const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
+              const reason = streamResult.suspended
+                ? 'suspended'
+                : streamResult.aborted || this.abortRequested
+                  ? 'aborted'
+                  : 'complete';
               this.emit({ type: 'agent_end', reason });
             }
             return;
@@ -1667,19 +1705,29 @@ export class Harness<TState = {}> {
       if (claimedRunId && durableClient) {
         if (streamResult.suspended) {
           await durableClient.suspendRun(claimedRunId);
+        } else if (streamResult.aborted || this.abortRequested) {
+          await durableClient.abortRun(claimedRunId);
         } else {
           await durableClient.completeRun(claimedRunId);
         }
       }
 
       if (this.currentOperationId === operationId) {
-        const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
+        const reason = streamResult.suspended
+          ? 'suspended'
+          : streamResult.aborted || this.abortRequested
+            ? 'aborted'
+            : 'complete';
         this.emit({ type: 'agent_end', reason });
       }
     } catch (error) {
       this.publishingDurableRunId = null;
       if (claimedRunId && durableClient) {
-        await durableClient.failRun(claimedRunId).catch(() => undefined);
+        if (error instanceof Error && error.name === 'AbortError') {
+          await durableClient.abortRun(claimedRunId, error.message).catch(() => undefined);
+        } else {
+          await durableClient.failRun(claimedRunId).catch(() => undefined);
+        }
       }
       if (this.currentOperationId !== operationId) return;
 
@@ -2003,7 +2051,7 @@ export class Harness<TState = {}> {
   private async processStream(
     response: { fullStream: AsyncIterable<any>; traceId?: string },
     requestContext: RequestContext,
-  ): Promise<{ message: HarnessMessage; suspended?: boolean }> {
+  ): Promise<{ message: HarnessMessage; suspended?: boolean; aborted?: boolean }> {
     if (response.traceId) {
       this.currentTraceId = response.traceId;
     }
@@ -2015,6 +2063,7 @@ export class Harness<TState = {}> {
     };
 
     let isSuspended = false;
+    let isAborted = false;
     const textContentById = new Map<string, { index: number; text: string }>();
     const thinkingContentById = new Map<string, { index: number; text: string }>();
     const abortForOmFailure = ({
@@ -2218,9 +2267,19 @@ export class Harness<TState = {}> {
         }
 
         case 'error': {
+          const rawError = chunk.payload.error;
           const streamError =
-            chunk.payload.error instanceof Error ? chunk.payload.error : new Error(String(chunk.payload.error));
-          this.emit({ type: 'error', error: streamError });
+            rawError instanceof Error
+              ? rawError
+              : new Error(typeof rawError === 'string' ? rawError : (rawError?.message ?? String(rawError)));
+          if (!(rawError instanceof Error) && rawError?.name) {
+            streamError.name = rawError.name;
+          }
+          if (streamError.name === 'AbortError') {
+            isAborted = true;
+          } else {
+            this.emit({ type: 'error', error: streamError });
+          }
           break;
         }
 
@@ -2498,7 +2557,7 @@ export class Harness<TState = {}> {
     }
 
     this.emit({ type: 'message_end', message: currentMessage });
-    return { message: currentMessage, suspended: isSuspended || undefined };
+    return { message: currentMessage, suspended: isSuspended || undefined, aborted: isAborted || undefined };
   }
 
   // ===========================================================================

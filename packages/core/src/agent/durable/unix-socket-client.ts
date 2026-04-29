@@ -154,6 +154,10 @@ export class UnixSocketDurableRunClient {
     return this.#request('failRun', { runId });
   }
 
+  abortRun(runId: string, reason?: string): Promise<{ ok: true }> {
+    return this.#request('abortRun', { runId, reason });
+  }
+
   suspendRun(runId: string): Promise<{ ok: true }> {
     return this.#request('suspendRun', { runId });
   }
