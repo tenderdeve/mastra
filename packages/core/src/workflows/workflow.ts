@@ -503,7 +503,7 @@ function createStepFromAgent<TStepId extends string, TStepOutput>(
               structuredResult = resultWithObject.object;
             }
             streamPromise.resolve(result.text);
-            void agentOptions?.onFinish?.(result);
+            void (agentOptions?.onFinish as ((event: typeof result) => void) | undefined)?.(result);
           },
           abortSignal,
         });
