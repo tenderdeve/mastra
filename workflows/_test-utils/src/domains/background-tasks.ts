@@ -8,6 +8,9 @@
 import { describe, it, expect } from 'vitest';
 import { Agent } from '@mastra/core/agent';
 import { createDurableAgent } from '@mastra/core/agent/durable';
+import { baseIterationStateSchema } from '@mastra/core/agent/durable/workflows/shared/schemas';
+import { Mastra } from '@mastra/core/mastra';
+import { MockStore } from '@mastra/core/storage';
 import type { DurableAgentTestContext } from '../types';
 import { createTextStreamModel } from '../mock-models';
 
@@ -54,9 +57,6 @@ export function createBackgroundTaskTests(context: DurableAgentTestContext) {
     });
 
     it('should stash backgroundTaskManager in registry entry when mastra has bg tasks enabled', async () => {
-      const { Mastra } = await import('@mastra/core/mastra');
-      const { MockStore } = await import('@mastra/core/storage');
-
       const agent = new Agent({
         id: 'bg-registry-agent',
         name: 'BG Registry Agent',
@@ -86,10 +86,6 @@ export function createBackgroundTaskTests(context: DurableAgentTestContext) {
     });
 
     it('should include backgroundTaskPending in iteration state schema', async () => {
-      const { baseIterationStateSchema } = await import(
-        '@mastra/core/agent/durable/workflows/shared/schemas'
-      );
-
       const shape = baseIterationStateSchema.shape;
       expect(shape.backgroundTaskPending).toBeDefined();
     });

@@ -128,7 +128,9 @@ const agent = new Agent({
   name: 'Assistant',
   instructions: 'You are helpful',
   model: openai('gpt-4o'),
-  tools: { /* your tools */ },
+  tools: {
+    /* your tools */
+  },
 });
 
 // Pattern 1: Resumable streams only
@@ -149,9 +151,15 @@ const mastra = new Mastra({
 const { output, runId, cleanup } = await durableAgent.stream(
   [{ role: 'user', content: 'Analyze this data and create a report' }],
   {
-    onChunk: chunk => { /* stream to client */ },
-    onStepFinish: step => { /* called after each LLM step */ },
-    onFinish: result => { /* called when done */ },
+    onChunk: chunk => {
+      /* stream to client */
+    },
+    onStepFinish: step => {
+      /* called after each LLM step */
+    },
+    onFinish: result => {
+      /* called when done */
+    },
   },
 );
 
@@ -161,7 +169,9 @@ cleanup();
 // Reconnect after disconnect (replays missed events)
 const { output: reconnected } = await durableAgent.observe(runId, {
   offset: lastSeenIndex, // replay from this point
-  onChunk: chunk => { /* stream to client */ },
+  onChunk: chunk => {
+    /* stream to client */
+  },
 });
 
 // Resume after suspension (e.g., tool approval)

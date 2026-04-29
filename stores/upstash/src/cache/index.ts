@@ -1,6 +1,6 @@
 import { RedisServerCache, upstashPreset } from '@mastra/redis';
 import type { RedisClient, RedisServerCacheOptions } from '@mastra/redis';
-import type { Redis } from '@upstash/redis';
+import { Redis } from '@upstash/redis';
 
 /**
  * Configuration for UpstashServerCache.
@@ -58,11 +58,8 @@ export class UpstashServerCache extends RedisServerCache {
     let client: RedisClient;
 
     if ('client' in config) {
-      client = config.client as unknown as RedisClient;
+      client = config.client;
     } else {
-      // Dynamically import @upstash/redis to create client
-      // This allows the package to work without @upstash/redis if user passes their own client
-      const { Redis } = require('@upstash/redis');
       client = new Redis({ url: config.url, token: config.token });
     }
 
