@@ -1,6 +1,6 @@
 import type { StoredSkillResponse } from '@mastra/client-js';
 import { Button, Spinner } from '@mastra/playground-ui';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { useBuilderAgentFeatures } from '@/domains/agent-builder';
@@ -32,7 +32,7 @@ type WorkflowsData = NonNullable<ReturnType<typeof useWorkflows>['data']>;
 export default function AgentBuilderAgentView() {
   const { id } = useParams<{ id: string }>();
   const features = useBuilderAgentFeatures();
-  const { data: storedAgent, isLoading: isStoredAgentLoading } = useStoredAgent(id);
+  const { data: storedAgent, isLoading: isStoredAgentLoading } = useStoredAgent(id, { status: 'draft' });
   const { data: toolsData, isPending: isToolsPending } = useTools({ enabled: features.tools });
   const { data: agentsData, isPending: isAgentsPending } = useAgents({ enabled: features.agents });
   const { data: workflowsData, isPending: isWorkflowsPending } = useWorkflows({ enabled: features.workflows });
@@ -76,9 +76,12 @@ const AgentBuilderAgentViewPage = ({
   workflowsData,
   storedSkillsResponse,
 }: PageProps) => {
-  const formMethods = useForm<AgentBuilderEditFormValues>({
-    defaultValues: storedAgentToFormValues(storedAgent),
-  });
+  const defaultValues = useMemo(() => storedAgentToFormValues(storedAgent), [storedAgent]);
+  const formMethods = useForm<AgentBuilderEditFormValues>({ defaultValues });
+
+  useEffect(() => {
+    formMethods.reset(defaultValues);
+  }, [defaultValues, formMethods]);
 
   return (
     <FormProvider {...formMethods}>
