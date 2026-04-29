@@ -515,12 +515,14 @@ describe('interactive prompts', () => {
       questionId: 'q1',
       question: 'Which option?',
       options: [{ label: 'A' }, { label: 'B' }],
+      selectionMode: 'multi_select',
     });
     const q = harness.getDisplayState().pendingQuestion;
     expect(q).not.toBeNull();
     expect(q!.questionId).toBe('q1');
     expect(q!.question).toBe('Which option?');
     expect(q!.options).toHaveLength(2);
+    expect(q!.selectionMode).toBe('multi_select');
   });
 
   it('sets pendingPlanApproval on plan_approval_required', () => {
@@ -564,11 +566,13 @@ describe('subagent lifecycle', () => {
       agentType: 'explore',
       task: 'Find usages of X',
       modelId: 'gpt-4o',
+      forked: true,
     });
     const sub = harness.getDisplayState().activeSubagents.get('s1');
     expect(sub).toBeDefined();
     expect(sub!.agentType).toBe('explore');
     expect(sub!.task).toBe('Find usages of X');
+    expect(sub!.forked).toBe(true);
     expect(sub!.status).toBe('running');
     expect(sub!.toolCalls).toEqual([]);
   });

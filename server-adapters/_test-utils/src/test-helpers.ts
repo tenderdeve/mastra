@@ -177,6 +177,9 @@ export function mockAgentMethods(agent: Agent) {
   // Mock stream method - returns object with fullStream property
   vi.spyOn(agent, 'stream').mockResolvedValue({ fullStream: createMockStream() } as any);
 
+  // Mock resumeStream method - returns object with fullStream property
+  vi.spyOn(agent, 'resumeStream').mockResolvedValue({ fullStream: createMockStream() } as any);
+
   // Mock legacy generate - returns GenerateTextResult (JSON object, not stream)
   vi.spyOn(agent, 'generateLegacy').mockResolvedValue({
     text: 'test response',
@@ -453,6 +456,9 @@ export async function createDefaultTestContext(): Promise<AdapterTestContext> {
     processors: {
       'test-processor': testProcessor,
     },
+    backgroundTasks: {
+      enabled: true,
+    },
   });
 
   // Mock getEditor to return an object with namespaced methods for stored agents routes
@@ -520,7 +526,7 @@ export async function createDefaultTestContext(): Promise<AdapterTestContext> {
     if (observability) {
       await observability.createSpan({
         span: {
-          spanId: 'test-span-1',
+          spanId: 'test-span',
           traceId: 'test-trace',
           name: 'test-span',
           spanType: SpanType.GENERIC,
@@ -670,6 +676,28 @@ export async function createDefaultTestContext(): Promise<AdapterTestContext> {
           { versionId: 'stable-v1', weight: 90, label: 'stable' },
           { versionId: 'candidate-v2', weight: 10, label: 'candidate' },
         ],
+      });
+    }
+
+    const backgroundTasks = await storage.getStore('backgroundTasks');
+    if (backgroundTasks) {
+      await backgroundTasks.createTask({
+        id: 'test-background-task-id',
+        status: 'pending',
+        toolName: 'test-tool',
+        toolCallId: 'test-tool-call-id',
+        agentId: 'test-agent',
+        runId: 'test-run',
+        args: { query: 'test' },
+        retryCount: 0,
+        maxRetries: 0,
+        timeoutMs: 300_000,
+        createdAt: new Date(),
+      });
+
+      await backgroundTasks.updateTask('test-background-task-id', {
+        status: 'running',
+        startedAt: new Date(),
       });
     }
 

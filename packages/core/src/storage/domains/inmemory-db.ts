@@ -1,3 +1,4 @@
+import type { BackgroundTask } from '../../background-tasks/types';
 import type { ScoreRowData } from '../../evals/types';
 import type { StorageThreadType } from '../../memory/types';
 import type {
@@ -79,6 +80,9 @@ export class InMemoryDB {
   // Rollout domain maps
   readonly rollouts = new Map<string, RolloutRecord>();
 
+  // Background tasks domain
+  readonly backgroundTasks = new Map<string, BackgroundTask>();
+
   /**
    * Clears all data from all collections.
    * Useful for testing.
@@ -115,5 +119,6 @@ export class InMemoryDB {
     this.experiments.clear();
     this.experimentResults.clear();
     this.rollouts.clear();
+    this.backgroundTasks.clear();
   }
 }

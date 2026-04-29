@@ -163,6 +163,7 @@ export type RecordTypes = {
   [TABLE_SKILL_VERSIONS]: SkillVersion;
   [TABLE_SKILL_BLOBS]: StorageBlobEntry;
   [TABLE_ROLLOUTS]: Record<string, any>;
+  mastra_background_tasks: Record<string, any>;
 };
 
 export type ListOptions = {

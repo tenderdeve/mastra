@@ -4,6 +4,7 @@ import { createStorageErrorId, MastraCompositeStore } from '@mastra/core/storage
 import type { MongoDBConnector } from './connectors/MongoDBConnector';
 import { resolveMongoDBConfig } from './db';
 import { MongoDBAgentsStorage } from './domains/agents';
+import { BackgroundTasksStorageMongoDB } from './domains/background-tasks';
 import { MongoDBBlobStore } from './domains/blobs';
 import { MongoDBDatasetsStorage } from './domains/datasets';
 import { MongoDBExperimentsStorage } from './domains/experiments';
@@ -22,6 +23,7 @@ import type { MongoDBConfig } from './types';
 
 // Export domain classes for direct use with MastraStorage composition
 export {
+  BackgroundTasksStorageMongoDB,
   MongoDBAgentsStorage,
   MongoDBBlobStore,
   MongoDBDatasetsStorage,
@@ -103,6 +105,7 @@ export class MongoDBStore extends MastraCompositeStore {
     const experiments = new MongoDBExperimentsStorage(domainConfig);
 
     const rollouts = new MongoDBRolloutsStorage(domainConfig);
+    const backgroundTasks = new BackgroundTasksStorageMongoDB(domainConfig);
 
     this.stores = {
       memory,
@@ -117,6 +120,7 @@ export class MongoDBStore extends MastraCompositeStore {
       workspaces,
       skills,
       blobs,
+      backgroundTasks,
       datasets,
       experiments,
       rollouts,
