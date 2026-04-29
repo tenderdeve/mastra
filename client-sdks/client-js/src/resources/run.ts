@@ -299,7 +299,7 @@ export class Run extends BaseResource {
    * }
    * ```
    */
-  async observe(params?: { offset?: number }) {
+  async observe(params?: { offset?: number }): Promise<globalThis.ReadableStream<StreamVNextChunkType>> {
     const searchParams = new URLSearchParams();
     searchParams.set('runId', this.runId);
     if (params?.offset !== undefined) {
