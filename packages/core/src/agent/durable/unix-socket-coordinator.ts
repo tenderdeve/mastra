@@ -174,6 +174,8 @@ export class UnixSocketDurableRunCoordinator {
         return this.completeRun(request.payload?.runId ?? request.payload);
       case 'failRun':
         return this.failRun(request.payload?.runId ?? request.payload);
+      case 'abortRun':
+        return this.abortRun(request.payload?.runId ?? request.payload, request.payload?.reason);
       case 'suspendRun':
         return this.setRunStatus(request.payload?.runId ?? request.payload, 'suspended');
       case 'resumeRun':
@@ -220,7 +222,13 @@ export class UnixSocketDurableRunCoordinator {
   getActiveRun(options: { resourceId: string; threadId: string }): DurableAgentActiveRun | undefined {
     const key = threadKey(options.resourceId, options.threadId);
     const activeRun = this.#runsByThread.get(key);
-    if (!activeRun || activeRun.status === 'completed' || activeRun.status === 'error') return undefined;
+    if (
+      !activeRun ||
+      activeRun.status === 'completed' ||
+      activeRun.status === 'error' ||
+      activeRun.status === 'aborted'
+    )
+      return undefined;
     if (!this.#isRunOwnerConnected(activeRun)) {
       this.#cleanupRun(key, activeRun);
       return undefined;
@@ -234,6 +242,14 @@ export class UnixSocketDurableRunCoordinator {
 
   failRun(runId: string): { ok: true } {
     return this.#finishRun(runId, 'error');
+  }
+
+  abortRun(runId: string, reason = 'Durable run aborted'): { ok: true } {
+    this.publishRunEvent(runId, {
+      type: 'error',
+      payload: { error: { name: 'AbortError', message: reason } },
+    });
+    return this.#finishRun(runId, 'aborted');
   }
 
   subscribeRun(connection: CoordinatorConnection, runId: string): { ok: true } {
@@ -325,7 +341,7 @@ export class UnixSocketDurableRunCoordinator {
     const activeRun = this.#runsByThread.get(key);
     if (!activeRun) return { ok: true };
     activeRun.status = status;
-    if (status === 'completed' || status === 'error') {
+    if (status === 'completed' || status === 'error' || status === 'aborted') {
       this.#runsByThread.delete(key);
       this.#threadKeyByRunId.delete(runId);
       this.#signalHandlersByRunId.delete(runId);
@@ -335,7 +351,7 @@ export class UnixSocketDurableRunCoordinator {
     return { ok: true };
   }
 
-  #finishRun(runId: string, status: 'completed' | 'error'): { ok: true } {
+  #finishRun(runId: string, status: 'completed' | 'error' | 'aborted'): { ok: true } {
     return this.setRunStatus(runId, status);
   }
 }

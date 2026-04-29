@@ -236,6 +236,32 @@ describe('UnixSocketDurableRunCoordinator subprocess protocol', () => {
     });
   });
 
+  it('aborts active runs and notifies subscribers with a terminal abort event', async () => {
+    const socketPath = join(tempDir, 'coordinator.sock');
+    coordinator = new UnixSocketDurableRunCoordinator({ socketPath });
+    await coordinator.start();
+
+    const processA = createClientProcess(socketPath, tempDir, 'process-a');
+    const processB = createClientProcess(socketPath, tempDir, 'process-b');
+    clients.push(processA, processB);
+
+    const target = { resourceId: 'resource-1', threadId: 'thread-1' };
+    await processA.request('claimThread', [{ ...target, runId: 'run-a' }]);
+    await expect(processB.request('onRunEvent', ['run-a'])).resolves.toEqual({ ok: true });
+
+    await expect(processA.request('abortRun', ['run-a', 'stopped by user'])).resolves.toEqual({ ok: true });
+    await expect(
+      processB.waitForEvent(event => event.event === 'runEvent' && event.runId === 'run-a'),
+    ).resolves.toMatchObject({
+      runEvent: { type: 'error', payload: { error: { name: 'AbortError', message: 'stopped by user' } } },
+    });
+    await expect(processB.request('getActiveRun', [target])).resolves.toBeUndefined();
+    await expect(processB.request('claimThread', [{ ...target, runId: 'run-b' }])).resolves.toMatchObject({
+      claimed: true,
+      activeRun: { ...target, runId: 'run-b', ownerId: 'process-b', status: 'active' },
+    });
+  });
+
   it('lets a peer re-elect itself as coordinator host after the host goes offline', async () => {
     const socketPath = join(tempDir, 'coordinator.sock');
     coordinator = new UnixSocketDurableRunCoordinator({ socketPath });

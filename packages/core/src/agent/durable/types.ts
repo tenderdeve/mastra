@@ -38,7 +38,7 @@ export type SendDurableAgentSignalOptions =
   | { runId: string; resourceId?: never; threadId?: never }
   | { runId?: never; resourceId: string; threadId: string };
 
-export type DurableAgentRunStatus = 'active' | 'suspended' | 'completed' | 'error';
+export type DurableAgentRunStatus = 'active' | 'suspended' | 'completed' | 'error' | 'aborted';
 
 export interface DurableAgentActiveRun {
   resourceId: string;

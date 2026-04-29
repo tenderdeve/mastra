@@ -112,8 +112,9 @@ export function handleAgentAborted(ctx: EventHandlerContext): void {
     state.streamingComponent.updateContent(state.streamingMessage);
     state.streamingComponent = undefined;
     state.streamingMessage = undefined;
-  } else if (state.userInitiatedAbort) {
-    // Show standalone "Interrupted" if user pressed Ctrl+C but no streaming component
+  } else {
+    // Show standalone "Interrupted" for aborted runs without an assistant text component
+    // (for example durable followers watching a tool-only run).
     state.chatContainer.addChild(new Text(theme.fg('error', 'Interrupted'), BOX_INDENT, 0));
     state.chatContainer.addChild(new Spacer(1));
   }
