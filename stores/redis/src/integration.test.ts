@@ -8,7 +8,7 @@
  *
  * Run tests:
  * ```bash
- * pnpm test:integration
+ * pnpm test
  * ```
  */
 
@@ -20,9 +20,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { RedisServerCache } from './index';
 
 // Redis connection for integration tests
-// Uses port 6399 to avoid conflict with default Redis port
-const REDIS_PORT = 6399;
-const REDIS_URL = `redis://localhost:${REDIS_PORT}`;
+// Must match docker-compose.yaml (port 6380, password redis_password)
+const REDIS_PORT = 6380;
+const REDIS_URL = `redis://:redis_password@localhost:${REDIS_PORT}`;
 
 describe('RedisServerCache Integration', () => {
   let redis: Redis;
