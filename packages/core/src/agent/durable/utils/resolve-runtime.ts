@@ -193,7 +193,7 @@ export function resolveModel(config: SerializableModelConfig, _mastra?: Mastra):
     doGenerate: metadataError,
     doStream: metadataError,
     __metadataOnly: true,
-  } as MastraLanguageModel;
+  } as unknown as MastraLanguageModel;
 }
 
 /**

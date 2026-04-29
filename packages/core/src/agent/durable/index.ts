@@ -96,6 +96,13 @@ export { prepareForDurableExecution, type PreparationOptions, type PreparationRe
 // Run registry for non-serializable state
 export { RunRegistry, ExtendedRunRegistry, type ExtendedRunRegistryEntry } from './run-registry';
 
+// Experimental Unix socket coordination for local multi-process durable runs
+export {
+  UnixSocketDurableRunCoordinator,
+  type UnixSocketDurableRunCoordinatorOptions,
+} from './unix-socket-coordinator';
+export { UnixSocketDurableRunClient, type UnixSocketDurableRunClientOptions } from './unix-socket-client';
+
 // Stream adapter for pubsub-based streaming
 export {
   createDurableAgentStream,
@@ -114,6 +121,14 @@ export { AGENT_STREAM_TOPIC, AgentStreamEventTypes, DurableAgentDefaults, Durabl
 
 // Types
 export type {
+  // Signal and run coordination types
+  DurableAgentSignalType,
+  DurableAgentSignal,
+  SendDurableAgentSignalOptions,
+  DurableAgentRunStatus,
+  DurableAgentActiveRun,
+  DurableAgentClaimThreadOptions,
+  DurableAgentClaimThreadResult,
   // Serializable types for workflow state
   SerializableToolMetadata,
   SerializableModelConfig,

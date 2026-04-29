@@ -16,8 +16,57 @@ import { isSupportedLanguageModel } from '../../../utils';
 import { DurableStepIds } from '../../constants';
 import { globalRunRegistry } from '../../run-registry';
 import { emitChunkEvent, emitStepStartEvent } from '../../stream-adapter';
-import type { DurableAgenticWorkflowInput, DurableLLMStepOutput, DurableToolCallInput } from '../../types';
+import type {
+  DurableAgenticWorkflowInput,
+  DurableAgentSignal,
+  DurableLLMStepOutput,
+  DurableToolCallInput,
+} from '../../types';
 import { resolveRuntimeDependencies, resolveModelFromListEntry } from '../../utils/resolve-runtime';
+
+function escapeXml(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function escapeXmlAttribute(value: string): string {
+  return escapeXml(value).replaceAll('"', '&quot;');
+}
+
+function signalToMessage(signal: DurableAgentSignal): MastraDBMessage {
+  const contentMetadata =
+    signal.type === 'system-reminder'
+      ? { systemReminder: { type: 'agent-signal', signalType: signal.type, ...signal.metadata } }
+      : signal.type === 'user-message'
+        ? undefined
+        : { agentSignal: { type: signal.type, ...signal.metadata } };
+
+  const contents =
+    signal.type === 'system-reminder'
+      ? `<system-reminder type="agent-signal">${escapeXml(signal.contents)}</system-reminder>`
+      : signal.type === 'user-message'
+        ? signal.contents
+        : `<agent-signal type="${escapeXmlAttribute(signal.type)}">${escapeXml(signal.contents)}</agent-signal>`;
+
+  return {
+    id: signal.id ?? `signal-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    role: 'user',
+    content: {
+      format: 2,
+      parts: [{ type: 'text', text: contents }],
+      ...(contentMetadata ? { metadata: contentMetadata } : {}),
+    },
+    createdAt: signal.createdAt ? new Date(signal.createdAt) : new Date(),
+  };
+}
+
+function drainGlobalSignals(runId: string): DurableAgentSignal[] {
+  const entry = globalRunRegistry.get(runId);
+  const signals = entry?.signalQueue ?? [];
+  if (entry) {
+    entry.signalQueue = [];
+  }
+  return signals;
+}
 
 /**
  * Input schema for the durable LLM execution step
@@ -184,6 +233,11 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               );
             }
 
+            const signals = drainGlobalSignals(runId);
+            if (signals.length > 0) {
+              messageList.add(signals.map(signalToMessage), 'input');
+            }
+
             let currentMessageId = messageId;
 
             // 5. Prepare tools - cast through unknown as CoreTool and ToolSet are structurally compatible at runtime
@@ -224,12 +278,13 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 : undefined;
 
             const registryEntry = globalRunRegistry.get(runId);
-            const executionAbortSignal = (registryEntry as any)?.abortSignal ?? abortSignal;
+            const streamPubsub = registryEntry?.pubsub ?? pubsub;
+            const executionAbortSignal = registryEntry?.abortSignal ?? abortSignal;
             if (registryEntry?.inputProcessors?.length) {
-              const inputStepWriter = pubsub
+              const inputStepWriter = streamPubsub
                 ? {
                     custom: async (data: { type: string }) => {
-                      await emitChunkEvent(pubsub, runId, data as any);
+                      await emitChunkEvent(streamPubsub, runId, data as any);
                     },
                   }
                 : undefined;
@@ -311,8 +366,8 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 request = r || {};
                 rawResponse = rr || {};
 
-                if (pubsub) {
-                  void emitStepStartEvent(pubsub, runId, {
+                if (streamPubsub) {
+                  void emitStepStartEvent(streamPubsub, runId, {
                     stepId: DurableStepIds.LLM_EXECUTION,
                     request,
                     warnings,
@@ -352,8 +407,8 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 // NOTE: Do NOT emit 'finish' chunks - they will be sent as a proper FINISH event
                 // at the end of the agentic loop. Emitting finish chunks here would cause
                 // the client's MastraModelOutput to close prematurely in multi-step workflows.
-                if (pubsub && chunk.type !== 'finish') {
-                  await emitChunkEvent(pubsub, runId, chunk);
+                if (streamPubsub && chunk.type !== 'finish') {
+                  await emitChunkEvent(streamPubsub, runId, chunk);
                 }
 
                 // Process different chunk types

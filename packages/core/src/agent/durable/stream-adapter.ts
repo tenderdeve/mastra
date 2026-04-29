@@ -123,7 +123,9 @@ export function createDurableAgentStream<OUTPUT = undefined>(
 
   // Handler for pubsub events
   const handleEvent = async (event: Event) => {
-    if (!controller) return;
+    if (!controller) {
+      return;
+    }
 
     // Parse the event data as AgentStreamEvent
     const streamEvent = event as unknown as AgentStreamEvent;
@@ -180,8 +182,13 @@ export function createDurableAgentStream<OUTPUT = undefined>(
           if (data.error.stack) {
             error.stack = data.error.stack;
           }
-          // Close stream with error first, then call callback
-          controller.error(error);
+          // Abort is a user-controlled terminal state; close the stream cleanly so consumers
+          // waiting on fullStream can finish and report an aborted run instead of hanging.
+          if (error.name === 'AbortError') {
+            controller.close();
+          } else {
+            controller.error(error);
+          }
           try {
             await onError?.(error);
           } catch (callbackError) {

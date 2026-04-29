@@ -151,6 +151,7 @@ export function createDurableToolCallStep() {
 
       // 1. Resolve the tool from global registry first, then Mastra
       const registryEntry = globalRunRegistry.get(runId);
+      const streamPubsub = registryEntry?.pubsub ?? pubsub;
       let tool = registryEntry?.tools?.[toolName];
 
       if (!tool) {
@@ -162,8 +163,8 @@ export function createDurableToolCallStep() {
           name: 'ToolNotFoundError',
           message: `Tool ${toolName} not found`,
         };
-        if (pubsub) {
-          await emitChunkEvent(pubsub, runId, {
+        if (streamPubsub) {
+          await emitChunkEvent(streamPubsub, runId, {
             type: 'tool-error',
             runId,
             from: ChunkFrom.AGENT,
@@ -220,8 +221,8 @@ export function createDurableToolCallStep() {
         });
 
         // Emit approval chunk via PubSub (mirrors base agent's controller.enqueue)
-        if (pubsub) {
-          await emitChunkEvent(pubsub, runId, {
+        if (streamPubsub) {
+          await emitChunkEvent(streamPubsub, runId, {
             type: 'tool-call-approval',
             runId,
             from: ChunkFrom.AGENT,
@@ -230,8 +231,8 @@ export function createDurableToolCallStep() {
         }
 
         // Emit suspended event for the stream adapter
-        if (pubsub) {
-          await emitSuspendedEvent(pubsub, runId, {
+        if (streamPubsub) {
+          await emitSuspendedEvent(streamPubsub, runId, {
             toolCallId,
             toolName,
             args,
@@ -328,12 +329,12 @@ export function createDurableToolCallStep() {
                   },
                 },
                 onChunk: (chunk: any) => {
-                  if (!pubsub) return;
+                  if (!streamPubsub) return;
                   try {
                     const bgRunId = chunk.payload.runId;
                     // Emit tool-call chunk so UIs can render the invocation inline
                     if (bgRunId !== runId || (bgRunId === runId && resumeData)) {
-                      void emitChunkEvent(pubsub, bgRunId, {
+                      void emitChunkEvent(streamPubsub, bgRunId, {
                         type: 'tool-call',
                         runId: bgRunId,
                         from: ChunkFrom.AGENT,
@@ -346,7 +347,7 @@ export function createDurableToolCallStep() {
                     }
 
                     if (chunk.type === 'background-task-completed') {
-                      void emitChunkEvent(pubsub, bgRunId, {
+                      void emitChunkEvent(streamPubsub, bgRunId, {
                         type: 'tool-result',
                         runId: bgRunId,
                         from: ChunkFrom.AGENT,
@@ -358,7 +359,7 @@ export function createDurableToolCallStep() {
                         },
                       });
                     } else if (chunk.type === 'background-task-failed') {
-                      void emitChunkEvent(pubsub, bgRunId, {
+                      void emitChunkEvent(streamPubsub, bgRunId, {
                         type: 'tool-error',
                         runId: bgRunId,
                         from: ChunkFrom.AGENT,
@@ -484,8 +485,8 @@ export function createDurableToolCallStep() {
 
             if (!fallbackToSync) {
               // Emit background-task-started chunk via PubSub
-              if (pubsub) {
-                await emitChunkEvent(pubsub, runId, {
+              if (streamPubsub) {
+                await emitChunkEvent(streamPubsub, runId, {
                   type: 'background-task-started' as any,
                   runId,
                   from: ChunkFrom.AGENT,
@@ -533,8 +534,8 @@ export function createDurableToolCallStep() {
                 required: ['approved'],
               });
 
-              if (pubsub) {
-                await emitChunkEvent(pubsub, runId, {
+              if (streamPubsub) {
+                await emitChunkEvent(streamPubsub, runId, {
                   type: 'tool-call-approval',
                   runId,
                   from: ChunkFrom.AGENT,
@@ -542,8 +543,8 @@ export function createDurableToolCallStep() {
                 });
               }
 
-              if (pubsub) {
-                await emitSuspendedEvent(pubsub, runId, {
+              if (streamPubsub) {
+                await emitSuspendedEvent(streamPubsub, runId, {
                   toolCallId,
                   toolName,
                   args,
@@ -572,8 +573,8 @@ export function createDurableToolCallStep() {
                 resumeSchema: suspendOptions?.resumeSchema,
               };
 
-              if (pubsub) {
-                await emitChunkEvent(pubsub, runId, {
+              if (streamPubsub) {
+                await emitChunkEvent(streamPubsub, runId, {
                   type: 'tool-call-suspended',
                   runId,
                   from: ChunkFrom.AGENT,
@@ -586,7 +587,7 @@ export function createDurableToolCallStep() {
                   },
                 });
 
-                await emitSuspendedEvent(pubsub, runId, suspendedEventData);
+                await emitSuspendedEvent(streamPubsub, runId, suspendedEventData);
               }
 
               await doFlush();
@@ -605,9 +606,9 @@ export function createDurableToolCallStep() {
         });
 
         // Emit tool-result chunk (non-fatal — result is returned regardless)
-        if (pubsub) {
+        if (streamPubsub) {
           try {
-            await emitChunkEvent(pubsub, runId, {
+            await emitChunkEvent(streamPubsub, runId, {
               type: 'tool-result',
               runId,
               from: ChunkFrom.AGENT,
@@ -626,9 +627,9 @@ export function createDurableToolCallStep() {
         const toolError = serializeError(error);
 
         // Emit tool-error chunk (non-fatal — error result is returned regardless)
-        if (pubsub) {
+        if (streamPubsub) {
           try {
-            await emitChunkEvent(pubsub, runId, {
+            await emitChunkEvent(streamPubsub, runId, {
               type: 'tool-error',
               runId,
               from: ChunkFrom.AGENT,

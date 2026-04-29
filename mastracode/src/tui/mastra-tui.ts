@@ -278,6 +278,15 @@ export class MastraTUI {
 
     this.state.pendingFollowUpMessages.push({ content, images });
     this.state.pendingQueuedActions.push('message');
+    addUserMessage(this.state, {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: [
+        { type: 'text', text: content },
+        ...(images?.map(img => ({ type: 'image' as const, data: img.data, mimeType: img.mimeType })) ?? []),
+      ],
+      createdAt: new Date(),
+    });
     updateStatusLine(this.state);
     this.state.ui.requestRender();
   }
@@ -361,6 +370,8 @@ export class MastraTUI {
     this.state.ui.start();
     this.state.isInitialized = true;
 
+    await (this.state.harness as any).watchActiveThreadRuns?.();
+
     // Start MCP connections now that the TUI owns the terminal.
     // Using showInfo() instead of console.info() avoids corrupting the display.
     if (this.state.mcpManager?.hasServers()) {
@@ -443,8 +454,10 @@ export class MastraTUI {
 
       if (event.type === 'thread_created') {
         await this.syncThreadActivePackMetadata(event.thread);
+        await (this.state.harness as any).watchActiveThreadRuns?.();
       } else if (event.type === 'thread_changed') {
         await this.syncThreadActivePackMetadata();
+        await (this.state.harness as any).watchActiveThreadRuns?.();
       }
 
       if (event.type === 'agent_end') {
@@ -673,7 +686,7 @@ export class MastraTUI {
         }
         this.state.editor.setText('');
 
-        if (this.state.harness.isRunning()) {
+        if (this.state.harness.isRunning() && !(this.state.harness as any).canSendWhileRunning?.()) {
           this.queueFollowUpMessage(text);
           return;
         }

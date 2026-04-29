@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { EventEmitterPubSub } from '../../../events/event-emitter';
 import { MockMemory } from '../../../memory/mock';
+import { parseMemoryRequestContext } from '../../../memory/types';
 import type { InputProcessor } from '../../../processors';
 import { createTool } from '../../../tools';
 import { Agent } from '../../agent';
@@ -190,6 +191,42 @@ describe('DurableAgent memory configuration', () => {
 
       expect(originalModelCalls).toBe(0);
       expect(overrideModelCalls).toBe(1);
+    });
+
+    it('should provide memory.thread as an object to processInputStep processors', async () => {
+      const seenThreadIds: string[] = [];
+      const memoryContextProcessor: InputProcessor = {
+        id: 'memory-context-processor',
+        processInputStep: async ({ requestContext }) => {
+          const memoryContext = parseMemoryRequestContext(requestContext);
+          if (memoryContext?.thread?.id) {
+            seenThreadIds.push(memoryContext.thread.id);
+          }
+          return {};
+        },
+      };
+
+      const mockMemory = new MockMemory();
+      const baseAgent = new Agent({
+        id: 'memory-context-agent',
+        name: 'Memory Context Agent',
+        instructions: 'Test memory context shape',
+        model: createTextModel('Hello!') as LanguageModelV2,
+        memory: mockMemory,
+        inputProcessors: [memoryContextProcessor],
+      });
+      const durableAgent = createDurableAgent({ agent: baseAgent, pubsub });
+
+      const result = await durableAgent.stream('Hello', {
+        memory: {
+          thread: 'thread-string-for-processor',
+          resource: 'resource-for-processor',
+        },
+      });
+      for await (const _chunk of result.fullStream as AsyncIterable<any>) {
+      }
+
+      expect(seenThreadIds).toContain('thread-string-for-processor');
     });
 
     it('should handle missing memory options gracefully', async () => {

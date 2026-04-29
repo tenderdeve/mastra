@@ -1,4 +1,5 @@
 import type { Agent } from '../agent';
+import type { DurableAgentSignalType } from '../agent/durable';
 import type { AgentInstructions, ToolsInput } from '../agent/types';
 import type { MastraBrowser } from '../browser/browser';
 import type { MastraLanguageModel } from '../llm/model/shared.types';
@@ -146,6 +147,13 @@ export type HarnessStateSchema<T> = T;
  */
 export type BuiltinToolId = 'ask_user' | 'submit_plan' | 'task_write' | 'task_check' | 'subagent';
 
+export interface HarnessDurableStreamsConfig {
+  unixSocketPath?: string;
+  attachToActiveThread?: boolean;
+  signalWhileRunning?: boolean;
+  signalType?: DurableAgentSignalType;
+}
+
 export interface HarnessConfig<TState = {}> {
   /** Unique identifier for this harness instance */
   id: string;
@@ -167,6 +175,9 @@ export interface HarnessConfig<TState = {}> {
 
   /** Memory configuration (shared across all modes) */
   memory?: DynamicArgument<MastraMemory>;
+
+  /** Opt-in durable stream coordination for multi-process thread sharing. */
+  durableStreams?: HarnessDurableStreamsConfig;
 
   /** Available agent modes */
   modes: HarnessMode<TState>[];
@@ -706,6 +717,10 @@ export type HarnessEvent =
   | { type: 'state_changed'; state: Record<string, unknown>; changedKeys: string[] }
   | { type: 'agent_start' }
   | { type: 'agent_end'; reason?: 'complete' | 'aborted' | 'error' | 'suspended' }
+  | { type: 'thread_claimed'; threadId: string; runId: string }
+  | { type: 'thread_observing'; threadId: string; runId: string }
+  | { type: 'stream_attached'; threadId: string; runId: string }
+  | { type: 'signal_sent'; threadId: string; runId: string; signalType: string }
   | { type: 'message_start'; message: HarnessMessage }
   | { type: 'message_update'; message: HarnessMessage }
   | { type: 'message_end'; message: HarnessMessage }

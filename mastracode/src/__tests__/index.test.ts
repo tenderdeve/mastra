@@ -23,6 +23,11 @@ vi.mock('@mastra/core/agent', () => ({
 }));
 
 const agentConstructorMock = vi.fn();
+const createDurableAgentMock = vi.fn(({ agent }: { agent: unknown }) => ({ durableWrappedAgent: agent }));
+
+vi.mock('@mastra/core/agent/durable', () => ({
+  createDurableAgent: createDurableAgentMock,
+}));
 
 const harnessConstructorMock = vi.fn();
 const loadSettingsMock = vi.fn();
@@ -73,6 +78,38 @@ function createMockSettings() {
     },
   };
 }
+
+(vi.mock as any)(
+  '@mastra/tavily',
+  () => ({
+    createTavilySearchTool: vi.fn(() => ({})),
+    createTavilyExtractTool: vi.fn(() => ({})),
+  }),
+  { virtual: true },
+);
+vi.mock('../tools/index.js', () => ({
+  createWebSearchTool: vi.fn(() => ({})),
+  createWebExtractTool: vi.fn(() => ({})),
+  hasTavilyKey: vi.fn(() => false),
+  requestSandboxAccessTool: {},
+}));
+vi.mock('../tools', () => ({
+  createWebSearchTool: vi.fn(() => ({})),
+  createWebExtractTool: vi.fn(() => ({})),
+  hasTavilyKey: vi.fn(() => false),
+  requestSandboxAccessTool: {},
+}));
+vi.mock('../tools/index.ts', () => ({
+  createWebSearchTool: vi.fn(() => ({})),
+  createWebExtractTool: vi.fn(() => ({})),
+  hasTavilyKey: vi.fn(() => false),
+  requestSandboxAccessTool: {},
+}));
+vi.mock('../tools/web-search.ts', () => ({
+  createWebSearchTool: vi.fn(() => ({})),
+  createWebExtractTool: vi.fn(() => ({})),
+  hasTavilyKey: vi.fn(() => false),
+}));
 
 vi.mock('@mastra/core/harness', () => ({
   Harness: class {
@@ -128,6 +165,9 @@ vi.mock('./agents/subagents/plan.js', () => ({
 }));
 
 vi.mock('./agents/tools.js', () => ({
+  createDynamicTools: vi.fn(),
+}));
+vi.mock('../agents/tools.js', () => ({
   createDynamicTools: vi.fn(),
 }));
 
@@ -199,6 +239,8 @@ vi.mock('./utils/gateway-sync.js', () => ({
 vi.mock('./utils/project.js', () => ({
   detectProject: vi.fn(() => ({
     mode: 'none',
+    resourceId: 'test-project-resource',
+    name: 'test-project',
     rootPath: process.cwd(),
     packageManager: 'pnpm',
     hasGit: false,
@@ -232,6 +274,7 @@ describe('createMastraCode', () => {
     createStorageMock.mockReturnValue({ storage: {}, backend: 'memory' });
     createVectorStoreMock.mockReset();
     createVectorStoreMock.mockReturnValue({});
+    createDurableAgentMock.mockClear();
     getDynamicMemoryMock.mockReset();
     loadSettingsMock.mockReset();
     loadSettingsMock.mockReturnValue(createMockSettings());
@@ -279,5 +322,32 @@ describe('createMastraCode', () => {
       | { errorProcessors?: Array<{ id?: string }> }
       | undefined;
     expect(agentConfig?.errorProcessors?.map(processor => processor.id)).toContain('stream-error-retry-processor');
+  });
+
+  it('wraps the default code agent and enables durable multiplayer streams', async () => {
+    const { createMastraCode } = await import('../index.js');
+
+    await createMastraCode();
+
+    expect(createDurableAgentMock).toHaveBeenCalledTimes(1);
+    const harnessConfig = harnessConstructorMock.mock.calls[0]?.[0] as
+      | {
+          durableStreams?: { unixSocketPath?: string; attachToActiveThread?: boolean; signalWhileRunning?: boolean };
+          threadLock?: unknown;
+          modes?: Array<{ agent?: unknown }>;
+        }
+      | undefined;
+
+    expect(harnessConfig?.durableStreams).toMatchObject({
+      attachToActiveThread: true,
+      signalWhileRunning: true,
+    });
+    expect(harnessConfig?.durableStreams?.unixSocketPath).toMatch(/mastracode-[a-f0-9]{16}\.sock$/);
+    expect(harnessConfig?.threadLock).toBeUndefined();
+    expect(harnessConfig?.modes?.map(mode => mode.agent)).toEqual([
+      { durableWrappedAgent: expect.anything() },
+      { durableWrappedAgent: expect.anything() },
+      { durableWrappedAgent: expect.anything() },
+    ]);
   });
 });
