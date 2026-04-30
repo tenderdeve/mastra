@@ -10,6 +10,7 @@ import { PUBSUB_SYMBOL } from '../../../workflows/constants';
 import { MessageList } from '../../message-list';
 import { DurableStepIds, DurableAgentDefaults } from '../constants';
 import { globalRunRegistry } from '../run-registry';
+import { signalToMessage } from '../signal-message';
 import { emitFinishEvent } from '../stream-adapter';
 import type {
   DurableToolCallInput,
@@ -180,6 +181,23 @@ export function createDurableAgenticWorkflow(options?: DurableAgenticWorkflowOpt
           currentState: initData,
           executionOutput,
         });
+
+        const registryEntry = globalRunRegistry.get(initData.runId);
+        const pendingSignals = registryEntry?.signalQueue ?? [];
+        if (registryEntry) {
+          registryEntry.signalQueue = [];
+        }
+
+        if (pendingSignals.length > 0) {
+          const messageList = new MessageList();
+          messageList.deserialize(baseUpdate.messageListState);
+          messageList.add(pendingSignals.map(signalToMessage), 'input');
+          baseUpdate.messageListState = messageList.serialize();
+          baseUpdate.lastStepResult = {
+            ...baseUpdate.lastStepResult,
+            isContinued: true,
+          };
+        }
 
         // Extend with core-specific fields
         const newIterationState: IterationState = {
