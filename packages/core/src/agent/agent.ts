@@ -3250,6 +3250,11 @@ export class Agent<
           maxSteps: z.number().min(3).nullish().describe('Maximum number of execution steps for the sub-agent'),
           // using minimum of 3 to ensure if the agent has a tool call, the llm gets executed again after the tool call step, using the tool call result
           // to return a proper llm response
+          // Internal fields restored from suspendState on resume — not provided by the LLM.
+          // They preserve the original sub-agent thread/resource identity across suspend/resume so
+          // the specialist's workflow snapshot remains reachable. See #15734.
+          subAgentThreadId: z.string().nullish(),
+          subAgentResourceId: z.string().nullish(),
         });
 
         const agentOutputSchema = z.object({
@@ -3323,7 +3328,7 @@ export class Agent<
             // generated and the specialist's workflow snapshot (keyed by the original
             // threadId) becomes unreachable, causing the workflow to restart from step 1.
             const subAgentThreadId =
-              (inputData as any).subAgentThreadId ||
+              inputData.subAgentThreadId ||
               (inputData.threadId
                 ? `${inputData.threadId}-${randomUUID()}`
                 : context?.mastra?.generateId({
@@ -3334,7 +3339,7 @@ export class Agent<
                   }) || randomUUID());
 
             const subAgentResourceId =
-              (inputData as any).subAgentResourceId ||
+              inputData.subAgentResourceId ||
               (inputData.resourceId
                 ? `${inputData.resourceId}-${agentName}`
                 : context?.mastra?.generateId({

@@ -536,14 +536,22 @@ export function createToolCallStep<Tools extends ToolSet = ToolSet, OUTPUT = und
           (!isResumeToolCall || !args.suspendedToolRunId);
         if (needsRunIdLookup) {
           let suspendedToolRunId = '';
+          let savedSuspendState: Record<string, unknown> | undefined;
           const messages = messageList.get.all.db();
           const assistantMessages = [...messages].reverse().filter(message => message.role === 'assistant');
 
+          // Single pass: locate the most recent suspended/pending entry for this tool and
+          // capture both its runId and any tool-specific state saved via SuspendOptions
+          // (e.g. subAgentThreadId/subAgentResourceId for agent tools).
           for (const message of assistantMessages) {
             const pendingOrSuspendedTools = (message.content.metadata?.suspendedTools ||
-              message.content.metadata?.pendingToolApprovals) as Record<string, any>;
-            if (pendingOrSuspendedTools && pendingOrSuspendedTools[inputData.toolName]) {
-              suspendedToolRunId = pendingOrSuspendedTools[inputData.toolName].runId;
+              message.content.metadata?.pendingToolApprovals) as Record<string, any> | undefined;
+            const entry = pendingOrSuspendedTools?.[inputData.toolName];
+            if (entry) {
+              suspendedToolRunId = entry.runId;
+              if (entry.suspendState && typeof entry.suspendState === 'object') {
+                savedSuspendState = entry.suspendState;
+              }
               break;
             }
 
@@ -564,20 +572,11 @@ export function createToolCallStep<Tools extends ToolSet = ToolSet, OUTPUT = und
           if (suspendedToolRunId) {
             args.suspendedToolRunId = suspendedToolRunId;
 
-            // Restore any tool-specific state that was saved during suspension
-            // (e.g. subAgentThreadId/subAgentResourceId for agent tools).
+            // Restore any tool-specific state that was saved during suspension.
             // This is a generic mechanism — any data a tool passes through
             // SuspendOptions is automatically preserved and restored.
-            for (const message of assistantMessages) {
-              const pendingOrSuspendedTools = (message.content.metadata?.suspendedTools ||
-                message.content.metadata?.pendingToolApprovals) as Record<string, any>;
-              if (pendingOrSuspendedTools && pendingOrSuspendedTools[inputData.toolName]) {
-                const savedState = pendingOrSuspendedTools[inputData.toolName].suspendState;
-                if (savedState && typeof savedState === 'object') {
-                  Object.assign(args, savedState);
-                }
-                break;
-              }
+            if (savedSuspendState) {
+              Object.assign(args, savedSuspendState);
             }
           }
         }
