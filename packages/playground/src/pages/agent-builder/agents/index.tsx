@@ -14,6 +14,7 @@ import {
 } from '@mastra/playground-ui';
 import { PlusIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { storedAgentToRow } from '@/domains/agent-builder/components/agent-builder-list/adapt';
 import {
   AgentBuilderList,
   AgentBuilderListSkeleton,
@@ -37,7 +38,8 @@ export default function AgentBuilderAgentsPage() {
   const [search, setSearch] = useState('');
   const { Link: FrameworkLink } = useLinkComponent();
 
-  const agents = data?.agents ?? [];
+  const storedAgents = data?.agents ?? [];
+  const agents = useMemo(() => storedAgents.map(storedAgentToRow), [storedAgents]);
 
   const body = (() => {
     if (isCurrentUserLoading || isLoading || (!data && !error)) {

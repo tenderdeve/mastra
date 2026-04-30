@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
-import type { StoredAgentResponse } from '@mastra/client-js';
 import { TooltipProvider } from '@mastra/playground-ui';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentBuilderList, AgentBuilderListSkeleton } from '../agent-builder-list';
-import type { AgentBuilderListProps } from '../agent-builder-list';
+import type { AgentBuilderListProps, LibraryAgentRow } from '../agent-builder-list';
 import { LinkComponentProvider } from '@/lib/framework';
 
 vi.mock('@mastra/playground-ui', async importOriginal => {
@@ -59,32 +58,29 @@ function renderList({ agents, search, ...props }: AgentBuilderListProps) {
   );
 }
 
-const now = new Date().toISOString();
-
-const fixtureAgents: StoredAgentResponse[] = [
+const fixtureAgents: LibraryAgentRow[] = [
   {
     id: 'a1',
-    status: 'active',
-    createdAt: now,
-    updatedAt: now,
     name: 'Alpha Agent',
     description: 'First agent description',
-    instructions: '',
-    model: { provider: 'openai', name: 'gpt-4' },
+    source: 'stored',
     visibility: 'private',
-    authorId: 'user-1',
   },
   {
     id: 'a2',
-    status: 'active',
-    createdAt: now,
-    updatedAt: now,
     name: 'Beta Agent',
     description: 'Second agent description',
-    instructions: '',
-    model: { provider: 'anthropic', name: 'claude' },
+    source: 'stored',
     visibility: 'public',
-    authorId: 'user-2',
+  },
+];
+
+const codeAgents: LibraryAgentRow[] = [
+  {
+    id: 'c1',
+    name: 'Code Agent',
+    description: 'Defined in code',
+    source: 'code',
   },
 ];
 
@@ -152,6 +148,20 @@ describe('AgentBuilderList', () => {
 
     expect(screen.getAllByTestId('library-agent-row')).toHaveLength(fixtureAgents.length);
     expect(screen.queryByText('Private')).toBeNull();
+  });
+
+  it('hides star button and lock icon for code-defined rows', () => {
+    renderList({ agents: codeAgents, rowTestId: 'agent-row' });
+
+    expect(screen.getByText('Code Agent')).toBeTruthy();
+    expect(screen.queryByLabelText('Star agent')).toBeNull();
+    expect(screen.queryByTestId('agent-builder-private-visibility-icon')).toBeNull();
+  });
+
+  it('shows the star button for stored rows', () => {
+    renderList({ agents: fixtureAgents, rowTestId: 'agent-row' });
+
+    expect(screen.getAllByLabelText('Star agent')).toHaveLength(fixtureAgents.length);
   });
 });
 

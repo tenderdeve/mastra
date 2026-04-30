@@ -1,4 +1,3 @@
-import type { ListStoredAgentsParams } from '@mastra/client-js';
 import {
   EmptyState,
   EntityListPageLayout,
@@ -12,19 +11,27 @@ import {
 } from '@mastra/playground-ui';
 import { LibraryIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { codeAgentToRow } from '@/domains/agent-builder/components/agent-builder-list/adapt';
 import {
   AgentBuilderList,
   AgentBuilderListSkeleton,
 } from '@/domains/agent-builder/components/agent-builder-list/agent-builder-list';
-import { useStoredAgents } from '@/domains/agents/hooks/use-stored-agents';
+import { useAgents } from '@/domains/agents/hooks/use-agents';
+import { useBuilderLibraryVisibility } from '@/domains/builder';
 
 export default function AgentBuilderLibraryPage() {
   const [search, setSearch] = useState('');
 
-  const listParams = useMemo<ListStoredAgentsParams>(() => ({ visibility: 'public' }), []);
+  const { data, isLoading, error } = useAgents();
+  const visibility = useBuilderLibraryVisibility();
 
-  const { data, isLoading, error } = useStoredAgents(listParams);
-  const agents = data?.agents ?? [];
+  const agents = useMemo(() => {
+    const all = Object.entries(data ?? {})
+      .filter(([, agent]) => (agent as { source?: 'code' | 'stored' }).source === 'code')
+      .map(([id, agent]) => codeAgentToRow(id, agent));
+    if (visibility.unrestricted) return all;
+    return all.filter(row => visibility.visibleAgents.has(row.id));
+  }, [data, visibility]);
 
   const body = (() => {
     if (isLoading) {
@@ -54,12 +61,17 @@ export default function AgentBuilderLibraryPage() {
     }
 
     if (agents.length === 0) {
+      const restricted = !visibility.unrestricted;
       return (
         <div className="flex items-center justify-center pt-16">
           <EmptyState
             iconSlot={<LibraryIcon className="h-8 w-8 text-neutral3" />}
-            titleSlot="No public agents yet"
-            descriptionSlot="Mark an agent as Public to share it with the team library."
+            titleSlot={restricted ? 'No agents in the library' : 'No code-defined agents'}
+            descriptionSlot={
+              restricted
+                ? 'Ask an admin to expose code-defined agents via library.visibleAgents.'
+                : 'Define agents in code (mastra.addAgent) to surface them here.'
+            }
           />
         </div>
       );
@@ -76,7 +88,7 @@ export default function AgentBuilderLibraryPage() {
             <PageHeader.Title>
               <LibraryIcon /> Library
             </PageHeader.Title>
-            <PageHeader.Description>Agents shared with the team library.</PageHeader.Description>
+            <PageHeader.Description>Code-defined agents available in this deployment.</PageHeader.Description>
           </PageHeader>
         </div>
         <div className="max-w-120">

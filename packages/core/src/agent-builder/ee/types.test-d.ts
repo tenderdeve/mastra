@@ -1,7 +1,9 @@
 import { assertType, describe, expectTypeOf, it } from 'vitest';
 import type {
+  AgentBuilderOptions,
   AgentFeatures,
   BuilderAgentDefaults,
+  BuilderLibraryConfig,
   BuilderModelPolicy,
   CustomProviderEntry,
   DefaultModelEntry,
@@ -167,6 +169,46 @@ describe('agent-builder/ee — Phase 1 contract types', () => {
       // @ts-expect-error active is required
       const p: BuilderModelPolicy = { pickerVisible: true };
       void p;
+    });
+  });
+
+  describe('BuilderLibraryConfig', () => {
+    it('accepts an empty object (omitted allowlist)', () => {
+      const c: BuilderLibraryConfig = {};
+      void c;
+    });
+
+    it('accepts an empty array (lockdown)', () => {
+      const c: BuilderLibraryConfig = { visibleAgents: [] };
+      void c;
+    });
+
+    it('accepts a list of agent IDs', () => {
+      const c: BuilderLibraryConfig = { visibleAgents: ['weather', 'support'] };
+      void c;
+    });
+
+    it('rejects non-string entries', () => {
+      // @ts-expect-error visibleAgents must be string[]
+      const c: BuilderLibraryConfig = { visibleAgents: [1, 2, 3] };
+      void c;
+    });
+  });
+
+  describe('AgentBuilderOptions.configuration.library', () => {
+    it('accepts an optional library slot alongside agent', () => {
+      const opts: AgentBuilderOptions = {
+        configuration: {
+          agent: {},
+          library: { visibleAgents: ['a', 'b'] },
+        },
+      };
+      void opts;
+    });
+
+    it('library is optional', () => {
+      const opts: AgentBuilderOptions = { configuration: { agent: {} } };
+      void opts;
     });
   });
 });

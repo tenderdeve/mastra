@@ -2,6 +2,7 @@ export type {
   AgentBuilderOptions,
   AgentFeatures,
   BuilderAgentDefaults,
+  BuilderLibraryConfig,
   BuilderModelPolicy,
   CustomProviderEntry,
   DefaultModelEntry,
@@ -9,6 +10,12 @@ export type {
   KnownProviderEntry,
   ProviderModelEntry,
 } from './types';
+
+export {
+  resolveLibraryVisibility,
+  type ResolveLibraryVisibilityInputs,
+  type ResolvedLibraryVisibility,
+} from './library';
 
 export {
   assertModelAllowed,

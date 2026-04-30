@@ -90,6 +90,29 @@ export const agentConfigurationSchema = z
   .catchall(z.unknown());
 
 /**
+ * Admin-controlled visibility for the Agent Builder Library page.
+ *
+ * - `visibleAgents` omitted ⇒ unrestricted (all eligible agents shown).
+ * - `visibleAgents: []`     ⇒ empty Library (explicit lockdown).
+ * - `visibleAgents: [...ids]` ⇒ only the listed IDs shown.
+ */
+export const builderLibraryConfigSchema = z
+  .object({
+    visibleAgents: z.array(z.string()).optional(),
+  })
+  .strict();
+
+/**
+ * Resolved Library visibility returned in `BuilderSettingsResponse`.
+ * `unrestricted` is explicit so the client never has to disambiguate
+ * `undefined` vs `[]`.
+ */
+export const builderLibrarySchema = z.object({
+  visibleAgents: z.array(z.string()),
+  unrestricted: z.boolean(),
+});
+
+/**
  * Derived `BuilderModelPolicy`. Server-owned shape so the playground hook is a
  * thin selector and the UI never re-derives policy from `features` / `configuration`.
  *
@@ -118,9 +141,15 @@ export const builderSettingsResponseSchema = z.object({
   configuration: z
     .object({
       agent: agentConfigurationSchema.optional(),
+      library: builderLibraryConfigSchema.optional(),
     })
     .optional(),
   modelPolicy: builderModelPolicySchema.optional(),
+  /**
+   * Resolved Library visibility. Always present when the builder is enabled.
+   * Omitted when the builder is disabled (matches `modelPolicy` when inactive).
+   */
+  library: builderLibrarySchema.optional(),
   /**
    * Non-fatal warnings produced by `EditorAgentBuilder`'s constructor-time
    * validation (e.g. allowlist entries with unknown provider strings). UI
@@ -136,3 +165,5 @@ export type ProviderModelEntrySchema = z.infer<typeof providerModelEntrySchema>;
 export type DefaultModelEntrySchema = z.infer<typeof defaultModelEntrySchema>;
 export type AgentModelsSchema = z.infer<typeof agentModelsSchema>;
 export type BuilderModelPolicySchema = z.infer<typeof builderModelPolicySchema>;
+export type BuilderLibraryConfigSchema = z.infer<typeof builderLibraryConfigSchema>;
+export type BuilderLibrarySchema = z.infer<typeof builderLibrarySchema>;

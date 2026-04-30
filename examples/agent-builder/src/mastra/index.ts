@@ -66,6 +66,9 @@ export const mastra = new Mastra({
             },
           },
         },
+        library: {
+          visibleAgents: [],
+        }
       },
     },
   }),

@@ -64,96 +64,119 @@ function renderPage() {
   );
 }
 
-const baseAgent = {
-  status: 'draft' as const,
-  visibility: 'public' as const,
-  instructions: '',
-  model: { provider: 'openai', name: 'gpt-4' },
-  authorId: 'user-1',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+type AgentFixture = {
+  id: string;
+  name: string;
+  description?: string;
+  source: 'code' | 'stored';
 };
+
+function agentsResponse(agents: AgentFixture[]) {
+  return Object.fromEntries(
+    agents.map(a => [
+      a.id,
+      {
+        id: a.id,
+        name: a.name,
+        description: a.description ?? '',
+        source: a.source,
+        instructions: '',
+        tools: {},
+        workflows: {},
+        agents: {},
+        provider: 'openai',
+        modelId: 'gpt-4',
+      },
+    ]),
+  );
+}
+
+function mockAgents(agents: AgentFixture[]) {
+  server.use(http.get(`${BASE_URL}/api/agents`, () => HttpResponse.json(agentsResponse(agents))));
+}
+
+function mockBuilderSettings(library?: { visibleAgents: string[]; unrestricted: boolean }) {
+  server.use(
+    http.get(`${BASE_URL}/api/editor/builder/settings`, () =>
+      HttpResponse.json({
+        enabled: true,
+        features: { agent: {} },
+        configuration: { agent: {} },
+        modelPolicy: { active: false },
+        modelPolicyWarnings: [],
+        ...(library ? { library } : {}),
+      }),
+    ),
+  );
+}
 
 describe('AgentBuilderLibraryPage', () => {
   afterEach(() => {
     cleanup();
   });
 
-  it('passes visibility=public to the API without a status filter', async () => {
-    let capturedSearch: URLSearchParams | null = null;
-    server.use(
-      http.get(`${BASE_URL}/api/stored/agents`, ({ request }) => {
-        capturedSearch = new URL(request.url).searchParams;
-        return HttpResponse.json({
-          agents: [
-            { ...baseAgent, id: 'lib-1', name: 'Public Alpha', description: 'Alpha desc' },
-            { ...baseAgent, id: 'lib-2', name: 'Public Beta', description: 'Beta desc' },
-          ],
-          total: 2,
-          page: 1,
-          perPage: 100,
-          hasMore: false,
-        });
-      }),
-    );
+  it('renders code-defined agents and filters out stored-source rows', async () => {
+    mockBuilderSettings();
+    mockAgents([
+      { id: 'c1', name: 'Code One', description: 'Defined in code', source: 'code' },
+      { id: 'c2', name: 'Code Two', description: 'Also code', source: 'code' },
+      { id: 's1', name: 'Stored One', description: 'Stored agent', source: 'stored' },
+    ]);
 
     renderPage();
 
     await waitFor(() => {
-      expect(capturedSearch).not.toBeNull();
+      expect(screen.getByText('Code One')).toBeTruthy();
     });
-    expect(capturedSearch!.get('visibility')).toBe('public');
-    expect(capturedSearch!.get('status')).toBeNull();
-  });
-
-  it('renders rows from the response with view links', async () => {
-    server.use(
-      http.get(`${BASE_URL}/api/stored/agents`, () =>
-        HttpResponse.json({
-          agents: [
-            { ...baseAgent, id: 'lib-1', name: 'Public Alpha', description: 'Alpha desc' },
-            { ...baseAgent, id: 'lib-2', name: 'Public Beta', description: 'Beta desc' },
-          ],
-          total: 2,
-          page: 1,
-          perPage: 100,
-          hasMore: false,
-        }),
-      ),
-    );
-
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByText('Public Alpha')).toBeTruthy();
-    });
-    expect(screen.getByText('Public Beta')).toBeTruthy();
+    expect(screen.getByText('Code Two')).toBeTruthy();
+    expect(screen.queryByText('Stored One')).toBeNull();
 
     const rows = screen.getAllByTestId('library-agent-row');
     expect(rows).toHaveLength(2);
-    expect(rows[0].getAttribute('href')).toBe('/agent-builder/agents/lib-1/view');
-    expect(rows[1].getAttribute('href')).toBe('/agent-builder/agents/lib-2/view');
+    expect(rows[0].getAttribute('href')).toBe('/agent-builder/agents/c1/view');
   });
 
-  it('shows the empty state when the API returns no agents', async () => {
-    server.use(
-      http.get(`${BASE_URL}/api/stored/agents`, () =>
-        HttpResponse.json({ agents: [], total: 0, page: 1, perPage: 100, hasMore: false }),
-      ),
-    );
+  it('respects library.visibleAgents allowlist', async () => {
+    mockBuilderSettings({ visibleAgents: ['c1'], unrestricted: false });
+    mockAgents([
+      { id: 'c1', name: 'Allowed', description: '', source: 'code' },
+      { id: 'c2', name: 'Hidden', description: '', source: 'code' },
+    ]);
 
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText('No public agents yet')).toBeTruthy();
+      expect(screen.getByText('Allowed')).toBeTruthy();
+    });
+    expect(screen.queryByText('Hidden')).toBeNull();
+  });
+
+  it('shows the restricted empty state when allowlist is empty', async () => {
+    mockBuilderSettings({ visibleAgents: [], unrestricted: false });
+    mockAgents([{ id: 'c1', name: 'Code One', description: '', source: 'code' }]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('No agents in the library')).toBeTruthy();
     });
     expect(screen.queryByTestId('library-agent-row')).toBeNull();
   });
 
-  it('shows the error state when the API returns 500', async () => {
-    server.use(
-      http.get(`${BASE_URL}/api/stored/agents`, () => HttpResponse.json({ message: 'boom' }, { status: 500 })),
-    );
+  it('shows the unrestricted empty state when no code agents exist', async () => {
+    mockBuilderSettings();
+    mockAgents([{ id: 's1', name: 'Stored Only', description: '', source: 'stored' }]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('No code-defined agents')).toBeTruthy();
+    });
+  });
+
+  it('shows the error state when /agents returns 500', async () => {
+    mockBuilderSettings();
+    server.use(http.get(`${BASE_URL}/api/agents`, () => HttpResponse.json({ message: 'boom' }, { status: 500 })));
 
     renderPage();
 
@@ -162,17 +185,14 @@ describe('AgentBuilderLibraryPage', () => {
     });
   });
 
-  it('shows SessionExpired when the API returns 401', async () => {
+  it('shows SessionExpired when /agents returns 401', async () => {
+    mockBuilderSettings();
     server.use(
-      http.get(`${BASE_URL}/api/stored/agents`, () => HttpResponse.json({ message: 'unauthorized' }, { status: 401 })),
+      http.get(`${BASE_URL}/api/agents`, () => HttpResponse.json({ message: 'unauthorized' }, { status: 401 })),
     );
 
     renderPage();
 
-    await waitFor(() => {
-      expect(screen.queryByText('No public agents yet')).toBeNull();
-    });
-    // SessionExpired component renders "Session expired" copy by default
     await waitFor(() => {
       expect(screen.getByText(/session expired/i)).toBeTruthy();
     });

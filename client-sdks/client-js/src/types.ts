@@ -9,7 +9,12 @@ import type {
   AgentInstructions,
 } from '@mastra/core/agent';
 import type { MessageListInput } from '@mastra/core/agent/message-list';
-import type { BuilderModelPolicy, DefaultModelEntry, ProviderModelEntry } from '@mastra/core/agent-builder/ee';
+import type {
+  BuilderLibraryConfig,
+  BuilderModelPolicy,
+  DefaultModelEntry,
+  ProviderModelEntry,
+} from '@mastra/core/agent-builder/ee';
 import type { MastraScorerEntry, ScoreRowData } from '@mastra/core/evals';
 import type { CoreMessage, Provider as ModelProviderId } from '@mastra/core/llm';
 import type { BaseLogMessage, LogLevel } from '@mastra/core/logger';
@@ -2818,7 +2823,7 @@ export interface BuilderAgentFeatures {
  * Re-exported from `@mastra/core/agent-builder/ee` so SDK consumers don't need
  * a second import for admin model configuration types. Owned by core.
  */
-export type { BuilderModelPolicy, DefaultModelEntry, ProviderModelEntry, ModelProviderId };
+export type { BuilderLibraryConfig, BuilderModelPolicy, DefaultModelEntry, ProviderModelEntry, ModelProviderId };
 
 /**
  * Response from GET /editor/builder/settings
@@ -2830,6 +2835,7 @@ export interface BuilderSettingsResponse {
   };
   configuration?: {
     agent?: Record<string, unknown>;
+    library?: BuilderLibraryConfig;
   };
   /**
    * Server-derived model policy. Always present; `{ active: false }` when no
@@ -2838,8 +2844,18 @@ export interface BuilderSettingsResponse {
    */
   modelPolicy?: BuilderModelPolicy;
   /**
+   * Resolved Library visibility. Present when the builder is enabled.
+   * `unrestricted: true` ⇒ admin omitted the allowlist; show all eligible agents.
+   * `unrestricted: false` ⇒ only `visibleAgents` IDs should be shown.
+   */
+  library?: {
+    visibleAgents: string[];
+    unrestricted: boolean;
+  };
+  /**
    * Non-fatal warnings produced by builder config validation (e.g. allowlist
-   * entries with unknown providers that aren't tagged `kind: 'custom'`).
+   * entries with unknown providers that aren't tagged `kind: 'custom'`, or
+   * `library.visibleAgents` IDs that don't match any registered agent).
    * Only present when there is at least one warning.
    */
   modelPolicyWarnings?: string[];

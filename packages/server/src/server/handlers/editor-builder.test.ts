@@ -5,9 +5,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { GET_EDITOR_BUILDER_SETTINGS_ROUTE } from './editor-builder';
 
 // Minimal mock mastra for handler testing
-const createMockMastra = (editor?: Partial<IMastraEditor>) =>
+const createMockMastra = (editor?: Partial<IMastraEditor>, agents: Record<string, { source?: string }> = {}) =>
   ({
     getEditor: () => editor,
+    listAgents: () => agents,
   }) as any;
 
 describe('GET /editor/builder/settings', () => {
@@ -64,6 +65,7 @@ describe('GET /editor/builder/settings', () => {
       features: { agent: { tools: true, memory: true } },
       configuration: { agent: { maxTokens: 4096 } },
       modelPolicy: { active: false },
+      library: { visibleAgents: [], unrestricted: true },
     });
   });
 
@@ -120,6 +122,124 @@ describe('GET /editor/builder/settings', () => {
     });
 
     await expect(GET_EDITOR_BUILDER_SETTINGS_ROUTE.handler({ mastra } as any)).rejects.toThrow('License check failed');
+  });
+
+  describe('library visibility', () => {
+    it('returns unrestricted: true when no library config is set', async () => {
+      const mockBuilder: IAgentBuilder = {
+        enabled: true,
+        getFeatures: () => ({ agent: { tools: true } }),
+        getConfiguration: () => ({ agent: {} }),
+      };
+      const mastra = createMockMastra(
+        {
+          hasEnabledBuilderConfig: () => true,
+          resolveBuilder: vi.fn().mockResolvedValue(mockBuilder),
+        },
+        { weather: { source: 'code' }, support: { source: 'code' } },
+      );
+      const result = await GET_EDITOR_BUILDER_SETTINGS_ROUTE.handler({ mastra } as any);
+
+      expect(result).toMatchObject({
+        library: { visibleAgents: [], unrestricted: true },
+      });
+      expect((result as any).modelPolicyWarnings).toBeUndefined();
+    });
+
+    it('returns the resolved allowlist when visibleAgents is set', async () => {
+      const mockBuilder: IAgentBuilder = {
+        enabled: true,
+        getFeatures: () => ({ agent: { tools: true } }),
+        getConfiguration: () => ({
+          agent: {},
+          library: { visibleAgents: ['weather'] },
+        }),
+      };
+      const mastra = createMockMastra(
+        {
+          hasEnabledBuilderConfig: () => true,
+          resolveBuilder: vi.fn().mockResolvedValue(mockBuilder),
+        },
+        { weather: { source: 'code' }, support: { source: 'code' } },
+      );
+      const result = await GET_EDITOR_BUILDER_SETTINGS_ROUTE.handler({ mastra } as any);
+
+      expect(result).toMatchObject({
+        library: { visibleAgents: ['weather'], unrestricted: false },
+      });
+    });
+
+    it('drops unknown IDs and surfaces them via modelPolicyWarnings', async () => {
+      const mockBuilder: IAgentBuilder = {
+        enabled: true,
+        getFeatures: () => ({ agent: { tools: true } }),
+        getConfiguration: () => ({
+          agent: {},
+          library: { visibleAgents: ['weather', 'ghost'] },
+        }),
+      };
+      const mastra = createMockMastra(
+        {
+          hasEnabledBuilderConfig: () => true,
+          resolveBuilder: vi.fn().mockResolvedValue(mockBuilder),
+        },
+        { weather: { source: 'code' } },
+      );
+      const result = await GET_EDITOR_BUILDER_SETTINGS_ROUTE.handler({ mastra } as any);
+
+      expect(result).toMatchObject({
+        library: { visibleAgents: ['weather'], unrestricted: false },
+      });
+      expect((result as any).modelPolicyWarnings).toHaveLength(1);
+      expect((result as any).modelPolicyWarnings[0]).toContain('"ghost"');
+    });
+
+    it('returns empty allowlist (lockdown) when visibleAgents is []', async () => {
+      const mockBuilder: IAgentBuilder = {
+        enabled: true,
+        getFeatures: () => ({ agent: { tools: true } }),
+        getConfiguration: () => ({
+          agent: {},
+          library: { visibleAgents: [] },
+        }),
+      };
+      const mastra = createMockMastra(
+        {
+          hasEnabledBuilderConfig: () => true,
+          resolveBuilder: vi.fn().mockResolvedValue(mockBuilder),
+        },
+        { weather: { source: 'code' } },
+      );
+      const result = await GET_EDITOR_BUILDER_SETTINGS_ROUTE.handler({ mastra } as any);
+
+      expect(result).toMatchObject({
+        library: { visibleAgents: [], unrestricted: false },
+      });
+    });
+
+    it('excludes stored-source agents from registered IDs', async () => {
+      const mockBuilder: IAgentBuilder = {
+        enabled: true,
+        getFeatures: () => ({ agent: { tools: true } }),
+        getConfiguration: () => ({
+          agent: {},
+          library: { visibleAgents: ['stored-only'] },
+        }),
+      };
+      const mastra = createMockMastra(
+        {
+          hasEnabledBuilderConfig: () => true,
+          resolveBuilder: vi.fn().mockResolvedValue(mockBuilder),
+        },
+        { 'stored-only': { source: 'stored' }, weather: { source: 'code' } },
+      );
+      const result = await GET_EDITOR_BUILDER_SETTINGS_ROUTE.handler({ mastra } as any);
+
+      expect(result).toMatchObject({
+        library: { visibleAgents: [], unrestricted: false },
+      });
+      expect((result as any).modelPolicyWarnings[0]).toContain('"stored-only"');
+    });
   });
 });
 

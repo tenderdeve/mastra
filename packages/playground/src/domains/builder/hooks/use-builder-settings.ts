@@ -51,3 +51,19 @@ export const useBuilderModelPolicy = (): BuilderModelPolicy => {
   const { data } = useBuilderSettings();
   return data?.modelPolicy ?? INACTIVE_POLICY;
 };
+
+/**
+ * Resolved Library visibility selector. Returns the admin-controlled allowlist
+ * for the Agent Builder Library page.
+ *
+ * Defaults to `unrestricted: true` while loading or when the server omitted
+ * the `library` field — so `Library` shows all eligible agents in those cases.
+ */
+export const useBuilderLibraryVisibility = (): { unrestricted: boolean; visibleAgents: Set<string> } => {
+  const { data } = useBuilderSettings();
+  const lib = data?.library;
+  if (!lib || lib.unrestricted) {
+    return { unrestricted: true, visibleAgents: new Set() };
+  }
+  return { unrestricted: false, visibleAgents: new Set(lib.visibleAgents) };
+};

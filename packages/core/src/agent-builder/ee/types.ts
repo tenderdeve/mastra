@@ -112,6 +112,22 @@ export interface AgentFeatures {
 }
 
 /**
+ * Admin-controlled visibility for the Agent Builder Library page.
+ *
+ * Semantics:
+ * - `visibleAgents` omitted (undefined) ⇒ unrestricted; show all eligible agents.
+ * - `visibleAgents: []` ⇒ hide all agents (explicit lockdown).
+ * - `visibleAgents: [...ids]` ⇒ show only the listed agent IDs.
+ *
+ * IDs are matched against `mastra.listAgents()` at request time. Unknown IDs
+ * are dropped from the resolved list and surfaced as warnings.
+ */
+export interface BuilderLibraryConfig {
+  /** Allowlist of agent IDs visible in the Library. Omit to show all. */
+  visibleAgents?: string[];
+}
+
+/**
  * Configuration for the Agent Builder EE feature.
  * Passed to `MastraEditorConfig.builder`.
  *
@@ -140,6 +156,7 @@ export interface AgentBuilderOptions {
    */
   configuration?: {
     agent?: BuilderAgentDefaults;
+    library?: BuilderLibraryConfig;
   };
 }
 
@@ -153,7 +170,8 @@ export interface IAgentBuilder {
   getConfiguration(): AgentBuilderOptions['configuration'];
   /**
    * Optional warnings produced during construction-time validation
-   * (e.g. allowlist entries with unknown providers that lack `kind: 'custom'`).
+   * (e.g. allowlist entries with unknown providers that lack `kind: 'custom'`,
+   * or `library.visibleAgents` entries that don't match a registered agent).
    * Surfaced via `GET /editor/builder/settings.modelPolicyWarnings` for admin UI display.
    */
   getModelPolicyWarnings?(): string[];

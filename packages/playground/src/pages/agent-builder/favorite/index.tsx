@@ -12,6 +12,7 @@ import {
 } from '@mastra/playground-ui';
 import { StarIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { storedAgentToRow } from '@/domains/agent-builder/components/agent-builder-list/adapt';
 import {
   AgentBuilderList,
   AgentBuilderListSkeleton,
@@ -30,7 +31,8 @@ export default function AgentBuilderFavoritePage() {
   );
 
   const { data, isLoading, error } = useStoredAgents(listParams);
-  const agents = data?.agents ?? [];
+  const storedAgents = data?.agents ?? [];
+  const agents = useMemo(() => storedAgents.map(storedAgentToRow), [storedAgents]);
 
   const body = (() => {
     if (isLoading) {

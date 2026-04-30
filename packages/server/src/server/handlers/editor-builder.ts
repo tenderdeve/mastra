@@ -1,6 +1,6 @@
 import type { Mastra } from '@mastra/core';
 
-import { builderToModelPolicy } from '@mastra/core/agent-builder/ee';
+import { builderToModelPolicy, resolveLibraryVisibility } from '@mastra/core/agent-builder/ee';
 import { HTTPException } from '../http-exception';
 import { agentFeaturesSchema, builderSettingsResponseSchema } from '../schemas/editor-builder';
 import type { AgentFeatures } from '../schemas/editor-builder';
@@ -86,13 +86,29 @@ export const GET_EDITOR_BUILDER_SETTINGS_ROUTE = createRoute({
         return { enabled: false, modelPolicy: { active: false } };
       }
 
-      const modelPolicyWarnings = builder.getModelPolicyWarnings?.() ?? [];
+      const baseWarnings = builder.getModelPolicyWarnings?.() ?? [];
+
+      const configuration = builder.getConfiguration();
+
+      // Resolve Library visibility against the registered (non-stored) agents.
+      const allRegistered = mastra.listAgents();
+      const registeredAgentIds = Object.entries(allRegistered)
+        .filter(([, agent]) => (agent as { source?: string }).source !== 'stored')
+        .map(([id]) => id);
+
+      const library = resolveLibraryVisibility({
+        config: configuration?.library,
+        registeredAgentIds,
+      });
+
+      const modelPolicyWarnings = [...baseWarnings, ...library.warnings];
 
       return {
         enabled: true,
         features: builder.getFeatures(),
-        configuration: builder.getConfiguration(),
+        configuration,
         modelPolicy: builderToModelPolicy(builder),
+        library: { visibleAgents: library.visibleAgents, unrestricted: library.unrestricted },
         ...(modelPolicyWarnings.length > 0 ? { modelPolicyWarnings } : {}),
       };
     } catch (error) {
