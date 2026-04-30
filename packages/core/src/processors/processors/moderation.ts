@@ -5,12 +5,15 @@ import type { MastraDBMessage } from '../../agent/message-list';
 import { TripWire } from '../../agent/trip-wire';
 import type { ProviderOptions } from '../../llm/model/provider-options';
 import type { MastraModelConfig } from '../../llm/model/shared.types';
+import type { Mastra } from '../../mastra';
 import type { ObservabilityContext } from '../../observability';
 import { resolveObservabilityContext } from '../../observability';
 import type { PublicSchema } from '../../schema';
 import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
+import type { ProcessorCache } from '../processor-cache';
+import { createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -103,6 +106,15 @@ export interface ModerationOptions extends LastMessageOnlyOption {
    * ```
    */
   providerOptions?: ProviderOptions;
+
+  /**
+   * Enable caching of detection results to avoid redundant LLM calls.
+   *
+   * - `true`: Use the Mastra instance's server cache (requires registering with Mastra)
+   * - `ProcessorCache`: Use a custom cache implementation
+   * - `undefined`/`false`: No caching (default)
+   */
+  cache?: boolean | ProcessorCache;
 }
 
 /**
@@ -116,6 +128,15 @@ export class ModerationProcessor implements Processor<'moderation'> {
   readonly id = 'moderation';
   readonly name = 'Moderation';
 
+  __registerMastra(mastra: Mastra<any, any, any, any, any, any, any, any, any, any>): void {
+    if (this.cacheEnabled === true) {
+      const serverCache = mastra.getServerCache();
+      if (serverCache) {
+        this.cache = createProcessorCacheFromServerCache(serverCache);
+      }
+    }
+  }
+
   private moderationAgent: Agent;
   private categories: string[];
   private threshold: number;
@@ -125,6 +146,8 @@ export class ModerationProcessor implements Processor<'moderation'> {
   private lastMessageOnly: boolean;
   private structuredOutputOptions?: ModerationOptions['structuredOutputOptions'];
   private providerOptions?: ProviderOptions;
+  private cache?: ProcessorCache;
+  private cacheEnabled: boolean | ProcessorCache;
 
   // Default OpenAI moderation categories
   private static readonly DEFAULT_CATEGORIES = [
@@ -150,6 +173,10 @@ export class ModerationProcessor implements Processor<'moderation'> {
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
     this.providerOptions = options.providerOptions;
+    this.cacheEnabled = options.cache ?? false;
+    if (typeof options.cache === 'object') {
+      this.cache = options.cache;
+    }
 
     // Create internal moderation agent
     this.moderationAgent = new Agent({
@@ -275,6 +302,18 @@ export class ModerationProcessor implements Processor<'moderation'> {
     isStream = false,
     observabilityContext?: ObservabilityContext,
   ): Promise<ModerationResult> {
+    if (this.cache) {
+      const cacheKey = createProcessorCacheKey(this.id, content, {
+        categories: this.categories,
+        threshold: this.threshold,
+        isStream,
+      });
+      const cached = await this.cache.get<ModerationResult>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const prompt = this.createModerationPrompt(content, isStream);
 
     try {
@@ -326,6 +365,15 @@ export class ModerationProcessor implements Processor<'moderation'> {
         });
 
         result = response.object as ModerationResult;
+      }
+
+      if (this.cache) {
+        const cacheKey = createProcessorCacheKey(this.id, content, {
+          categories: this.categories,
+          threshold: this.threshold,
+          isStream,
+        });
+        await this.cache.set(cacheKey, result).catch(() => {});
       }
 
       return result;

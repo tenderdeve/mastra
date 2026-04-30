@@ -6,12 +6,15 @@ import type { MastraDBMessage } from '../../agent/message-list';
 import { TripWire } from '../../agent/trip-wire';
 import type { ProviderOptions } from '../../llm/model/provider-options';
 import type { MastraModelConfig } from '../../llm/model/shared.types';
+import type { Mastra } from '../../mastra';
 import type { ObservabilityContext } from '../../observability';
 import { resolveObservabilityContext } from '../../observability';
 import type { PublicSchema } from '../../schema';
 import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
+import type { ProcessorCache } from '../processor-cache';
+import { createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -146,6 +149,15 @@ export interface PIIDetectorOptions extends LastMessageOnlyOption {
    * ```
    */
   providerOptions?: ProviderOptions;
+
+  /**
+   * Enable caching of detection results to avoid redundant LLM calls.
+   *
+   * - `true`: Use the Mastra instance's server cache (requires registering with Mastra)
+   * - `ProcessorCache`: Use a custom cache implementation
+   * - `undefined`/`false`: No caching (default)
+   */
+  cache?: boolean | ProcessorCache;
 }
 
 /**
@@ -159,6 +171,15 @@ export class PIIDetector implements Processor<'pii-detector'> {
   readonly id = 'pii-detector';
   readonly name = 'PII Detector';
 
+  __registerMastra(mastra: Mastra<any, any, any, any, any, any, any, any, any, any>): void {
+    if (this.cacheEnabled === true) {
+      const serverCache = mastra.getServerCache();
+      if (serverCache) {
+        this.cache = createProcessorCacheFromServerCache(serverCache);
+      }
+    }
+  }
+
   private detectionAgent: Agent;
   private detectionTypes: string[];
   private threshold: number;
@@ -169,6 +190,8 @@ export class PIIDetector implements Processor<'pii-detector'> {
   private lastMessageOnly: boolean;
   private structuredOutputOptions?: PIIDetectorOptions['structuredOutputOptions'];
   private providerOptions?: ProviderOptions;
+  private cache?: ProcessorCache;
+  private cacheEnabled: boolean | ProcessorCache;
 
   // Default PII types based on common privacy regulations and comprehensive PII detection
   private static readonly DEFAULT_DETECTION_TYPES = [
@@ -197,6 +220,10 @@ export class PIIDetector implements Processor<'pii-detector'> {
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
     this.providerOptions = options.providerOptions;
+    this.cacheEnabled = options.cache ?? false;
+    if (typeof options.cache === 'object') {
+      this.cache = options.cache;
+    }
 
     // Create internal detection agent
     this.detectionAgent = new Agent({
@@ -272,6 +299,18 @@ export class PIIDetector implements Processor<'pii-detector'> {
    * Detect PII using the internal agent
    */
   private async detectPII(content: string, observabilityContext?: ObservabilityContext): Promise<PIIDetectionResult> {
+    if (this.cache) {
+      const cacheKey = createProcessorCacheKey(this.id, content, {
+        detectionTypes: this.detectionTypes,
+        threshold: this.threshold,
+        strategy: this.strategy,
+      });
+      const cached = await this.cache.get<PIIDetectionResult>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const prompt = this.createDetectionPrompt(content);
 
     try {
@@ -359,6 +398,15 @@ export class PIIDetector implements Processor<'pii-detector'> {
             redacted_value: detection.redacted_value || this.redactValue(detection.value, detection.type),
           }));
         }
+      }
+
+      if (this.cache) {
+        const cacheKey = createProcessorCacheKey(this.id, content, {
+          detectionTypes: this.detectionTypes,
+          threshold: this.threshold,
+          strategy: this.strategy,
+        });
+        await this.cache.set(cacheKey, result).catch(() => {});
       }
 
       return result;

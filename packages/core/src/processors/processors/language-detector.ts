@@ -5,10 +5,13 @@ import type { MastraDBMessage } from '../../agent/message-list';
 import { TripWire } from '../../agent/trip-wire';
 import type { ProviderOptions } from '../../llm/model/provider-options';
 import type { MastraModelConfig } from '../../llm/model/shared.types';
+import type { Mastra } from '../../mastra';
 import type { ObservabilityContext } from '../../observability';
 import { resolveObservabilityContext } from '../../observability';
 import { standardSchemaToJSONSchema } from '../../schema';
 import type { Processor } from '../index';
+import type { ProcessorCache } from '../processor-cache';
+import { createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -113,6 +116,15 @@ export interface LanguageDetectorOptions extends LastMessageOnlyOption {
    * ```
    */
   providerOptions?: ProviderOptions;
+
+  /**
+   * Enable caching of detection results to avoid redundant LLM calls.
+   *
+   * - `true`: Use the Mastra instance's server cache (requires registering with Mastra)
+   * - `ProcessorCache`: Use a custom cache implementation
+   * - `undefined`/`false`: No caching (default)
+   */
+  cache?: boolean | ProcessorCache;
 }
 
 /**
@@ -126,6 +138,15 @@ export class LanguageDetector implements Processor<'language-detector'> {
   readonly id = 'language-detector';
   readonly name = 'Language Detector';
 
+  __registerMastra(mastra: Mastra<any, any, any, any, any, any, any, any, any, any>): void {
+    if (this.cacheEnabled === true) {
+      const serverCache = mastra.getServerCache();
+      if (serverCache) {
+        this.cache = createProcessorCacheFromServerCache(serverCache);
+      }
+    }
+  }
+
   private detectionAgent: Agent;
   private targetLanguages: string[];
   private threshold: number;
@@ -136,6 +157,8 @@ export class LanguageDetector implements Processor<'language-detector'> {
   private translationQuality: 'speed' | 'quality' | 'balanced';
   private lastMessageOnly: boolean;
   private providerOptions?: ProviderOptions;
+  private cache?: ProcessorCache;
+  private cacheEnabled: boolean | ProcessorCache;
 
   // Default target language
   private static readonly DEFAULT_TARGET_LANGUAGES = ['English', 'en'];
@@ -191,6 +214,10 @@ export class LanguageDetector implements Processor<'language-detector'> {
     this.translationQuality = options.translationQuality || 'quality';
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.providerOptions = options.providerOptions;
+    this.cacheEnabled = options.cache ?? false;
+    if (typeof options.cache === 'object') {
+      this.cache = options.cache;
+    }
 
     // Create internal detection and translation agent
     this.detectionAgent = new Agent({
@@ -285,6 +312,18 @@ export class LanguageDetector implements Processor<'language-detector'> {
     content: string,
     observabilityContext?: ObservabilityContext,
   ): Promise<LanguageDetectionResult> {
+    if (this.cache) {
+      const cacheKey = createProcessorCacheKey(this.id, content, {
+        targetLanguages: this.targetLanguages,
+        threshold: this.threshold,
+        strategy: this.strategy,
+      });
+      const cached = await this.cache.get<LanguageDetectionResult>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const prompt = this.createDetectionPrompt(content);
 
     try {
@@ -329,6 +368,15 @@ export class LanguageDetector implements Processor<'language-detector'> {
 
       if (result.translated_text && !result.confidence) {
         result.confidence = 0.95;
+      }
+
+      if (this.cache) {
+        const cacheKey = createProcessorCacheKey(this.id, content, {
+          targetLanguages: this.targetLanguages,
+          threshold: this.threshold,
+          strategy: this.strategy,
+        });
+        await this.cache.set(cacheKey, result).catch(() => {});
       }
 
       return result;

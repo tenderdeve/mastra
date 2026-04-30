@@ -1,3 +1,4 @@
+export { type ProcessorCache, createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
 export { UnicodeNormalizer, type UnicodeNormalizerOptions } from './unicode-normalizer';
 export {
   ModerationProcessor,
