@@ -193,7 +193,7 @@ describe('Harness durable multiplayer', () => {
   let coordinator: UnixSocketDurableRunCoordinator | undefined;
   const harnesses: Array<Harness<any>> = [];
 
-  it('completes a simple owner message without observers', async () => {
+  it('completes sequential owner messages without observers', async () => {
     tempDir = createTempDir();
     const socketPath = join(tempDir, 'coordinator.sock');
     const agent = createDurableAgent({
@@ -247,10 +247,20 @@ describe('Harness durable multiplayer', () => {
       harness.sendMessage({ content: 'hi' }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('simple send timed out')), 1000)),
     ]);
+    expect(
+      await (harness as any).durableRunClient.getActiveRun({
+        resourceId: 'simple-resource',
+        threadId: harness.getCurrentThreadId(),
+      }),
+    ).toBeUndefined();
+    await Promise.race([
+      harness.sendMessage({ content: 'hi again' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('second simple send timed out')), 1000)),
+    ]);
 
     expect(events.some(event => event.type === 'agent_end' && event.reason === 'complete')).toBe(true);
-    expect(events.some(event => event.type === 'thread_observing')).toBe(false);
-    expect(events.some(event => event.type === 'stream_attached')).toBe(false);
+    expect(events.some(event => event.type === 'thread_observing')).toBe(true);
+    expect(events.some(event => event.type === 'stream_attached')).toBe(true);
   });
 
   afterEach(async () => {
@@ -455,6 +465,7 @@ describe('Harness durable multiplayer', () => {
     await waitFor(() => observerEvents.some(event => event.type === 'agent_end'), 'observer stream to end');
 
     expect(ownerEvents.some(event => event.type === 'thread_claimed')).toBe(true);
+    expect(ownerEvents.some(event => event.type === 'signal_sent')).toBe(true);
     expect(observerEvents.some(event => event.type === 'thread_observing')).toBe(true);
     expect(signalerEvents.some(event => event.type === 'signal_sent')).toBe(true);
     expect(
@@ -473,6 +484,7 @@ describe('Harness durable multiplayer', () => {
           JSON.stringify(event.message).includes('signal from another harness'),
       ),
     ).toBe(true);
+    expect(JSON.stringify(prompts[0])).toContain('start');
     expect(JSON.stringify(prompts[1])).toContain('signal from another harness');
     expect(ownerEvents.some(event => event.type === 'om_status')).toBe(true);
     expect(observerEvents.some(event => event.type === 'om_status')).toBe(true);

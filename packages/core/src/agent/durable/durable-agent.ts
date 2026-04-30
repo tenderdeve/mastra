@@ -18,6 +18,7 @@ import { AGENT_STREAM_TOPIC } from './constants';
 import { runDurableStreamUntilIdle } from './durable-stream-until-idle';
 import { prepareForDurableExecution } from './preparation';
 import { ExtendedRunRegistry, globalRunRegistry } from './run-registry';
+import { signalToMessage } from './signal-message';
 import { createDurableAgentStream, emitErrorEvent } from './stream-adapter';
 import type {
   AgentFinishEventData,
@@ -296,7 +297,7 @@ export class DurableAgent<
     const runId = this.#runRegistry.getRunIdForThread(options.resourceId, options.threadId);
     if (!runId) return undefined;
     const status = this.#runRegistry.getStatus(runId);
-    if (!status || status === 'completed' || status === 'error') return undefined;
+    if (status !== 'active' && status !== 'suspended') return undefined;
     return { ...options, runId, status };
   }
 
@@ -319,21 +320,33 @@ export class DurableAgent<
 
   sendSignal(signal: DurableAgentSignal, target: SendDurableAgentSignalOptions): { accepted: true; runId: string } {
     let runId: string | undefined;
-    if (target.runId) {
-      runId = target.runId;
-    } else if (target.resourceId && target.threadId) {
-      runId = this.#runRegistry.getRunIdForThread(target.resourceId, target.threadId);
+    if (target.resourceId && target.threadId) {
+      runId = this.getActiveRunForThread({ resourceId: target.resourceId, threadId: target.threadId })?.runId;
     }
-    if (!runId) {
+    runId ??= target.runId;
+
+    const globalEntry = runId ? globalRunRegistry.get(runId) : undefined;
+    if (runId && globalEntry) {
+      this.#runRegistry.enqueueSignal(runId, signal);
+      globalEntry.signalQueue ??= [];
+      globalEntry.signalQueue.push(signal);
+      return { accepted: true, runId };
+    }
+
+    if (!target.resourceId || !target.threadId) {
       throw new Error('No active durable agent run found for signal target');
     }
 
-    this.#runRegistry.enqueueSignal(runId, signal);
-    const globalEntry = globalRunRegistry.get(runId);
-    if (globalEntry) {
-      globalEntry.signalQueue ??= [];
-      globalEntry.signalQueue.push(signal);
-    }
+    runId ??= crypto.randomUUID();
+    const streamOptions = target.streamOptions as DurableAgentStreamOptions<TOutput> | undefined;
+    void this.stream([signalToMessage(signal)], {
+      ...streamOptions,
+      runId,
+      memory: streamOptions?.memory ?? ({ resource: target.resourceId, thread: target.threadId } as any),
+    } as DurableAgentStreamOptions<TOutput>).catch(error => {
+      void this.emitError(runId!, error);
+    });
+
     return { accepted: true, runId };
   }
 

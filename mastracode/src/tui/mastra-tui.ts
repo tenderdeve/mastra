@@ -217,21 +217,25 @@ export class MastraTUI {
         const { content, images } = consumePendingImages(userInput, this.state.pendingImages);
         this.state.pendingImages = [];
 
-        // Add user message to chat immediately
-        addUserMessage(this.state, {
-          id: `user-${Date.now()}`,
-          role: 'user',
-          content: [
-            { type: 'text', text: content },
-            ...(images?.map(img => ({
-              type: 'image' as const,
-              data: img.data,
-              mimeType: img.mimeType,
-            })) ?? []),
-          ],
-          createdAt: new Date(),
-        });
-        this.state.ui.requestRender();
+        const sendWhileRunning = this.state.harness.isRunning() && (this.state.harness as any).canSendWhileRunning?.();
+        if (!sendWhileRunning) {
+          // Add user message to chat immediately. When sending into an active durable stream,
+          // the stream's data-user-message event is the source of truth for display.
+          addUserMessage(this.state, {
+            id: `user-${Date.now()}`,
+            role: 'user',
+            content: [
+              { type: 'text', text: content },
+              ...(images?.map(img => ({
+                type: 'image' as const,
+                data: img.data,
+                mimeType: img.mimeType,
+              })) ?? []),
+            ],
+            createdAt: new Date(),
+          });
+          this.state.ui.requestRender();
+        }
 
         // Normal send — fire and forget; events handle the rest
         this.fireMessage(content, images);
@@ -256,6 +260,7 @@ export class MastraTUI {
     if (text.startsWith('/')) {
       this.state.pendingSlashCommands.push(text);
       this.state.pendingQueuedActions.push('slash');
+      showInfo(this.state, `Slash command queued: ${text}`);
       updateStatusLine(this.state);
       this.state.ui.requestRender();
       return;
@@ -266,15 +271,6 @@ export class MastraTUI {
 
     this.state.pendingFollowUpMessages.push({ content, images });
     this.state.pendingQueuedActions.push('message');
-    addUserMessage(this.state, {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: [
-        { type: 'text', text: content },
-        ...(images?.map(img => ({ type: 'image' as const, data: img.data, mimeType: img.mimeType })) ?? []),
-      ],
-      createdAt: new Date(),
-    });
     updateStatusLine(this.state);
     this.state.ui.requestRender();
   }

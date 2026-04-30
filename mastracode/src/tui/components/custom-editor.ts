@@ -36,6 +36,7 @@ export type AppAction =
   | 'toggleThinking'
   | 'expandTools'
   | 'followUp'
+  | 'queueFollowUp'
   | 'cycleMode'
   | 'toggleYolo';
 
@@ -560,6 +561,13 @@ export class CustomEditor extends Editor {
         if (handler() !== false) {
           return;
         }
+      }
+    }
+
+    if (matchesKey(data, 'ctrl+f')) {
+      const handler = this.actionHandlers.get('queueFollowUp');
+      if (handler && handler() !== false) {
+        return;
       }
     }
 

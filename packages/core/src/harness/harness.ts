@@ -1667,6 +1667,71 @@ export class Harness<TState = {}> {
 
       streamOptions.toolsets = await this.buildToolsets(requestContext);
 
+      if (claimedRunId && durableClient && typeof (agent as any).sendSignal === 'function') {
+        const signalType = durableStreams?.signalType ?? 'user-message';
+        let terminalError: Error | undefined;
+        const publishChunk = (chunk: any) => durableClient.publishRunEvent(claimedRunId!, chunk).catch(() => {});
+        const signalStreamOptions = {
+          ...streamOptions,
+          onChunk: publishChunk,
+          onFinish: async (result: any) => {
+            await publishChunk({
+              type: 'finish',
+              payload: {
+                output: result.output,
+                stepResult: result.stepResult,
+              },
+            });
+          },
+          onError: async (error: Error) => {
+            terminalError = error;
+            await publishChunk({
+              type: 'error',
+              payload: { error: { name: error.name, message: error.message, stack: error.stack } },
+            });
+          },
+          onSuspended: async () => {},
+        };
+
+        const followedStream = this.createDurableRunEventStream(claimedRunId, {
+          abortSignal: this.abortController.signal,
+        });
+        followedStreamCleanup = followedStream.cleanup;
+        await followedStream.ready;
+        this.emit({ type: 'thread_observing', threadId: this.currentThreadId, runId: claimedRunId });
+        this.emit({ type: 'stream_attached', threadId: this.currentThreadId, runId: claimedRunId });
+
+        (agent as any).sendSignal(
+          { type: signalType, contents: content },
+          {
+            runId: claimedRunId,
+            resourceId: this.resourceId,
+            threadId: this.currentThreadId,
+            streamOptions: signalStreamOptions,
+          },
+        );
+        this.emit({ type: 'signal_sent', threadId: this.currentThreadId, runId: claimedRunId, signalType });
+        const streamResult = await this.processStream({ fullStream: followedStream.fullStream }, requestContext);
+        if (streamResult.suspended) {
+          await durableClient.suspendRun(claimedRunId);
+        } else if (streamResult.aborted || this.abortRequested || terminalError?.name === 'AbortError') {
+          await durableClient.abortRun(claimedRunId, terminalError?.message).catch(() => undefined);
+        } else if (terminalError) {
+          await durableClient.failRun(claimedRunId).catch(() => undefined);
+        } else {
+          await durableClient.completeRun(claimedRunId);
+        }
+        if (this.currentOperationId === operationId) {
+          const reason = streamResult.suspended
+            ? 'suspended'
+            : streamResult.aborted || this.abortRequested
+              ? 'aborted'
+              : 'complete';
+          this.emit({ type: 'agent_end', reason });
+        }
+        return;
+      }
+
       let messageInput: string | Record<string, unknown> = content;
       if (files?.length) {
         const fileParts = files.map(f => {
@@ -1705,19 +1770,8 @@ export class Harness<TState = {}> {
           : (messageInput as any),
         streamOptions as any,
       );
-      this.publishingDurableRunId = claimedRunId ?? null;
-      const streamResult = await this.processStream(response, requestContext);
-      this.publishingDurableRunId = null;
 
-      if (claimedRunId && durableClient) {
-        if (streamResult.suspended) {
-          await durableClient.suspendRun(claimedRunId);
-        } else if (streamResult.aborted || this.abortRequested) {
-          await durableClient.abortRun(claimedRunId);
-        } else {
-          await durableClient.completeRun(claimedRunId);
-        }
-      }
+      const streamResult = await this.processStream(response, requestContext);
 
       if (this.currentOperationId === operationId) {
         const reason = streamResult.suspended

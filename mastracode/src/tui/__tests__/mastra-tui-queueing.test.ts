@@ -24,6 +24,7 @@ vi.mock('../display.js', () => ({
 import { handleAgentEnd } from '../handlers/agent-lifecycle.js';
 import type { EventHandlerContext } from '../handlers/types.js';
 import { MastraTUI, consumePendingImages } from '../mastra-tui.js';
+import { setupKeyboardShortcuts } from '../setup.js';
 import type { TUIState } from '../state.js';
 
 function createQueueState(overrides: Partial<TUIState> = {}): TUIState {
@@ -33,6 +34,7 @@ function createQueueState(overrides: Partial<TUIState> = {}): TUIState {
     },
     gradientAnimator: undefined,
     projectInfo: { rootPath: '.', gitBranch: 'main' } as TUIState['projectInfo'],
+    chatContainer: { children: [] },
     streamingComponent: undefined,
     streamingMessage: undefined,
     followUpComponents: [],
@@ -113,7 +115,40 @@ describe('MastraTUI queueing', () => {
     expect(resolution).toEqual({ resolved: false, value: undefined });
   });
 
-  it('queues follow-up messages with images in FIFO order metadata', () => {
+  it('resolves editor submissions while the running harness accepts signals', async () => {
+    const editor = {
+      onSubmit: undefined as ((text: string) => void) | undefined,
+      addToHistory: vi.fn(),
+      setText: vi.fn(),
+    };
+    const state = {
+      editor,
+      harness: { isRunning: vi.fn(() => true), canSendWhileRunning: vi.fn(() => true) },
+      pendingSlashCommands: [],
+      pendingQueuedActions: [],
+      pendingFollowUpMessages: [],
+      pendingImages: [],
+      ui: { requestRender: vi.fn() },
+      chatContainer: {},
+      followUpComponents: [],
+    };
+
+    const tui = Object.create(MastraTUI.prototype) as {
+      state: typeof state;
+      getUserInput: () => Promise<string>;
+      queueFollowUpMessage: (text: string) => void;
+    };
+    tui.state = state;
+    tui.queueFollowUpMessage = vi.fn();
+
+    const pendingInput = tui.getUserInput();
+    editor.onSubmit?.('signal follow-up');
+
+    await expect(pendingInput).resolves.toBe('signal follow-up');
+    expect(tui.queueFollowUpMessage).not.toHaveBeenCalled();
+  });
+
+  it('queues follow-up messages with images in FIFO order metadata without rendering them immediately', () => {
     const tui = Object.create(MastraTUI.prototype) as {
       state: any;
       queueFollowUpMessage: (text: string) => void;
@@ -138,8 +173,95 @@ describe('MastraTUI queueing', () => {
       { content: 'second message', images: undefined },
     ]);
     expect(tui.state.pendingSlashCommands).toEqual(['/help']);
-    expect(mocks.addUserMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.addUserMessage).not.toHaveBeenCalled();
     expect(mocks.showInfo).toHaveBeenCalledWith(tui.state, 'Slash command queued: /help');
+  });
+
+  it('submits Enter while the running harness accepts signals', () => {
+    const actions = new Map<string, () => unknown>();
+    const editor = {
+      onAction: vi.fn((name: string, handler: () => unknown) => actions.set(name, handler)),
+      getExpandedText: vi.fn(() => 'signal me'),
+      onSubmit: vi.fn(),
+    };
+    const state = {
+      editor,
+      harness: {
+        isRunning: vi.fn(() => true),
+        canSendWhileRunning: vi.fn(() => true),
+        listModes: vi.fn(() => []),
+        getState: vi.fn(() => ({})),
+        setState: vi.fn(),
+      },
+      lastCtrlCTime: 0,
+      pendingApprovalDismiss: undefined,
+      activeInlinePlanApproval: undefined,
+      activeInlineQuestion: undefined,
+      pendingInlineQuestions: [],
+      lastClearedText: '',
+      hideThinkingBlock: false,
+      toolOutputExpanded: false,
+      allToolComponents: [],
+      allSlashCommandComponents: [],
+      allSystemReminderComponents: [],
+      allShellComponents: [],
+      ui: { requestRender: vi.fn(), stop: vi.fn(), start: vi.fn() },
+    } as any;
+    const queueFollowUpMessage = vi.fn();
+
+    setupKeyboardShortcuts(state, {
+      stop: vi.fn(),
+      doubleCtrlCMs: 500,
+      queueFollowUpMessage,
+    });
+
+    expect(actions.get('followUp')?.()).toBe(true);
+    expect(editor.onSubmit).toHaveBeenCalledWith('signal me');
+    expect(queueFollowUpMessage).not.toHaveBeenCalled();
+  });
+
+  it('uses Ctrl+F to queue current input while the harness is running', () => {
+    const actions = new Map<string, () => unknown>();
+    const editor = {
+      onAction: vi.fn((name: string, handler: () => unknown) => actions.set(name, handler)),
+      getExpandedText: vi.fn(() => 'queue me'),
+      addToHistory: vi.fn(),
+      setText: vi.fn(),
+    };
+    const state = {
+      editor,
+      harness: {
+        isRunning: vi.fn(() => true),
+        listModes: vi.fn(() => []),
+        getState: vi.fn(() => ({})),
+        setState: vi.fn(),
+      },
+      lastCtrlCTime: 0,
+      pendingApprovalDismiss: undefined,
+      activeInlinePlanApproval: undefined,
+      activeInlineQuestion: undefined,
+      pendingInlineQuestions: [],
+      lastClearedText: '',
+      hideThinkingBlock: false,
+      toolOutputExpanded: false,
+      allToolComponents: [],
+      allSlashCommandComponents: [],
+      allSystemReminderComponents: [],
+      allShellComponents: [],
+      ui: { requestRender: vi.fn(), stop: vi.fn(), start: vi.fn() },
+    } as any;
+    const queueFollowUpMessage = vi.fn();
+
+    setupKeyboardShortcuts(state, {
+      stop: vi.fn(),
+      doubleCtrlCMs: 500,
+      queueFollowUpMessage,
+    });
+
+    expect(actions.get('queueFollowUp')?.()).toBe(true);
+    expect(editor.addToHistory).toHaveBeenCalledWith('queue me');
+    expect(editor.setText).toHaveBeenCalledWith('');
+    expect(queueFollowUpMessage).toHaveBeenCalledWith('queue me');
   });
 
   it('drains queued messages and slash commands in FIFO order on agent end', async () => {
