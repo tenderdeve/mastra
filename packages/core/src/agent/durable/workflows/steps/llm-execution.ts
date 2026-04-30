@@ -241,7 +241,10 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             let currentMessageId = messageId;
 
             // 5. Prepare tools - cast through unknown as CoreTool and ToolSet are structurally compatible at runtime
-            const toolSet = tools as unknown as ToolSet;
+            let currentModel = model;
+            let currentTools = tools as unknown as ToolSet;
+            let currentToolChoice = execOptions.toolChoice as ToolChoice<ToolSet> | undefined;
+            let currentModelSettings = { temperature: execOptions.temperature };
 
             // 6. Rebuild MODEL_GENERATION span from passed data
             // For durable execution, ONE model_generation span is created BEFORE the workflow starts
@@ -278,7 +281,6 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             const streamPubsub = registryEntry?.pubsub ?? pubsub;
             const executionAbortSignal = registryEntry?.abortSignal ?? abortSignal;
             if (registryEntry?.inputProcessors?.length) {
-              const { ProcessorRunner } = await import('../../../../processors/runner');
               const inputStepWriter = streamPubsub
                 ? {
                     custom: async (data: { type: string }) => {
@@ -294,26 +296,34 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 agentName: typedInput.agentName ?? typedInput.agentId,
                 processorStates: registryEntry.processorStates,
               });
-              await runner.runProcessInputStep({
+              const processInputStepResult = await runner.runProcessInputStep({
                 messageList,
                 stepNumber: stepIndex,
                 steps: (inputData as any).accumulatedSteps ?? [],
                 tracingContext: modelSpanTracker?.getTracingContext() ?? tracingContext,
                 requestContext,
-                model,
+                model: currentModel,
                 messageId: currentMessageId,
                 rotateResponseMessageId: () => {
                   currentMessageId = crypto.randomUUID();
                   return currentMessageId;
                 },
-                tools: toolSet,
-                toolChoice: execOptions.toolChoice as any,
-                modelSettings: { temperature: execOptions.temperature },
+                tools: currentTools,
+                toolChoice: currentToolChoice,
+                modelSettings: currentModelSettings,
                 structuredOutput: structuredOutput as any,
                 retryCount: (inputData as any).processorRetryCount ?? 0,
                 abortSignal: executionAbortSignal,
                 writer: inputStepWriter,
               });
+              currentMessageId = processInputStepResult.messageId ?? currentMessageId;
+              currentModel = (processInputStepResult.model ?? currentModel) as typeof currentModel;
+              currentTools = (processInputStepResult.tools ?? currentTools) as ToolSet;
+              currentToolChoice = processInputStepResult.toolChoice as ToolChoice<ToolSet> | undefined;
+              currentModelSettings = {
+                ...currentModelSettings,
+                ...(processInputStepResult.modelSettings ?? {}),
+              };
             }
 
             // Get messages for LLM (using async llmPrompt for proper format conversion)
@@ -339,13 +349,13 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             // 10. Execute LLM call
             const modelResult = execute({
               runId,
-              model,
+              model: currentModel,
               inputMessages,
-              tools: toolSet,
-              toolChoice: execOptions.toolChoice as ToolChoice<ToolSet> | undefined,
+              tools: currentTools,
+              toolChoice: currentToolChoice,
               options: { abortSignal: executionAbortSignal },
               modelSettings: {
-                temperature: execOptions.temperature,
+                ...currentModelSettings,
                 maxRetries: 0,
               },
               includeRawChunks: execOptions.includeRawChunks,
@@ -370,9 +380,9 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             // Note: We cast through any to handle the web/node ReadableStream type mismatch
             const outputStream = new MastraModelOutput({
               model: {
-                modelId: model.modelId,
-                provider: model.provider,
-                version: model.specificationVersion,
+                modelId: currentModel.modelId,
+                provider: currentModel.provider,
+                version: currentModel.specificationVersion,
               },
               stream: modelResult as any,
               messageList,
@@ -546,7 +556,7 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               },
               metadata: {
                 id: responseMetadata.id,
-                modelId: responseMetadata.modelId || model.modelId,
+                modelId: responseMetadata.modelId || currentModel.modelId,
                 timestamp: responseMetadata.timestamp || new Date().toISOString(),
                 providerMetadata: responseMetadata,
                 headers: rawResponse?.headers,

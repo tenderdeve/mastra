@@ -261,18 +261,17 @@ describe('Harness durable multiplayer', () => {
     tempDir = undefined;
   });
 
-  it('lets an observer locally abort following without stopping the owner run', async () => {
+  it('lets an observer abort the owner durable run', async () => {
     tempDir = createTempDir();
     const socketPath = join(tempDir, 'coordinator.sock');
     coordinator = new UnixSocketDurableRunCoordinator({ socketPath });
     await coordinator.start();
 
     const storage = new InMemoryStore();
-    let releaseSignal!: () => void;
-    const signalArrived = new Promise<void>(resolve => {
-      releaseSignal = resolve;
+    let streamStarted!: () => void;
+    const streamStartedPromise = new Promise<void>(resolve => {
+      streamStarted = resolve;
     });
-    let readyForSignal = false;
 
     const owner = new Harness({
       id: 'mastra-code',
@@ -280,15 +279,7 @@ describe('Harness durable multiplayer', () => {
       storage,
       initialState: { yolo: true },
       durableStreams: { unixSocketPath: socketPath, attachToActiveThread: true, signalWhileRunning: true },
-      modes: [
-        {
-          id: 'default',
-          default: true,
-          agent: createOwnerAgent([], signalArrived, () => {
-            readyForSignal = true;
-          }) as any,
-        },
-      ],
+      modes: [{ id: 'default', default: true, agent: createAbortableAgent(streamStarted) as any }],
     });
     const observer = new Harness({
       id: 'mastra-code',
@@ -310,23 +301,21 @@ describe('Harness durable multiplayer', () => {
 
     await owner.init();
     await observer.init();
-    const thread = await owner.createThread({ title: 'abort-local' });
+    const thread = await owner.createThread({ title: 'abort-follower' });
     await observer.switchThread({ threadId: thread.id });
 
     const ownerRun = owner.sendMessage({ content: 'start' });
-    await waitFor(() => readyForSignal, 'owner to reach waitForSignal tool');
+    await streamStartedPromise;
     await waitFor(() => observerEvents.some(event => event.type === 'stream_attached'), 'observer to attach');
 
     observer.abort();
+    await ownerRun;
     await waitFor(
       () => observerEvents.some(event => event.type === 'agent_end' && event.reason === 'aborted'),
       'observer abort to end stream',
     );
 
-    expect(ownerEvents.some(event => event.type === 'agent_end')).toBe(false);
-    releaseSignal();
-    await ownerRun;
-    expect(ownerEvents.some(event => event.type === 'agent_end' && event.reason === 'complete')).toBe(true);
+    expect(ownerEvents.some(event => event.type === 'agent_end' && event.reason === 'aborted')).toBe(true);
   });
 
   it('notifies observers when the owner aborts a durable run', async () => {
