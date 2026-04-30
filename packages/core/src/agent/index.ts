@@ -9,8 +9,10 @@ export {
   deterministicBucket,
   pickAllocation,
   evaluateRules,
-  RolloutAccumulator,
+  queryRolloutScoreStats,
+  RolloutEvaluator,
 } from './rollout';
+export type { RolloutScoreStats } from './rollout';
 
 export type {
   AgentExecutionOptions,

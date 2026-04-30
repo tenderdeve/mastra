@@ -1,5 +1,6 @@
+import type { ObservabilityStorage } from '../storage/domains/observability';
 import type { RolloutsStorage } from '../storage/domains/rollouts';
-import type { RolloutRecord, RolloutAllocation, RolloutRule } from '../storage/types';
+import type { RolloutAllocation, RolloutRecord, RolloutRule } from '../storage/types';
 
 /**
  * Deterministically resolve which version a request should use based on the rollout allocations.
@@ -29,8 +30,9 @@ export function resolveVersionFromRollout(
 }
 
 /**
- * Hash a string pair into a bucket [0, 100).
+ * Hash a string pair into a bucket in [0, 1).
  * Uses a fast non-cryptographic hash (FNV-1a inspired) for deterministic, stable results.
+ * The 32-bit hash is normalized to a fraction so weights as small as ~2.3e-10 can be expressed.
  */
 export function deterministicBucket(routingValue: string, agentId: string): number {
   const input = `${routingValue}:${agentId}`;
@@ -39,12 +41,12 @@ export function deterministicBucket(routingValue: string, agentId: string): numb
     hash ^= input.charCodeAt(i);
     hash = Math.imul(hash, 16777619); // FNV prime
   }
-  // Convert to unsigned 32-bit and mod 100
-  return (hash >>> 0) % 100;
+  // Normalize unsigned 32-bit hash to [0, 1)
+  return (hash >>> 0) / 0x100000000;
 }
 
 /**
- * Pick an allocation based on a bucket value [0, 100).
+ * Pick an allocation based on a bucket value in [0, 1).
  * Allocations are walked in order; their weights define consecutive ranges.
  */
 export function pickAllocation(allocations: RolloutAllocation[], bucket: number): string {
@@ -58,220 +60,88 @@ export function pickAllocation(allocations: RolloutAllocation[], bucket: number)
       return alloc.versionId;
     }
   }
-  // Fallback: return the last allocation (should never happen if weights sum to 100)
+  // Fallback: return the last allocation (should never happen if weights sum to 1)
   return allocations[allocations.length - 1]!.versionId;
 }
 
 // ---------------------------------------------------------------------------
-// RolloutAccumulator — In-memory sliding window of recent scores
+// Rule evaluation — backed by the observability score aggregate API
 // ---------------------------------------------------------------------------
 
-interface ScoreEntry {
-  score: number;
-  timestamp: number;
-}
-
-interface AccumulatorWindow {
-  entries: ScoreEntry[];
-  /** Next write position (circular buffer) */
-  cursor: number;
-  /** Total entries ever written (used to know if buffer is full) */
-  totalWrites: number;
-}
-
 /**
- * In-memory accumulator for scorer results during active rollouts.
- *
- * Scores are pushed here asynchronously after each generate() call.
- * A background timer periodically evaluates rollout rules against accumulated scores.
- *
- * Key design points:
- * - push() is O(1) — no overhead on the hot path
- * - Each server instance has its own accumulator (no shared state needed)
- * - On server restart, windows reset — safe because "no data" means "keep running"
- * - Background evaluation is configurable (default: every 30s)
+ * Stats for a single (versionId, scorerId) pair within the rollout window.
+ * Returned by {@link queryRolloutScoreStats}.
  */
-export class RolloutAccumulator {
-  /** Max entries per window (circular buffer size) */
-  static readonly MAX_WINDOW_SIZE = 1000;
-
-  /** Key: `${agentId}:${versionId}:${scorerId}` */
-  readonly #windows = new Map<string, AccumulatorWindow>();
-  #timer: ReturnType<typeof setInterval> | null = null;
-  #evaluationIntervalMs: number;
-  #rolloutsStorage: RolloutsStorage | null = null;
-  #onRollback: ((agentId: string, rolloutId: string) => Promise<void>) | null = null;
-
-  /** Whether the accumulator has been bound to storage and started. */
-  bound = false;
-
-  constructor(options?: {
-    /** How often to evaluate rules, in milliseconds. Default: 30000 (30s) */
-    evaluationIntervalMs?: number;
-  }) {
-    this.#evaluationIntervalMs = options?.evaluationIntervalMs ?? 30_000;
-  }
-
-  /**
-   * Bind the accumulator to a storage backend and a rollback handler.
-   * Called during Mastra initialization.
-   */
-  bind(storage: RolloutsStorage, onRollback: (agentId: string, rolloutId: string) => Promise<void>): void {
-    this.#rolloutsStorage = storage;
-    this.#onRollback = onRollback;
-    this.bound = true;
-  }
-
-  /**
-   * Start the background evaluation timer.
-   */
-  start(): void {
-    if (this.#timer) return;
-    this.#timer = setInterval(() => {
-      this.#evaluateAll().catch(() => {
-        // Swallow errors — evaluation is best-effort
-      });
-    }, this.#evaluationIntervalMs);
-    // Don't block process exit
-    if (this.#timer && typeof this.#timer === 'object' && 'unref' in this.#timer) {
-      this.#timer.unref();
-    }
-  }
-
-  /**
-   * Stop the background evaluation timer.
-   */
-  stop(): void {
-    if (this.#timer) {
-      clearInterval(this.#timer);
-      this.#timer = null;
-    }
-  }
-
-  /**
-   * Push a score into the accumulator. O(1), fire-and-forget.
-   */
-  push(agentId: string, versionId: string, scorerId: string, score: number): void {
-    const key = `${agentId}:${versionId}:${scorerId}`;
-    let window = this.#windows.get(key);
-    if (!window) {
-      window = {
-        entries: new Array(RolloutAccumulator.MAX_WINDOW_SIZE),
-        cursor: 0,
-        totalWrites: 0,
-      };
-      this.#windows.set(key, window);
-    }
-
-    window.entries[window.cursor] = { score, timestamp: Date.now() };
-    window.cursor = (window.cursor + 1) % RolloutAccumulator.MAX_WINDOW_SIZE;
-    window.totalWrites++;
-  }
-
-  /**
-   * Get the rolling window stats for a given key.
-   * @param windowSize - Number of most-recent entries to consider
-   */
-  getWindow(
-    agentId: string,
-    versionId: string,
-    scorerId: string,
-    windowSize: number,
-  ): { avg: number; count: number } | null {
-    const key = `${agentId}:${versionId}:${scorerId}`;
-    const window = this.#windows.get(key);
-    if (!window || window.totalWrites === 0) return null;
-
-    const filled = Math.min(window.totalWrites, RolloutAccumulator.MAX_WINDOW_SIZE);
-    const size = Math.min(windowSize, filled);
-
-    let sum = 0;
-    let count = 0;
-
-    // Read backwards from the most recently written entry
-    for (let i = 0; i < size; i++) {
-      const idx = (window.cursor - 1 - i + RolloutAccumulator.MAX_WINDOW_SIZE) % RolloutAccumulator.MAX_WINDOW_SIZE;
-      const entry = window.entries[idx];
-      if (entry) {
-        sum += entry.score;
-        count++;
-      }
-    }
-
-    if (count === 0) return null;
-    return { avg: sum / count, count };
-  }
-
-  /**
-   * Clear all windows for a specific agent (called when a rollout completes).
-   */
-  clearAgent(agentId: string): void {
-    const prefix = `${agentId}:`;
-    for (const key of this.#windows.keys()) {
-      if (key.startsWith(prefix)) {
-        this.#windows.delete(key);
-      }
-    }
-  }
-
-  /**
-   * Clear everything (primarily for testing).
-   */
-  clearAll(): void {
-    this.#windows.clear();
-  }
-
-  /**
-   * Background evaluation: iterate all active rollouts and check rules.
-   * This is the "slow path" that runs every N seconds.
-   */
-  async #evaluateAll(): Promise<void> {
-    if (!this.#rolloutsStorage || !this.#onRollback) return;
-
-    // Collect unique agentIds from accumulated windows
-    const agentIds = new Set<string>();
-    for (const key of this.#windows.keys()) {
-      const agentId = key.split(':')[0]!;
-      agentIds.add(agentId);
-    }
-
-    for (const agentId of agentIds) {
-      try {
-        const rollout = await this.#rolloutsStorage.getActiveRollout(agentId);
-        if (!rollout || !rollout.rules || rollout.rules.length === 0) continue;
-
-        const breached = evaluateRules(rollout, this);
-        if (breached) {
-          await this.#onRollback(agentId, rollout.id);
-          this.clearAgent(agentId);
-        }
-      } catch {
-        // Continue with next agent — evaluation is best-effort
-      }
-    }
-  }
+export interface RolloutScoreStats {
+  avg: number | null;
+  count: number;
 }
 
 /**
- * Evaluate rollout rules against the accumulator.
+ * Query average and count for scores attributed to a specific candidate version
+ * within the active rollout window using the observability OLAP aggregate API.
+ *
+ * Filters used:
+ *  - `entityName: agentId`
+ *  - `entityVersionId: versionId`
+ *  - `scorerId`
+ *  - `timestamp.start: rollout.createdAt`
+ */
+export async function queryRolloutScoreStats(
+  observability: ObservabilityStorage,
+  agentId: string,
+  versionId: string,
+  scorerId: string,
+  rolloutCreatedAt: Date,
+): Promise<RolloutScoreStats> {
+  const filters = {
+    entityName: agentId,
+    entityVersionId: versionId,
+    timestamp: { start: rolloutCreatedAt },
+  } as const;
+
+  const [avgRes, countRes] = await Promise.all([
+    observability.getScoreAggregate({ scorerId, aggregation: 'avg', filters }),
+    observability.getScoreAggregate({ scorerId, aggregation: 'count', filters }),
+  ]);
+
+  const count = typeof countRes.value === 'number' ? countRes.value : 0;
+  const avg = typeof avgRes.value === 'number' ? avgRes.value : null;
+  return { avg, count };
+}
+
+/**
+ * Evaluate rollout rules against persisted scores via the observability aggregate API.
+ *
  * Returns the first breached rule, or null if all rules pass.
  *
  * A rule is breached when:
- * - We have at least `windowSize` scores in the window
+ * - We have at least `windowSize` scores for the candidate version since the rollout started
  * - The average score is below the threshold
  */
-export function evaluateRules(rollout: RolloutRecord, accumulator: RolloutAccumulator): RolloutRule | null {
-  if (!rollout.rules) return null;
+export async function evaluateRules(
+  rollout: RolloutRecord,
+  observability: ObservabilityStorage,
+): Promise<RolloutRule | null> {
+  if (!rollout.rules || rollout.rules.length === 0) return null;
 
-  // For canary rollouts, rules apply to the candidate version (non-stable allocations)
+  // Rules apply to the candidate version(s) — anything that isn't the stable.
   const candidateAllocations = rollout.allocations.filter(a => a.versionId !== rollout.stableVersionId);
+  if (candidateAllocations.length === 0) return null;
 
   for (const rule of rollout.rules) {
     for (const alloc of candidateAllocations) {
-      const stats = accumulator.getWindow(rollout.agentId, alloc.versionId, rule.scorerId, rule.windowSize);
+      const stats = await queryRolloutScoreStats(
+        observability,
+        rollout.agentId,
+        alloc.versionId,
+        rule.scorerId,
+        rollout.createdAt,
+      );
 
       // Only evaluate when we have enough data
-      if (!stats || stats.count < rule.windowSize) continue;
+      if (stats.count < rule.windowSize) continue;
+      if (stats.avg === null) continue;
 
       if (stats.avg < rule.threshold) {
         return rule;
@@ -280,4 +150,87 @@ export function evaluateRules(rollout: RolloutRecord, accumulator: RolloutAccumu
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// RolloutEvaluator — opportunistic per-request rollback evaluation
+// ---------------------------------------------------------------------------
+
+/**
+ * Performs throttled rollback evaluation for active rollouts.
+ *
+ * Designed to be invoked from the request path (after a rollout version is
+ * resolved): if enough time has elapsed since the last check for an agent,
+ * the evaluator queries the observability store for aggregate scores and
+ * triggers the rollback handler when a rule is breached.
+ *
+ * Stateless from a data perspective — no scores are buffered in memory.
+ * The only in-memory state is a per-agent "last evaluated at" timestamp
+ * used purely to throttle queries to the OLAP store.
+ */
+export class RolloutEvaluator {
+  /** Default minimum interval between rollback evaluations for a given agent. */
+  static readonly DEFAULT_MIN_INTERVAL_MS = 30_000;
+
+  readonly #minIntervalMs: number;
+  readonly #lastEvaluatedAt = new Map<string, number>();
+  readonly #inFlight = new Map<string, Promise<void>>();
+  readonly #rolloutsStorage: RolloutsStorage;
+  readonly #observability: ObservabilityStorage;
+  readonly #onRollback: (agentId: string, rolloutId: string) => Promise<void>;
+
+  constructor(options: {
+    rolloutsStorage: RolloutsStorage;
+    observability: ObservabilityStorage;
+    onRollback: (agentId: string, rolloutId: string) => Promise<void>;
+    /** Minimum interval in ms between consecutive evaluations for the same agent. */
+    minIntervalMs?: number;
+  }) {
+    this.#rolloutsStorage = options.rolloutsStorage;
+    this.#observability = options.observability;
+    this.#onRollback = options.onRollback;
+    this.#minIntervalMs = options.minIntervalMs ?? RolloutEvaluator.DEFAULT_MIN_INTERVAL_MS;
+  }
+
+  /**
+   * Schedule a best-effort evaluation for the given agent. Safe to call from
+   * the hot request path — the actual work happens asynchronously and is
+   * throttled per-agent and de-duplicated when already in flight.
+   */
+  scheduleEvaluation(agentId: string, rollout: RolloutRecord): void {
+    if (!rollout.rules || rollout.rules.length === 0) return;
+
+    const now = Date.now();
+    const last = this.#lastEvaluatedAt.get(agentId) ?? 0;
+    if (now - last < this.#minIntervalMs) return;
+    if (this.#inFlight.has(agentId)) return;
+
+    this.#lastEvaluatedAt.set(agentId, now);
+    const work = this.#evaluate(agentId, rollout).finally(() => {
+      this.#inFlight.delete(agentId);
+    });
+    this.#inFlight.set(agentId, work);
+  }
+
+  async #evaluate(agentId: string, rollout: RolloutRecord): Promise<void> {
+    try {
+      // Re-read the rollout in case it changed (e.g. weights, completion).
+      const current = await this.#rolloutsStorage.getActiveRollout(agentId);
+      if (!current || current.id !== rollout.id) return;
+
+      const breached = await evaluateRules(current, this.#observability);
+      if (breached) {
+        await this.#onRollback(agentId, current.id);
+      }
+    } catch {
+      // Best-effort: swallow errors so we never break the request path.
+    }
+  }
+
+  /**
+   * Reset throttle state for an agent (e.g. after a manual rollback/promote).
+   */
+  reset(agentId: string): void {
+    this.#lastEvaluatedAt.delete(agentId);
+  }
 }

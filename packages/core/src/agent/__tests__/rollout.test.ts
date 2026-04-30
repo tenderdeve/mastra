@@ -1,11 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import type { ObservabilityStorage } from '../../storage/domains/observability';
+import type { RolloutsStorage } from '../../storage/domains/rollouts';
 import type { RolloutRecord, RolloutAllocation, RolloutRule } from '../../storage/types';
 import {
   resolveVersionFromRollout,
   deterministicBucket,
   pickAllocation,
-  RolloutAccumulator,
   evaluateRules,
+  queryRolloutScoreStats,
+  RolloutEvaluator,
 } from '../rollout';
 
 // ---------------------------------------------------------------------------
@@ -20,8 +23,8 @@ function makeRollout(overrides: Partial<RolloutRecord> = {}): RolloutRecord {
     status: 'active',
     stableVersionId: 'ver_stable',
     allocations: [
-      { versionId: 'ver_stable', weight: 90 },
-      { versionId: 'ver_candidate', weight: 10 },
+      { versionId: 'ver_stable', weight: 0.9 },
+      { versionId: 'ver_candidate', weight: 0.1 },
     ],
     routingKey: 'resourceId',
     rules: [],
@@ -45,11 +48,11 @@ function makeRequestContext(map: Record<string, unknown> = {}) {
 // ---------------------------------------------------------------------------
 
 describe('deterministicBucket', () => {
-  it('returns a number between 0 and 99 inclusive', () => {
+  it('returns a number in [0, 1)', () => {
     for (let i = 0; i < 200; i++) {
       const bucket = deterministicBucket(`user-${i}`, 'agent_1');
       expect(bucket).toBeGreaterThanOrEqual(0);
-      expect(bucket).toBeLessThan(100);
+      expect(bucket).toBeLessThan(1);
     }
   });
 
@@ -64,8 +67,8 @@ describe('deterministicBucket', () => {
     for (let i = 0; i < 50; i++) {
       results.add(deterministicBucket(`user-${i}`, 'agent_1'));
     }
-    // With 50 random-ish inputs and 100 buckets, we should see at least 10 distinct values
-    expect(results.size).toBeGreaterThan(10);
+    // With 50 random-ish inputs the hash should produce many distinct fractions
+    expect(results.size).toBeGreaterThan(40);
   });
 
   it('produces stable values for known inputs', () => {
@@ -76,9 +79,9 @@ describe('deterministicBucket', () => {
     expect(b).toBe(deterministicBucket('user-1', 'agent_b'));
     // Verify they're in the valid range
     expect(a).toBeGreaterThanOrEqual(0);
-    expect(a).toBeLessThan(100);
+    expect(a).toBeLessThan(1);
     expect(b).toBeGreaterThanOrEqual(0);
-    expect(b).toBeLessThan(100);
+    expect(b).toBeLessThan(1);
   });
 });
 
@@ -88,40 +91,52 @@ describe('deterministicBucket', () => {
 
 describe('pickAllocation', () => {
   const allocations: RolloutAllocation[] = [
-    { versionId: 'ver_stable', weight: 90 },
-    { versionId: 'ver_candidate', weight: 10 },
+    { versionId: 'ver_stable', weight: 0.9 },
+    { versionId: 'ver_candidate', weight: 0.1 },
   ];
 
   it('picks the first allocation for buckets in [0, weight)', () => {
     expect(pickAllocation(allocations, 0)).toBe('ver_stable');
-    expect(pickAllocation(allocations, 50)).toBe('ver_stable');
-    expect(pickAllocation(allocations, 89)).toBe('ver_stable');
+    expect(pickAllocation(allocations, 0.5)).toBe('ver_stable');
+    expect(pickAllocation(allocations, 0.89)).toBe('ver_stable');
   });
 
-  it('picks the second allocation for buckets in [weight, 100)', () => {
-    expect(pickAllocation(allocations, 90)).toBe('ver_candidate');
-    expect(pickAllocation(allocations, 95)).toBe('ver_candidate');
-    expect(pickAllocation(allocations, 99)).toBe('ver_candidate');
+  it('picks the second allocation for buckets in [weight, 1)', () => {
+    expect(pickAllocation(allocations, 0.9)).toBe('ver_candidate');
+    expect(pickAllocation(allocations, 0.95)).toBe('ver_candidate');
+    expect(pickAllocation(allocations, 0.999)).toBe('ver_candidate');
   });
 
   it('handles three-way splits', () => {
     const threeWay: RolloutAllocation[] = [
-      { versionId: 'a', weight: 34 },
-      { versionId: 'b', weight: 33 },
-      { versionId: 'c', weight: 33 },
+      { versionId: 'a', weight: 0.34 },
+      { versionId: 'b', weight: 0.33 },
+      { versionId: 'c', weight: 0.33 },
     ];
     expect(pickAllocation(threeWay, 0)).toBe('a');
-    expect(pickAllocation(threeWay, 33)).toBe('a');
-    expect(pickAllocation(threeWay, 34)).toBe('b');
-    expect(pickAllocation(threeWay, 66)).toBe('b');
-    expect(pickAllocation(threeWay, 67)).toBe('c');
-    expect(pickAllocation(threeWay, 99)).toBe('c');
+    expect(pickAllocation(threeWay, 0.33)).toBe('a');
+    expect(pickAllocation(threeWay, 0.34)).toBe('b');
+    expect(pickAllocation(threeWay, 0.66)).toBe('b');
+    expect(pickAllocation(threeWay, 0.67)).toBe('c');
+    expect(pickAllocation(threeWay, 0.999)).toBe('c');
   });
 
   it('handles single allocation (100%)', () => {
-    const single: RolloutAllocation[] = [{ versionId: 'only', weight: 100 }];
+    const single: RolloutAllocation[] = [{ versionId: 'only', weight: 1 }];
     expect(pickAllocation(single, 0)).toBe('only');
-    expect(pickAllocation(single, 99)).toBe('only');
+    expect(pickAllocation(single, 0.999)).toBe('only');
+  });
+
+  it('supports sub-percent weights for very small canary rollouts', () => {
+    // 0.1% canary
+    const tiny: RolloutAllocation[] = [
+      { versionId: 'stable', weight: 0.999 },
+      { versionId: 'candidate', weight: 0.001 },
+    ];
+    expect(pickAllocation(tiny, 0)).toBe('stable');
+    expect(pickAllocation(tiny, 0.998)).toBe('stable');
+    expect(pickAllocation(tiny, 0.999)).toBe('candidate');
+    expect(pickAllocation(tiny, 0.9995)).toBe('candidate');
   });
 });
 
@@ -166,8 +181,8 @@ describe('resolveVersionFromRollout', () => {
   it('distributes traffic roughly according to weights', () => {
     const rollout = makeRollout({
       allocations: [
-        { versionId: 'ver_stable', weight: 50 },
-        { versionId: 'ver_candidate', weight: 50 },
+        { versionId: 'ver_stable', weight: 0.5 },
+        { versionId: 'ver_candidate', weight: 0.5 },
       ],
     });
 
@@ -205,311 +220,294 @@ describe('resolveVersionFromRollout', () => {
 });
 
 // ---------------------------------------------------------------------------
-// RolloutAccumulator
+// queryRolloutScoreStats
 // ---------------------------------------------------------------------------
 
-describe('RolloutAccumulator', () => {
-  let accumulator: RolloutAccumulator;
+function makeObservability(value: { avg: number | null; count: number }): ObservabilityStorage {
+  return {
+    getScoreAggregate: vi.fn().mockImplementation(({ aggregation }: { aggregation: 'avg' | 'count' }) => {
+      if (aggregation === 'count') return Promise.resolve({ value: value.count });
+      return Promise.resolve({ value: value.avg });
+    }),
+  } as unknown as ObservabilityStorage;
+}
 
-  beforeEach(() => {
-    accumulator = new RolloutAccumulator({ evaluationIntervalMs: 100_000 });
-  });
+describe('queryRolloutScoreStats', () => {
+  it('queries the observability store with the expected filters', async () => {
+    const observability = makeObservability({ avg: 0.8, count: 10 });
+    const createdAt = new Date('2024-01-01T00:00:00Z');
 
-  afterEach(() => {
-    accumulator.stop();
-  });
+    const stats = await queryRolloutScoreStats(observability, 'agent_1', 'ver_candidate', 'helpfulness', createdAt);
 
-  describe('push and getWindow', () => {
-    it('returns null for an empty window', () => {
-      const stats = accumulator.getWindow('agent_1', 'ver_1', 'helpfulness', 50);
-      expect(stats).toBeNull();
+    expect(stats).toEqual({ avg: 0.8, count: 10 });
+    expect(observability.getScoreAggregate).toHaveBeenCalledTimes(2);
+    expect(observability.getScoreAggregate).toHaveBeenCalledWith({
+      scorerId: 'helpfulness',
+      aggregation: 'avg',
+      filters: {
+        entityName: 'agent_1',
+        entityVersionId: 'ver_candidate',
+        timestamp: { start: createdAt },
+      },
     });
-
-    it('accumulates scores and returns correct average', () => {
-      accumulator.push('agent_1', 'ver_1', 'helpfulness', 0.8);
-      accumulator.push('agent_1', 'ver_1', 'helpfulness', 0.6);
-      accumulator.push('agent_1', 'ver_1', 'helpfulness', 1.0);
-
-      const stats = accumulator.getWindow('agent_1', 'ver_1', 'helpfulness', 10);
-      expect(stats).not.toBeNull();
-      expect(stats!.count).toBe(3);
-      expect(stats!.avg).toBeCloseTo(0.8);
-    });
-
-    it('limits window to requested size (most recent)', () => {
-      for (let i = 0; i < 10; i++) {
-        accumulator.push('agent_1', 'ver_1', 'helpfulness', i < 5 ? 0.0 : 1.0);
-      }
-
-      // Window of 5 should contain only the last 5 entries (all 1.0)
-      const stats = accumulator.getWindow('agent_1', 'ver_1', 'helpfulness', 5);
-      expect(stats!.avg).toBeCloseTo(1.0);
-      expect(stats!.count).toBe(5);
-
-      // Window of 10 should contain all entries (avg 0.5)
-      const statsAll = accumulator.getWindow('agent_1', 'ver_1', 'helpfulness', 10);
-      expect(statsAll!.avg).toBeCloseTo(0.5);
-      expect(statsAll!.count).toBe(10);
-    });
-
-    it('handles circular buffer wrapping', () => {
-      const maxSize = RolloutAccumulator.MAX_WINDOW_SIZE;
-
-      // Fill beyond the max window size
-      for (let i = 0; i < maxSize + 50; i++) {
-        accumulator.push('agent_1', 'ver_1', 'helpfulness', i < maxSize ? 0.0 : 1.0);
-      }
-
-      // The last 50 should all be 1.0
-      const stats = accumulator.getWindow('agent_1', 'ver_1', 'helpfulness', 50);
-      expect(stats!.avg).toBeCloseTo(1.0);
-      expect(stats!.count).toBe(50);
-    });
-
-    it('isolates different agent/version/scorer combinations', () => {
-      accumulator.push('agent_1', 'ver_1', 'helpfulness', 0.5);
-      accumulator.push('agent_1', 'ver_1', 'safety', 0.9);
-      accumulator.push('agent_1', 'ver_2', 'helpfulness', 0.3);
-      accumulator.push('agent_2', 'ver_1', 'helpfulness', 0.7);
-
-      expect(accumulator.getWindow('agent_1', 'ver_1', 'helpfulness', 10)!.avg).toBeCloseTo(0.5);
-      expect(accumulator.getWindow('agent_1', 'ver_1', 'safety', 10)!.avg).toBeCloseTo(0.9);
-      expect(accumulator.getWindow('agent_1', 'ver_2', 'helpfulness', 10)!.avg).toBeCloseTo(0.3);
-      expect(accumulator.getWindow('agent_2', 'ver_1', 'helpfulness', 10)!.avg).toBeCloseTo(0.7);
+    expect(observability.getScoreAggregate).toHaveBeenCalledWith({
+      scorerId: 'helpfulness',
+      aggregation: 'count',
+      filters: {
+        entityName: 'agent_1',
+        entityVersionId: 'ver_candidate',
+        timestamp: { start: createdAt },
+      },
     });
   });
 
-  describe('clearAgent', () => {
-    it('clears all windows for a specific agent', () => {
-      accumulator.push('agent_1', 'ver_1', 'helpfulness', 0.5);
-      accumulator.push('agent_1', 'ver_2', 'safety', 0.9);
-      accumulator.push('agent_2', 'ver_1', 'helpfulness', 0.7);
-
-      accumulator.clearAgent('agent_1');
-
-      expect(accumulator.getWindow('agent_1', 'ver_1', 'helpfulness', 10)).toBeNull();
-      expect(accumulator.getWindow('agent_1', 'ver_2', 'safety', 10)).toBeNull();
-      // agent_2 should be unaffected
-      expect(accumulator.getWindow('agent_2', 'ver_1', 'helpfulness', 10)).not.toBeNull();
-    });
-  });
-
-  describe('clearAll', () => {
-    it('clears all windows', () => {
-      accumulator.push('agent_1', 'ver_1', 'helpfulness', 0.5);
-      accumulator.push('agent_2', 'ver_1', 'helpfulness', 0.7);
-
-      accumulator.clearAll();
-
-      expect(accumulator.getWindow('agent_1', 'ver_1', 'helpfulness', 10)).toBeNull();
-      expect(accumulator.getWindow('agent_2', 'ver_1', 'helpfulness', 10)).toBeNull();
-    });
-  });
-
-  describe('background evaluation', () => {
-    it('evaluates rules and triggers rollback when threshold breached', async () => {
-      const onRollback = vi.fn().mockResolvedValue(undefined);
-      const mockStorage = {
-        getActiveRollout: vi.fn().mockResolvedValue(
-          makeRollout({
-            rules: [{ scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' as const }],
-          }),
-        ),
-      } as any;
-
-      accumulator.bind(mockStorage, onRollback);
-
-      // Push 5 bad scores for the candidate
-      for (let i = 0; i < 5; i++) {
-        accumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.3);
-      }
-
-      // Trigger evaluation manually by starting with a very short interval
-      accumulator.stop();
-      const fastAccumulator = new RolloutAccumulator({ evaluationIntervalMs: 50 });
-      fastAccumulator.bind(mockStorage, onRollback);
-
-      // Copy scores
-      for (let i = 0; i < 5; i++) {
-        fastAccumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.3);
-      }
-
-      fastAccumulator.start();
-
-      // Wait for evaluation cycle
-      await new Promise(resolve => setTimeout(resolve, 200));
-      fastAccumulator.stop();
-
-      expect(onRollback).toHaveBeenCalledWith('agent_1', 'rol_1');
-    });
-
-    it('does not trigger rollback when scores are above threshold', async () => {
-      const onRollback = vi.fn().mockResolvedValue(undefined);
-      const mockStorage = {
-        getActiveRollout: vi.fn().mockResolvedValue(
-          makeRollout({
-            rules: [{ scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' as const }],
-          }),
-        ),
-      } as any;
-
-      const fastAccumulator = new RolloutAccumulator({ evaluationIntervalMs: 50 });
-      fastAccumulator.bind(mockStorage, onRollback);
-
-      // Push 5 good scores
-      for (let i = 0; i < 5; i++) {
-        fastAccumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.9);
-      }
-
-      fastAccumulator.start();
-      await new Promise(resolve => setTimeout(resolve, 200));
-      fastAccumulator.stop();
-
-      expect(onRollback).not.toHaveBeenCalled();
-    });
-
-    it('does not trigger rollback when not enough scores accumulated', async () => {
-      const onRollback = vi.fn().mockResolvedValue(undefined);
-      const mockStorage = {
-        getActiveRollout: vi.fn().mockResolvedValue(
-          makeRollout({
-            rules: [{ scorerId: 'helpfulness', threshold: 0.7, windowSize: 50, action: 'rollback' as const }],
-          }),
-        ),
-      } as any;
-
-      const fastAccumulator = new RolloutAccumulator({ evaluationIntervalMs: 50 });
-      fastAccumulator.bind(mockStorage, onRollback);
-
-      // Only push 5 bad scores, but rule needs 50
-      for (let i = 0; i < 5; i++) {
-        fastAccumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.1);
-      }
-
-      fastAccumulator.start();
-      await new Promise(resolve => setTimeout(resolve, 200));
-      fastAccumulator.stop();
-
-      expect(onRollback).not.toHaveBeenCalled();
-    });
+  it('returns null avg when the aggregate is missing', async () => {
+    const observability = makeObservability({ avg: null, count: 0 });
+    const stats = await queryRolloutScoreStats(observability, 'agent_1', 'ver_x', 'helpfulness', new Date());
+    expect(stats).toEqual({ avg: null, count: 0 });
   });
 });
 
 // ---------------------------------------------------------------------------
-// evaluateRules
+// evaluateRules — backed by the observability aggregate API
 // ---------------------------------------------------------------------------
 
 describe('evaluateRules', () => {
-  let accumulator: RolloutAccumulator;
-
-  beforeEach(() => {
-    accumulator = new RolloutAccumulator();
-  });
-
-  afterEach(() => {
-    accumulator.stop();
-  });
-
-  it('returns null when rollout has no rules', () => {
+  it('returns null when rollout has no rules', async () => {
     const rollout = makeRollout({ rules: [] });
-    expect(evaluateRules(rollout, accumulator)).toBeNull();
+    const observability = makeObservability({ avg: 0.1, count: 100 });
+    expect(await evaluateRules(rollout, observability)).toBeNull();
   });
 
-  it('returns null when rollout has undefined rules', () => {
+  it('returns null when rollout has undefined rules', async () => {
     const rollout = makeRollout({ rules: undefined });
-    expect(evaluateRules(rollout, accumulator)).toBeNull();
+    const observability = makeObservability({ avg: 0.1, count: 100 });
+    expect(await evaluateRules(rollout, observability)).toBeNull();
   });
 
-  it('returns the breached rule when average is below threshold', () => {
+  it('returns the breached rule when average is below threshold and count meets windowSize', async () => {
     const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
     const rollout = makeRollout({ rules: [rule] });
+    const observability = makeObservability({ avg: 0.5, count: 5 });
 
-    for (let i = 0; i < 5; i++) {
-      accumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.5);
-    }
-
-    const breached = evaluateRules(rollout, accumulator);
+    const breached = await evaluateRules(rollout, observability);
     expect(breached).toBe(rule);
   });
 
-  it('returns null when average is above threshold', () => {
+  it('returns null when average is above threshold', async () => {
     const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
     const rollout = makeRollout({ rules: [rule] });
+    const observability = makeObservability({ avg: 0.9, count: 5 });
 
-    for (let i = 0; i < 5; i++) {
-      accumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.9);
-    }
-
-    expect(evaluateRules(rollout, accumulator)).toBeNull();
+    expect(await evaluateRules(rollout, observability)).toBeNull();
   });
 
-  it('returns null when average equals threshold', () => {
+  it('returns null when average equals threshold', async () => {
     const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
     const rollout = makeRollout({ rules: [rule] });
+    const observability = makeObservability({ avg: 0.7, count: 5 });
 
-    for (let i = 0; i < 5; i++) {
-      accumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.7);
-    }
-
-    expect(evaluateRules(rollout, accumulator)).toBeNull();
+    expect(await evaluateRules(rollout, observability)).toBeNull();
   });
 
-  it('returns null when not enough scores have been accumulated', () => {
+  it('returns null when count is below windowSize', async () => {
     const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 10, action: 'rollback' };
     const rollout = makeRollout({ rules: [rule] });
+    const observability = makeObservability({ avg: 0.1, count: 3 });
 
-    // Only 3 scores, need 10
-    for (let i = 0; i < 3; i++) {
-      accumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.1);
-    }
-
-    expect(evaluateRules(rollout, accumulator)).toBeNull();
+    expect(await evaluateRules(rollout, observability)).toBeNull();
   });
 
-  it('only evaluates rules against candidate versions (not stable)', () => {
+  it('returns null when avg is null (no scores recorded yet)', async () => {
+    const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
+    const rollout = makeRollout({ rules: [rule] });
+    const observability = makeObservability({ avg: null, count: 0 });
+
+    expect(await evaluateRules(rollout, observability)).toBeNull();
+  });
+
+  it('only evaluates rules against candidate versions (not stable)', async () => {
     const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
     const rollout = makeRollout({ rules: [rule] });
 
-    // Bad scores on stable — should not trigger
-    for (let i = 0; i < 5; i++) {
-      accumulator.push('agent_1', 'ver_stable', 'helpfulness', 0.1);
-    }
+    const getScoreAggregate = vi.fn().mockImplementation(({ aggregation, filters }: any) => {
+      // Should only be called with the candidate version
+      expect(filters.entityVersionId).toBe('ver_candidate');
+      if (aggregation === 'count') return Promise.resolve({ value: 5 });
+      return Promise.resolve({ value: 0.5 });
+    });
+    const observability = { getScoreAggregate } as unknown as ObservabilityStorage;
 
-    expect(evaluateRules(rollout, accumulator)).toBeNull();
+    const breached = await evaluateRules(rollout, observability);
+    expect(breached).toBe(rule);
+    // Avg + count for the single candidate = 2 calls
+    expect(getScoreAggregate).toHaveBeenCalledTimes(2);
   });
 
-  it('evaluates multiple rules and returns first breach', () => {
+  it('evaluates multiple rules and returns first breach', async () => {
     const rule1: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
     const rule2: RolloutRule = { scorerId: 'safety', threshold: 0.9, windowSize: 5, action: 'rollback' };
     const rollout = makeRollout({ rules: [rule1, rule2] });
 
-    // Helpfulness is fine, safety is breached
-    for (let i = 0; i < 5; i++) {
-      accumulator.push('agent_1', 'ver_candidate', 'helpfulness', 0.8);
-      accumulator.push('agent_1', 'ver_candidate', 'safety', 0.5);
-    }
+    const observability = {
+      getScoreAggregate: vi.fn().mockImplementation(({ scorerId, aggregation }: any) => {
+        // helpfulness: fine (0.8). safety: breached (0.5).
+        if (aggregation === 'count') return Promise.resolve({ value: 5 });
+        if (scorerId === 'helpfulness') return Promise.resolve({ value: 0.8 });
+        return Promise.resolve({ value: 0.5 });
+      }),
+    } as unknown as ObservabilityStorage;
 
-    expect(evaluateRules(rollout, accumulator)).toBe(rule2);
+    const breached = await evaluateRules(rollout, observability);
+    expect(breached).toBe(rule2);
   });
 
-  it('evaluates across multiple candidate versions in A/B test', () => {
+  it('evaluates across multiple candidate versions in A/B test', async () => {
     const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
     const rollout = makeRollout({
       type: 'ab_test',
       allocations: [
-        { versionId: 'ver_stable', weight: 34, label: 'control' },
-        { versionId: 'ver_a', weight: 33, label: 'variant-a' },
-        { versionId: 'ver_b', weight: 33, label: 'variant-b' },
+        { versionId: 'ver_stable', weight: 0.34, label: 'control' },
+        { versionId: 'ver_a', weight: 0.33, label: 'variant-a' },
+        { versionId: 'ver_b', weight: 0.33, label: 'variant-b' },
       ],
       rules: [rule],
     });
 
-    // ver_a is fine, ver_b is bad
-    for (let i = 0; i < 5; i++) {
-      accumulator.push('agent_1', 'ver_a', 'helpfulness', 0.9);
-      accumulator.push('agent_1', 'ver_b', 'helpfulness', 0.3);
-    }
+    const observability = {
+      getScoreAggregate: vi.fn().mockImplementation(({ aggregation, filters }: any) => {
+        // ver_a is fine, ver_b is bad
+        if (aggregation === 'count') return Promise.resolve({ value: 5 });
+        if (filters.entityVersionId === 'ver_a') return Promise.resolve({ value: 0.9 });
+        return Promise.resolve({ value: 0.3 });
+      }),
+    } as unknown as ObservabilityStorage;
 
-    expect(evaluateRules(rollout, accumulator)).toBe(rule);
+    const breached = await evaluateRules(rollout, observability);
+    expect(breached).toBe(rule);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RolloutEvaluator
+// ---------------------------------------------------------------------------
+
+describe('RolloutEvaluator', () => {
+  function makeRolloutsStore(rollout: RolloutRecord | null): RolloutsStorage {
+    return {
+      getActiveRollout: vi.fn().mockResolvedValue(rollout),
+    } as unknown as RolloutsStorage;
+  }
+
+  it('does nothing when the rollout has no rules', async () => {
+    const onRollback = vi.fn().mockResolvedValue(undefined);
+    const rollout = makeRollout({ rules: [] });
+    const evaluator = new RolloutEvaluator({
+      rolloutsStorage: makeRolloutsStore(rollout),
+      observability: makeObservability({ avg: 0.1, count: 100 }),
+      onRollback,
+      minIntervalMs: 0,
+    });
+
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    await new Promise(r => setTimeout(r, 10));
+    expect(onRollback).not.toHaveBeenCalled();
+  });
+
+  it('triggers rollback when rules are breached', async () => {
+    const onRollback = vi.fn().mockResolvedValue(undefined);
+    const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
+    const rollout = makeRollout({ rules: [rule] });
+    const evaluator = new RolloutEvaluator({
+      rolloutsStorage: makeRolloutsStore(rollout),
+      observability: makeObservability({ avg: 0.3, count: 5 }),
+      onRollback,
+      minIntervalMs: 0,
+    });
+
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    // Wait for the async work to settle
+    await new Promise(r => setTimeout(r, 20));
+    expect(onRollback).toHaveBeenCalledWith('agent_1', rollout.id);
+  });
+
+  it('does not trigger rollback when scores are above threshold', async () => {
+    const onRollback = vi.fn().mockResolvedValue(undefined);
+    const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
+    const rollout = makeRollout({ rules: [rule] });
+    const evaluator = new RolloutEvaluator({
+      rolloutsStorage: makeRolloutsStore(rollout),
+      observability: makeObservability({ avg: 0.9, count: 50 }),
+      onRollback,
+      minIntervalMs: 0,
+    });
+
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    await new Promise(r => setTimeout(r, 20));
+    expect(onRollback).not.toHaveBeenCalled();
+  });
+
+  it('throttles consecutive evaluations per agent', async () => {
+    const getActiveRollout = vi.fn().mockResolvedValue(null);
+    const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
+    const rollout = makeRollout({ rules: [rule] });
+    const evaluator = new RolloutEvaluator({
+      rolloutsStorage: { getActiveRollout } as unknown as RolloutsStorage,
+      observability: makeObservability({ avg: 0.9, count: 50 }),
+      onRollback: vi.fn(),
+      minIntervalMs: 1000,
+    });
+
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    await new Promise(r => setTimeout(r, 20));
+
+    // Only one evaluation should have been performed despite three schedules
+    expect(getActiveRollout).toHaveBeenCalledTimes(1);
+  });
+
+  it('reset() clears the throttle so the next schedule runs', async () => {
+    const getActiveRollout = vi.fn().mockResolvedValue(null);
+    const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
+    const rollout = makeRollout({ rules: [rule] });
+    const evaluator = new RolloutEvaluator({
+      rolloutsStorage: { getActiveRollout } as unknown as RolloutsStorage,
+      observability: makeObservability({ avg: 0.9, count: 50 }),
+      onRollback: vi.fn(),
+      minIntervalMs: 1_000_000,
+    });
+
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    await new Promise(r => setTimeout(r, 20));
+    expect(getActiveRollout).toHaveBeenCalledTimes(1);
+
+    // Throttled — would not run again
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    await new Promise(r => setTimeout(r, 20));
+    expect(getActiveRollout).toHaveBeenCalledTimes(1);
+
+    // After reset, next schedule runs again
+    evaluator.reset('agent_1');
+    evaluator.scheduleEvaluation('agent_1', rollout);
+    await new Promise(r => setTimeout(r, 20));
+    expect(getActiveRollout).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not evaluate if rollout was completed in the meantime', async () => {
+    const onRollback = vi.fn().mockResolvedValue(undefined);
+    const rule: RolloutRule = { scorerId: 'helpfulness', threshold: 0.7, windowSize: 5, action: 'rollback' };
+    const scheduled = makeRollout({ rules: [rule] });
+    // Storage returns null — rollout was already completed
+    const evaluator = new RolloutEvaluator({
+      rolloutsStorage: makeRolloutsStore(null),
+      observability: makeObservability({ avg: 0.1, count: 50 }),
+      onRollback,
+      minIntervalMs: 0,
+    });
+
+    evaluator.scheduleEvaluation('agent_1', scheduled);
+    await new Promise(r => setTimeout(r, 20));
+    expect(onRollback).not.toHaveBeenCalled();
   });
 });

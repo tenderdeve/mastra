@@ -2461,6 +2461,7 @@ export type RolloutStatus = 'active' | 'completed' | 'rolled_back' | 'cancelled'
 
 export interface RolloutAllocation {
   versionId: string;
+  /** Fractional traffic weight in [0, 1]. Per rollout, weights must sum to 1. */
   weight: number;
   label?: string;
 }

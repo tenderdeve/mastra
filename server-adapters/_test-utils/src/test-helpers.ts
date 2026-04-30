@@ -495,7 +495,6 @@ export async function createDefaultTestContext(): Promise<AdapterTestContext> {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-      getRolloutAccumulator: vi.fn().mockReturnValue(undefined),
     },
     scorer: {
       clearCache: vi.fn(),

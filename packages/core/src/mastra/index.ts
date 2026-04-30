@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Agent } from '../agent';
-import type { RolloutAccumulator } from '../agent/rollout';
+import { RolloutEvaluator } from '../agent/rollout';
 import { BackgroundTaskManager } from '../background-tasks';
 import type { BackgroundTaskManagerConfig } from '../background-tasks/types';
 import type { BundlerConfig } from '../bundler/types';
@@ -470,13 +470,46 @@ export class Mastra<
     return this.#storedScorersCache;
   }
 
+  #rolloutEvaluator: RolloutEvaluator | undefined;
+  #rolloutEvaluatorInitialized = false;
+
   /**
-   * Gets the rollout accumulator for in-memory score tracking during active rollouts.
-   * Delegates to the editor's agent namespace where the accumulator lives.
+   * Gets a {@link RolloutEvaluator} that performs throttled, OLAP-backed rollback
+   * evaluation for active rollouts. Returns `undefined` when either the rollouts
+   * storage domain or observability storage domain is unavailable.
+   *
+   * Lazily constructed on first access — no work is performed unless rollouts
+   * are actually used.
    * @internal
    */
-  public getRolloutAccumulator(): RolloutAccumulator | undefined {
-    return this.#editor?.agent.getRolloutAccumulator();
+  public async getRolloutEvaluator(): Promise<RolloutEvaluator | undefined> {
+    if (this.#rolloutEvaluatorInitialized) return this.#rolloutEvaluator;
+    this.#rolloutEvaluatorInitialized = true;
+
+    const storage = this.getStorage();
+    if (!storage) return undefined;
+
+    const [rolloutsStorage, observability] = await Promise.all([
+      storage.getStore('rollouts'),
+      storage.getStore('observability'),
+    ]);
+    if (!rolloutsStorage || !observability) return undefined;
+
+    const logger = this.getLogger();
+    this.#rolloutEvaluator = new RolloutEvaluator({
+      rolloutsStorage,
+      observability,
+      onRollback: async (agentId, rolloutId) => {
+        try {
+          await rolloutsStorage.completeRollout(rolloutId, 'rolled_back', new Date());
+          logger?.info('Rollout auto-rolled back', { agentId, rolloutId });
+          this.#editor?.agent.clearCache(agentId);
+        } catch (err) {
+          logger?.error('Failed to auto-rollback rollout', { agentId, rolloutId, error: err });
+        }
+      },
+    });
+    return this.#rolloutEvaluator;
   }
 
   /**

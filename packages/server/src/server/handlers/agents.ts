@@ -774,6 +774,13 @@ async function resolveRolloutVersionOptions(
     const versionId = resolveVersionFromRollout(rollout, requestContext);
     logger.debug('Resolved version from rollout', { agentId, rolloutId: rollout.id, versionId });
 
+    // Opportunistic, throttled rollback evaluation backed by the observability
+    // OLAP aggregate API. Fire-and-forget — never blocks request resolution.
+    if (rollout.rules && rollout.rules.length > 0) {
+      const evaluator = await mastra.getRolloutEvaluator();
+      evaluator?.scheduleEvaluation(agentId, rollout);
+    }
+
     return { versionId };
   } catch (error) {
     logger.debug('Error resolving rollout version, falling back to default', error);

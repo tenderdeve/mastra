@@ -299,8 +299,8 @@ export const ACTIVATE_AGENT_VERSION_ROUTE = createRoute({
         const activeRollout = await rolloutsStore.getActiveRollout(agentId);
         if (activeRollout) {
           await rolloutsStore.completeRollout(activeRollout.id, 'cancelled', new Date());
-          const accumulator = mastra.getRolloutAccumulator();
-          accumulator?.clearAgent(agentId);
+          const evaluator = await mastra.getRolloutEvaluator();
+          evaluator?.reset(agentId);
           cancelledRolloutId = activeRollout.id;
         }
       }

@@ -10,7 +10,7 @@ export const rolloutStatusSchema = z.enum(['active', 'completed', 'rolled_back',
 
 export const rolloutAllocationSchema = z.object({
   versionId: z.string().describe('Agent version ID for this allocation'),
-  weight: z.number().int().min(0).max(100).describe('Traffic weight (0-100)'),
+  weight: z.number().min(0).max(1).describe('Fractional traffic weight (0-1, e.g. 0.05 for 5%)'),
   label: z.string().optional().describe('Human-readable label (e.g. "stable", "candidate", "control")'),
 });
 
@@ -41,7 +41,11 @@ export const startRolloutBodySchema = z
     z.object({
       type: z.literal('canary'),
       candidateVersionId: z.string().describe('Version ID of the candidate'),
-      candidateWeight: z.number().int().min(1).max(99).describe('Initial traffic percentage for the candidate'),
+      candidateWeight: z
+        .number()
+        .gt(0)
+        .lt(1)
+        .describe('Initial fractional traffic for the candidate (0-1, e.g. 0.01 for 1%)'),
       routingKey: z
         .string()
         .optional()
@@ -50,7 +54,7 @@ export const startRolloutBodySchema = z
     }),
     z.object({
       type: z.literal('ab_test'),
-      allocations: z.array(rolloutAllocationSchema).min(2).describe('Traffic allocations (weights must sum to 100)'),
+      allocations: z.array(rolloutAllocationSchema).min(2).describe('Traffic allocations (weights must sum to 1)'),
       routingKey: z
         .string()
         .optional()
@@ -63,7 +67,7 @@ export const startRolloutBodySchema = z
  * PATCH /agents/:agentId/rollout — Update rollout weights
  */
 export const updateRolloutBodySchema = z.object({
-  candidateWeight: z.number().int().min(1).max(99).describe('New traffic percentage for the candidate (canary only)'),
+  candidateWeight: z.number().gt(0).lt(1).describe('New fractional traffic for the candidate (0-1, canary only)'),
 });
 
 /**

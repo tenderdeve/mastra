@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Mastra } from '@mastra/core';
-import type { RolloutsStorage, AgentsStorage, ScoresStorage } from '@mastra/core/storage';
+import { queryRolloutScoreStats } from '@mastra/core/agent';
+import type { AgentsStorage, ObservabilityStorage, RolloutsStorage, ScoresStorage } from '@mastra/core/storage';
 
 import { HTTPException } from '../http-exception';
 import {
@@ -63,6 +64,12 @@ async function getScoresStore(mastra: Mastra): Promise<ScoresStorage | undefined
   return storage.getStore('scores');
 }
 
+async function getObservabilityStore(mastra: Mastra): Promise<ObservabilityStorage | undefined> {
+  const storage = mastra.getStorage();
+  if (!storage) return undefined;
+  return storage.getStore('observability');
+}
+
 /**
  * Verify that an agent exists (code-defined or stored).
  * Throws 404 if the agent is not found.
@@ -87,37 +94,6 @@ async function ensureAgentExists(mastra: Mastra, agentId: string): Promise<void>
   }
 
   throw new HTTPException(404, { message: `Agent with id ${agentId} not found` });
-}
-
-/**
- * Ensure the rollout accumulator is bound and running.
- * Lazily initializes on first call.
- */
-function ensureAccumulator(mastra: Mastra): void {
-  const accumulator = mastra.getRolloutAccumulator();
-  if (!accumulator || accumulator.bound) return;
-
-  const storage = mastra.getStorage();
-  if (!storage) return;
-
-  void storage.getStore('rollouts').then((rolloutsStore: RolloutsStorage | undefined) => {
-    if (!rolloutsStore) return;
-
-    accumulator.bind(rolloutsStore, async (agentId: string, rolloutId: string) => {
-      // Rollback handler: mark rollout as rolled_back
-      try {
-        await rolloutsStore.completeRollout(rolloutId, 'rolled_back', new Date());
-        accumulator.clearAgent(agentId);
-        mastra.getLogger()?.info('Rollout auto-rolled back', { agentId, rolloutId });
-        // Clear editor cache so subsequent requests use the stable version
-        mastra.getEditor()?.agent.clearCache(agentId);
-      } catch (err) {
-        mastra.getLogger()?.error('Failed to auto-rollback rollout', { agentId, rolloutId, error: err });
-      }
-    });
-
-    accumulator.start();
-  });
 }
 
 // ============================================================================
@@ -152,20 +128,28 @@ export const GET_ROLLOUT_ROUTE = createRoute({
         return null;
       }
 
-      // Enrich allocations with score summaries from the accumulator
-      const accumulator = mastra.getRolloutAccumulator();
-      if (accumulator && rollout.rules?.length) {
+      // Enrich allocations with score summaries from the observability OLAP store.
+      const observability = await getObservabilityStore(mastra);
+      if (observability && rollout.rules?.length) {
         const scorerIds = rollout.rules.map(r => r.scorerId);
-        const enriched: AllocationWithScores[] = rollout.allocations.map(alloc => {
-          const scores: Record<string, { avg: number; count: number }> = {};
-          for (const scorerId of scorerIds) {
-            const window = accumulator.getWindow(agentId, alloc.versionId, scorerId, 1000);
-            if (window && window.count > 0) {
-              scores[scorerId] = window;
+        const enriched: AllocationWithScores[] = await Promise.all(
+          rollout.allocations.map(async alloc => {
+            const scores: Record<string, { avg: number; count: number }> = {};
+            for (const scorerId of scorerIds) {
+              const stats = await queryRolloutScoreStats(
+                observability,
+                agentId,
+                alloc.versionId,
+                scorerId,
+                rollout.createdAt,
+              );
+              if (stats.count > 0 && stats.avg !== null) {
+                scores[scorerId] = { avg: stats.avg, count: stats.count };
+              }
             }
-          }
-          return Object.keys(scores).length > 0 ? { ...alloc, scores } : { ...alloc };
-        });
+            return Object.keys(scores).length > 0 ? { ...alloc, scores } : { ...alloc };
+          }),
+        );
         return { ...rollout, allocations: enriched };
       }
 
@@ -246,17 +230,17 @@ export const START_ROLLOUT_ROUTE = createRoute({
         }
 
         allocations = [
-          { versionId: stableVersionId, weight: 100 - body.candidateWeight, label: 'stable' },
+          { versionId: stableVersionId, weight: 1 - body.candidateWeight, label: 'stable' },
           { versionId: body.candidateVersionId, weight: body.candidateWeight, label: 'candidate' },
         ];
       } else {
         type = 'ab_test';
         routingKey = body.routingKey;
 
-        // Validate weights sum to 100
+        // Validate weights sum to 1 (with floating-point tolerance)
         const totalWeight = body.allocations.reduce((sum, a) => sum + a.weight, 0);
-        if (totalWeight !== 100) {
-          throw new HTTPException(400, { message: `Allocation weights must sum to 100, got ${totalWeight}` });
+        if (Math.abs(totalWeight - 1) > 1e-6) {
+          throw new HTTPException(400, { message: `Allocation weights must sum to 1, got ${totalWeight}` });
         }
 
         // Validate all version IDs exist
@@ -279,9 +263,6 @@ export const START_ROLLOUT_ROUTE = createRoute({
         routingKey,
         rules,
       });
-
-      // Ensure the accumulator is running for rule evaluation
-      ensureAccumulator(mastra);
 
       return rollout;
     } catch (error) {
@@ -329,7 +310,7 @@ export const UPDATE_ROLLOUT_ROUTE = createRoute({
       }
 
       const updatedAllocations = [
-        { ...stableAlloc, weight: 100 - candidateWeight },
+        { ...stableAlloc, weight: 1 - candidateWeight },
         { ...candidateAlloc, weight: candidateWeight },
       ];
 
@@ -399,9 +380,9 @@ export const PROMOTE_ROLLOUT_ROUTE = createRoute({
       // Complete the rollout
       const completed = await rolloutsStore.completeRollout(rollout.id, 'completed', new Date());
 
-      // Clear accumulator
-      const accumulator = mastra.getRolloutAccumulator();
-      accumulator?.clearAgent(agentId);
+      // Reset the rollout evaluator throttle for this agent
+      const evaluator = await mastra.getRolloutEvaluator();
+      evaluator?.reset(agentId);
 
       return { success: true, rollout: completed };
     } catch (error) {
@@ -441,9 +422,9 @@ export const ROLLBACK_ROLLOUT_ROUTE = createRoute({
       // Clear editor cache
       mastra.getEditor()?.agent.clearCache(agentId);
 
-      // Clear accumulator
-      const accumulator = mastra.getRolloutAccumulator();
-      accumulator?.clearAgent(agentId);
+      // Reset the rollout evaluator throttle for this agent
+      const evaluator = await mastra.getRolloutEvaluator();
+      evaluator?.reset(agentId);
 
       return { success: true, rollout: completed };
     } catch (error) {
@@ -483,9 +464,9 @@ export const CANCEL_ROLLOUT_ROUTE = createRoute({
       // Clear editor cache so subsequent requests see no active rollout
       mastra.getEditor()?.agent.clearCache(agentId);
 
-      // Clear accumulator
-      const accumulator = mastra.getRolloutAccumulator();
-      accumulator?.clearAgent(agentId);
+      // Reset the rollout evaluator throttle for this agent
+      const evaluator = await mastra.getRolloutEvaluator();
+      evaluator?.reset(agentId);
 
       return { success: true, rollout: completed };
     } catch (error) {
