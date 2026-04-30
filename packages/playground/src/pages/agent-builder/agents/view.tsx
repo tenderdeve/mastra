@@ -1,5 +1,6 @@
 import type { StoredSkillResponse } from '@mastra/client-js';
-import { Button, Spinner } from '@mastra/playground-ui';
+import { IconButton, Spinner } from '@mastra/playground-ui';
+import { PencilIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
@@ -10,6 +11,8 @@ import {
 } from '@/domains/agent-builder/components/agent-builder-edit/agent-chat-panel';
 import type { ActiveDetail } from '@/domains/agent-builder/components/agent-builder-edit/agent-configure-panel';
 import { ConfigurePanelConnected } from '@/domains/agent-builder/components/agent-builder-edit/configure-panel-connected';
+import { AgentBuilderMobileMenu } from '@/domains/agent-builder/components/agent-builder-edit/agent-builder-mobile-menu';
+import { PublishToSlackButton } from '@/domains/agent-builder/components/agent-builder-edit/publish-to-slack-button';
 import { useStreamRunning } from '@/domains/agent-builder/components/agent-builder-edit/stream-chat-context';
 import { VisibilitySelect } from '@/domains/agent-builder/components/agent-builder-edit/visibility-select';
 import { WorkspaceLayout } from '@/domains/agent-builder/components/agent-builder-edit/workspace-layout';
@@ -25,6 +28,7 @@ import type { StoredAgent } from '@/domains/agents/hooks/use-stored-agents';
 import { useStoredAgent } from '@/domains/agents/hooks/use-stored-agents';
 import { useStoredSkills } from '@/domains/agents/hooks/use-stored-skills';
 import { useCurrentUser } from '@/domains/auth/hooks/use-current-user';
+import type { CurrentUser } from '@/domains/auth/types';
 import { useTools } from '@/domains/tools/hooks/use-all-tools';
 import { useWorkflows } from '@/domains/workflows/hooks/use-workflows';
 
@@ -40,9 +44,11 @@ export default function AgentBuilderAgentView() {
   const { data: agentsData, isPending: isAgentsPending } = useAgents({ enabled: features.agents });
   const { data: workflowsData, isPending: isWorkflowsPending } = useWorkflows({ enabled: features.workflows });
   const { data: storedSkillsResponse, isPending: isSkillsPending } = useStoredSkills({ enabled: features.skills });
+  const { data: currentUser, isLoading: isCurrentUserLoading } = useCurrentUser();
   const isReady =
     Boolean(id) &&
     !isStoredAgentLoading &&
+    !isCurrentUserLoading &&
     (!features.tools || !isToolsPending) &&
     (!features.skills || !isSkillsPending) &&
     (!features.agents || !isAgentsPending) &&
@@ -58,6 +64,7 @@ export default function AgentBuilderAgentView() {
       agentsData={agentsData}
       workflowsData={workflowsData}
       storedSkillsResponse={storedSkillsResponse}
+      currentUser={currentUser ?? null}
     />
   );
 }
@@ -69,6 +76,7 @@ interface PageProps {
   agentsData: AgentsData | undefined;
   workflowsData: WorkflowsData | undefined;
   storedSkillsResponse: ReturnType<typeof useStoredSkills>['data'];
+  currentUser: CurrentUser;
 }
 
 const AgentBuilderAgentViewPage = ({
@@ -78,6 +86,7 @@ const AgentBuilderAgentViewPage = ({
   agentsData,
   workflowsData,
   storedSkillsResponse,
+  currentUser,
 }: PageProps) => {
   const defaultValues = useMemo(() => storedAgentToFormValues(storedAgent), [storedAgent]);
   const formMethods = useForm<AgentBuilderEditFormValues>({ defaultValues });
@@ -95,6 +104,7 @@ const AgentBuilderAgentViewPage = ({
         agentsData={agentsData ?? {}}
         workflowsData={workflowsData ?? {}}
         storedSkillsResponse={storedSkillsResponse}
+        currentUser={currentUser}
       />
     </FormProvider>
   );
@@ -113,6 +123,7 @@ interface AgentBuilderAgentViewReadyProps {
   agentsData: AgentsData;
   workflowsData: WorkflowsData;
   storedSkillsResponse: ReturnType<typeof useStoredSkills>['data'];
+  currentUser: CurrentUser;
 }
 
 const AgentBuilderAgentViewReady = ({
@@ -122,6 +133,7 @@ const AgentBuilderAgentViewReady = ({
   agentsData,
   workflowsData,
   storedSkillsResponse,
+  currentUser,
 }: AgentBuilderAgentViewReadyProps) => {
   const navigate = useNavigate();
   const [activeDetail, setActiveDetail] = useState<ActiveDetail>(null);
@@ -129,8 +141,8 @@ const AgentBuilderAgentViewReady = ({
   const selectedTools = useWatch({ control: formMethods.control, name: 'tools' });
   const selectedAgents = useWatch({ control: formMethods.control, name: 'agents' });
   const selectedWorkflows = useWatch({ control: formMethods.control, name: 'workflows' });
-  const { data: currentUser } = useCurrentUser();
   const isOwner = !storedAgent?.authorId || currentUser?.id === storedAgent.authorId;
+  const threadId = currentUser?.id ? `${currentUser.id}-${id}` : id;
 
   const availableAgentTools = useAvailableAgentTools({
     toolsData,
@@ -164,12 +176,19 @@ const AgentBuilderAgentViewReady = ({
         mode="test"
         defaultExpanded={false}
         detailOpen={activeDetail !== null}
-        modeAction={<VisibilitySelect disabled />}
+        showConfigure={isOwner}
+        modeAction={
+          <div className="hidden lg:flex items-center gap-2">
+            {isOwner && <PublishToSlackButton />}
+            <VisibilitySelect disabled variant="ghost" />
+          </div>
+        }
         primaryAction={
           isOwner ? (
             <ViewHeaderActions onEdit={() => navigate(`/agent-builder/agents/${id}/edit`, { viewTransition: true })} />
           ) : undefined
         }
+        mobileExtra={isOwner ? <AgentBuilderMobileMenu showPublishToSlack /> : undefined}
         chat={<AgentChatPanelChat hasBrowser={hasBrowser} hideBrowserSidebar />}
         configure={
           <ConfigurePanelConnected
@@ -190,7 +209,7 @@ const AgentBuilderAgentViewReady = ({
 
   return (
     <BrowserToolCallsProvider>
-      <BrowserSessionProvider agentId={id} threadId={id}>
+      <BrowserSessionProvider agentId={id} threadId={threadId}>
         {content}
       </BrowserSessionProvider>
     </BrowserToolCallsProvider>
@@ -200,8 +219,15 @@ const AgentBuilderAgentViewReady = ({
 const ViewHeaderActions = ({ onEdit }: { onEdit: () => void }) => {
   const isRunning = useStreamRunning();
   return (
-    <Button size="sm" variant="default" onClick={onEdit} disabled={isRunning} data-testid="agent-builder-view-edit">
-      Edit configuration
-    </Button>
+    <IconButton
+      size="sm"
+      variant="ghost"
+      onClick={onEdit}
+      disabled={isRunning}
+      tooltip="Edit agent"
+      data-testid="agent-builder-view-edit"
+    >
+      <PencilIcon />
+    </IconButton>
   );
 };
