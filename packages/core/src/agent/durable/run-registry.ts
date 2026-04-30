@@ -3,10 +3,29 @@ import type { MastraLanguageModel } from '../../llm/model/shared.types';
 import type { CoreTool } from '../../tools/types';
 import type { MessageList } from '../message-list';
 import type { SaveQueueManager } from '../save-queue';
+import { AGENT_STREAM_TOPIC, AgentStreamEventTypes } from './constants';
 import type { DurableAgentRunStatus, DurableAgentSignal, RunRegistryEntry } from './types';
 
 function threadKey(resourceId: string, threadId: string): string {
   return `${resourceId}\0${threadId}`;
+}
+
+export const GLOBAL_RUN_REGISTRY_TTL_MS = 2 * 60 * 60 * 1000;
+
+function publishRegistryExpiredAbort(runId: string, entry: RunRegistryEntry): void {
+  void entry.pubsub
+    ?.publish(AGENT_STREAM_TOPIC(runId), {
+      type: AgentStreamEventTypes.ERROR,
+      runId,
+      data: {
+        runId,
+        error: {
+          name: 'AbortError',
+          message: 'Durable run registry entry expired before the run completed.',
+        },
+      },
+    })
+    .catch(() => undefined);
 }
 
 /**
@@ -16,15 +35,18 @@ function threadKey(resourceId: string, threadId: string): string {
  *
  * Entries are keyed by runId (which are unique UUIDs).
  *
- * Uses TTLCache to prevent unbounded memory growth: entries auto-expire
- * after 10 minutes (refreshed on access) and the registry is hard-capped
- * at 1000 concurrent entries.
+ * Uses TTLCache as a leak safety net. Durable runs may sit suspended for a long
+ * time waiting on approval, so there is no capacity-based eviction; stale expiry
+ * publishes an abort before cleanup so listeners do not hang.
  */
 export const globalRunRegistry = new TTLCache<string, RunRegistryEntry>({
-  max: 1000,
-  ttl: 10 * 60 * 1000,
-  updateAgeOnGet: true,
-  dispose: entry => {
+  max: Infinity,
+  ttl: GLOBAL_RUN_REGISTRY_TTL_MS,
+  dispose: (entry, runId, reason) => {
+    if (!entry) return;
+    if (reason === 'stale' || reason === 'evict') {
+      publishRegistryExpiredAbort(runId, entry);
+    }
     entry.cleanup?.();
   },
   noDisposeOnSet: true,

@@ -369,11 +369,10 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               for await (const chunk of trackedStream) {
                 if (!chunk) continue;
 
-                // Emit chunk via pubsub for streaming to client
-                // NOTE: Do NOT emit 'finish' chunks - they will be sent as a proper FINISH event
-                // at the end of the agentic loop. Emitting finish chunks here would cause
-                // the client's MastraModelOutput to close prematurely in multi-step workflows.
-                if (streamPubsub && chunk.type !== 'finish') {
+                // Emit chunk via pubsub for streaming to client.
+                // Finish and error chunks are terminal control flow: finish is sent once by the
+                // agentic loop, and errors are sent once after retries/fallbacks are exhausted.
+                if (streamPubsub && chunk.type !== 'finish' && chunk.type !== 'error') {
                   await emitChunkEvent(streamPubsub, runId, chunk);
                 }
 

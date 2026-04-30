@@ -314,8 +314,14 @@ describe('DurableAgent Model Fallback', () => {
       });
       const durableAgent = createDurableAgent({ agent: baseAgent, pubsub });
 
+      const streamedErrors: unknown[] = [];
       let errorReceived: Error | null = null;
       const { cleanup } = await durableAgent.stream('Hello', {
+        onChunk: chunk => {
+          if (chunk.type === 'error') {
+            streamedErrors.push(chunk);
+          }
+        },
         onError: error => {
           errorReceived = error;
         },
@@ -325,6 +331,7 @@ describe('DurableAgent Model Fallback', () => {
       await new Promise(resolve => setTimeout(resolve, 500));
       cleanup();
 
+      expect(streamedErrors).toHaveLength(0);
       expect(errorReceived).not.toBeNull();
       expect(errorReceived!.message).toContain('Model execution failed');
     });
