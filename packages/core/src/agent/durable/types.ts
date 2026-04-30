@@ -10,6 +10,7 @@ import type { z } from 'zod';
 
 import type { BackgroundTaskManager } from '../../background-tasks/manager';
 import type { AgentBackgroundConfig } from '../../background-tasks/types';
+import type { PubSub } from '../../events/pubsub';
 import type { MastraLanguageModel } from '../../llm/model/shared.types';
 import type { MastraMemory } from '../../memory/memory';
 import type { MemoryConfig } from '../../memory/types';
@@ -424,6 +425,8 @@ export interface RunRegistryEntry {
   backgroundTaskManager?: BackgroundTaskManager;
   /** Agent background tasks configuration */
   backgroundTasksConfig?: AgentBackgroundConfig;
+  /** PubSub that streams durable agent events to subscribers */
+  pubsub?: PubSub;
 }
 
 /**
