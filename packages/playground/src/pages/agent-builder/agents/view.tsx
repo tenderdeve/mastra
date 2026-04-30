@@ -1,4 +1,4 @@
-import type { StoredSkillResponse } from '@mastra/client-js';
+import type { GetAgentResponse, StoredSkillResponse } from '@mastra/client-js';
 import { Button, Spinner } from '@mastra/playground-ui';
 import { useEffect, useMemo, useState } from 'react';
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form';
@@ -14,6 +14,8 @@ import { useStreamRunning } from '@/domains/agent-builder/components/agent-build
 import { VisibilitySelect } from '@/domains/agent-builder/components/agent-builder-edit/visibility-select';
 import { WorkspaceLayout } from '@/domains/agent-builder/components/agent-builder-edit/workspace-layout';
 import { useAvailableAgentTools } from '@/domains/agent-builder/hooks/use-available-agent-tools';
+import { codeAgentToAgentConfig } from '@/domains/agent-builder/mappers/code-agent-to-agent-config';
+import { codeAgentToFormValues } from '@/domains/agent-builder/mappers/code-agent-to-form-values';
 import { storedAgentToAgentConfig } from '@/domains/agent-builder/mappers/stored-agent-to-agent-config';
 import { storedAgentToFormValues } from '@/domains/agent-builder/mappers/stored-agent-to-form-values';
 import type { AgentBuilderEditFormValues } from '@/domains/agent-builder/schemas';
@@ -40,13 +42,24 @@ export default function AgentBuilderAgentView() {
   const { data: agentsData, isPending: isAgentsPending } = useAgents({ enabled: features.agents });
   const { data: workflowsData, isPending: isWorkflowsPending } = useWorkflows({ enabled: features.workflows });
   const { data: storedSkillsResponse, isPending: isSkillsPending } = useStoredSkills({ enabled: features.skills });
+
+  // Stored fetch returns null on 404. For code-defined agents (no stored override),
+  // fall back to the /agents response so the Library can route to this view.
+  const shouldLookUpCodeAgent = !isStoredAgentLoading && storedAgent == null && Boolean(id);
+  const { data: allAgentsData, isPending: isAllAgentsPending } = useAgents({ enabled: shouldLookUpCodeAgent });
+  const codeAgent =
+    shouldLookUpCodeAgent && id && allAgentsData && allAgentsData[id]?.source === 'code'
+      ? allAgentsData[id]
+      : undefined;
+
   const isReady =
     Boolean(id) &&
     !isStoredAgentLoading &&
     (!features.tools || !isToolsPending) &&
     (!features.skills || !isSkillsPending) &&
     (!features.agents || !isAgentsPending) &&
-    (!features.workflows || !isWorkflowsPending);
+    (!features.workflows || !isWorkflowsPending) &&
+    (!shouldLookUpCodeAgent || !isAllAgentsPending);
 
   if (!isReady) return <AgentBuilderAgentViewSkeleton />;
 
@@ -54,6 +67,7 @@ export default function AgentBuilderAgentView() {
     <AgentBuilderAgentViewPage
       id={id}
       storedAgent={storedAgent}
+      codeAgent={codeAgent}
       toolsData={toolsData}
       agentsData={agentsData}
       workflowsData={workflowsData}
@@ -65,6 +79,7 @@ export default function AgentBuilderAgentView() {
 interface PageProps {
   id: string | undefined;
   storedAgent: StoredAgent | null | undefined;
+  codeAgent: GetAgentResponse | undefined;
   toolsData: ToolsData | undefined;
   agentsData: AgentsData | undefined;
   workflowsData: WorkflowsData | undefined;
@@ -74,12 +89,16 @@ interface PageProps {
 const AgentBuilderAgentViewPage = ({
   id,
   storedAgent,
+  codeAgent,
   toolsData,
   agentsData,
   workflowsData,
   storedSkillsResponse,
 }: PageProps) => {
-  const defaultValues = useMemo(() => storedAgentToFormValues(storedAgent), [storedAgent]);
+  const defaultValues = useMemo(
+    () => (codeAgent ? codeAgentToFormValues(codeAgent) : storedAgentToFormValues(storedAgent)),
+    [codeAgent, storedAgent],
+  );
   const formMethods = useForm<AgentBuilderEditFormValues>({ defaultValues });
 
   useEffect(() => {
@@ -91,6 +110,7 @@ const AgentBuilderAgentViewPage = ({
       <AgentBuilderAgentViewReady
         id={id!}
         storedAgent={storedAgent}
+        codeAgent={codeAgent}
         toolsData={toolsData ?? {}}
         agentsData={agentsData ?? {}}
         workflowsData={workflowsData ?? {}}
@@ -109,6 +129,7 @@ const AgentBuilderAgentViewSkeleton = () => (
 interface AgentBuilderAgentViewReadyProps {
   id: string;
   storedAgent: StoredAgent | null | undefined;
+  codeAgent: GetAgentResponse | undefined;
   toolsData: ToolsData;
   agentsData: AgentsData;
   workflowsData: WorkflowsData;
@@ -118,6 +139,7 @@ interface AgentBuilderAgentViewReadyProps {
 const AgentBuilderAgentViewReady = ({
   id,
   storedAgent,
+  codeAgent,
   toolsData,
   agentsData,
   workflowsData,
@@ -130,7 +152,8 @@ const AgentBuilderAgentViewReady = ({
   const selectedAgents = useWatch({ control: formMethods.control, name: 'agents' });
   const selectedWorkflows = useWatch({ control: formMethods.control, name: 'workflows' });
   const { data: currentUser } = useCurrentUser();
-  const isOwner = !storedAgent?.authorId || currentUser?.id === storedAgent.authorId;
+  const isCodeAgent = codeAgent != null;
+  const isOwner = !isCodeAgent && (!storedAgent?.authorId || currentUser?.id === storedAgent?.authorId);
 
   const availableAgentTools = useAvailableAgentTools({
     toolsData,
@@ -142,7 +165,10 @@ const AgentBuilderAgentViewReady = ({
     excludeAgentId: id,
   });
 
-  const agent = useMemo(() => storedAgentToAgentConfig(storedAgent, id ?? ''), [storedAgent, id]);
+  const agent = useMemo(
+    () => (codeAgent ? codeAgentToAgentConfig(codeAgent, id) : storedAgentToAgentConfig(storedAgent, id ?? '')),
+    [codeAgent, storedAgent, id],
+  );
 
   const availableSkills = useMemo<StoredSkillResponse[]>(
     () => storedSkillsResponse?.skills ?? [],
@@ -155,16 +181,16 @@ const AgentBuilderAgentViewReady = ({
   const content = (
     <AgentChatPanelProvider
       agentId={id}
-      agentName={storedAgent?.name}
-      agentDescription={storedAgent?.description}
-      agentAvatarUrl={agent?.avatarUrl}
+      agentName={agent.name}
+      agentDescription={agent.description}
+      agentAvatarUrl={agent.avatarUrl}
     >
       <WorkspaceLayout
         isLoading={false}
         mode="test"
         defaultExpanded={false}
         detailOpen={activeDetail !== null}
-        modeAction={<VisibilitySelect disabled />}
+        modeAction={isCodeAgent ? null : <VisibilitySelect disabled />}
         primaryAction={
           isOwner ? (
             <ViewHeaderActions onEdit={() => navigate(`/agent-builder/agents/${id}/edit`, { viewTransition: true })} />

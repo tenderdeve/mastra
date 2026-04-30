@@ -97,9 +97,45 @@ const storedAgent = {
   updatedAt: '2026-04-29T10:00:00.000Z',
 };
 
+const codeAgent = {
+  id: 'agent-123',
+  name: 'Code-Defined Agent',
+  description: 'Defined in user code',
+  instructions: 'be helpful',
+  tools: {},
+  workflows: {},
+  agents: {},
+  provider: 'openai',
+  modelId: 'gpt-4',
+  modelVersion: 'v2',
+  modelList: undefined,
+  defaultOptions: {},
+  defaultGenerateOptionsLegacy: {},
+  defaultStreamOptionsLegacy: {},
+  source: 'code',
+};
+
 describe('AgentBuilderAgentView MSW integration', () => {
   afterEach(() => {
     cleanup();
+  });
+
+  it('falls back to /agents data when the stored fetch 404s for a code-defined agent', async () => {
+    server.use(
+      http.get(`${BASE_URL}/api/stored/agents/agent-123`, () =>
+        HttpResponse.json({ error: 'not found' }, { status: 404 }),
+      ),
+      http.get(`${BASE_URL}/api/agents`, () => HttpResponse.json({ 'agent-123': codeAgent })),
+      http.get(`${BASE_URL}/api/memory/threads/agent-123/messages`, () => HttpResponse.json({ messages: [] })),
+    );
+
+    renderPage();
+
+    const emptyState = await screen.findByTestId('agent-builder-agent-chat-empty-state');
+    expect(within(emptyState).getByText('Code-Defined Agent')).toBeTruthy();
+    expect(within(emptyState).getByText('Defined in user code')).toBeTruthy();
+    // Code agents are read-only — no Edit affordance.
+    expect(screen.queryByTestId('agent-builder-view-edit')).toBeNull();
   });
 
   it('renders the real empty chat state from API data and autofills a starter prompt without submitting', async () => {
