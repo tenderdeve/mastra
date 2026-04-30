@@ -1,5 +1,6 @@
-import { Agent, resolveVersionFromRollout } from '@mastra/core/agent';
-import type { AgentModelManagerConfig } from '@mastra/core/agent';
+import { Agent, isDurableAgentLike, resolveVersionFromRollout } from '@mastra/core/agent';
+import type { AgentModelManagerConfig, DurableAgentLike } from '@mastra/core/agent';
+import { AGENT_STREAM_TOPIC } from '@mastra/core/agent/durable';
 import type { VersionOverrides } from '@mastra/core/di';
 import { mergeVersionOverrides } from '@mastra/core/di';
 import { ErrorCategory, ErrorDomain, MastraError } from '@mastra/core/error';
@@ -46,6 +47,8 @@ import {
   enhanceInstructionsResponseSchema,
   approveNetworkToolCallBodySchema,
   declineNetworkToolCallBodySchema,
+  observeAgentBodySchema,
+  observeAgentResponseSchema,
   streamUntilIdleBodySchema,
   resumeStreamBodySchema,
 } from '../schemas/agents';
@@ -664,10 +667,20 @@ async function formatAgentList({
   };
 }
 
-export function extractVersionOptions(requestContext?: RequestContext): { versionId: string } | undefined {
+export function extractVersionOptions(
+  requestContext?: RequestContext,
+  bodyRequestContext?: Record<string, unknown>,
+): { versionId: string } | undefined {
+  // First check the server-populated RequestContext (e.g. from auth middleware)
   const agentVersionId = requestContext?.get('agentVersionId');
   if (typeof agentVersionId === 'string' && agentVersionId) {
     return { versionId: agentVersionId };
+  }
+  // Fall back to body requestContext — the client may send agentVersionId there
+  // (e.g. the playground editor sends it so the correct stored version is loaded)
+  const bodyVersionId = bodyRequestContext?.agentVersionId;
+  if (typeof bodyVersionId === 'string' && bodyVersionId) {
+    return { versionId: bodyVersionId };
   }
   return undefined;
 }
@@ -727,7 +740,11 @@ export async function getAgentFromSystem({
     try {
       const editorAgent = mastra.getEditor()?.agent;
       if (editorAgent) {
-        agent = await editorAgent.applyStoredOverrides(agent, effectiveVersionOptions ?? { status: 'published' });
+        agent = await editorAgent.applyStoredOverrides(
+          agent,
+          effectiveVersionOptions ?? { status: 'published' },
+          requestContext,
+        );
       }
     } catch (error) {
       logger.debug('Error applying stored overrides to code agent', error);
@@ -981,7 +998,7 @@ export const LIST_AGENTS_ROUTE = createRoute({
           let mergedAgent = agent;
           if (editor) {
             try {
-              mergedAgent = await editor.agent.applyStoredOverrides(agent);
+              mergedAgent = await editor.agent.applyStoredOverrides(agent, undefined, requestContext);
             } catch {
               // If overrides fail, use the original code agent
             }
@@ -1069,7 +1086,7 @@ export const GET_AGENT_BY_ID_ROUTE = createRoute({
   handler: async ({ agentId, mastra, requestContext, status, versionId }) => {
     try {
       const versionOptions = versionId ? { versionId } : status ? { status } : undefined;
-      const agent = await getAgentFromSystem({ mastra, agentId, versionOptions });
+      const agent = await getAgentFromSystem({ mastra, agentId, versionOptions, requestContext });
       const isStudio = false; // TODO: Get from context if needed
       const result = await formatAgent({
         mastra,
@@ -1455,8 +1472,9 @@ export const STREAM_GENERATE_ROUTE = createRoute({
       validateBody({ messages });
 
       // Merge body's requestContext values into the server's RequestContext instance
-      // Only set values that don't already exist on the server context to prevent
-      // clients from overwriting server-populated auth/tenant values
+      // before resolving the agent version, so rollout routing has access to client-supplied
+      // values like resourceId. Only set values that don't already exist on the server
+      // context to prevent clients from overwriting server-populated auth/tenant values.
       if (bodyRequestContext && typeof bodyRequestContext === 'object') {
         for (const [key, value] of Object.entries(bodyRequestContext)) {
           if (serverRequestContext.get(key) === undefined) {
@@ -1622,6 +1640,120 @@ export const STREAM_GENERATE_VNEXT_DEPRECATED_ROUTE = createRoute({
   handler: STREAM_GENERATE_ROUTE.handler,
 });
 
+export const OBSERVE_AGENT_STREAM_ROUTE = createRoute({
+  method: 'POST',
+  path: '/agents/:agentId/observe',
+  responseType: 'stream' as const,
+  streamFormat: 'sse' as const,
+  pathParamSchema: agentIdPathParams,
+  bodySchema: observeAgentBodySchema,
+  responseSchema: observeAgentResponseSchema,
+  summary: 'Observe agent stream',
+  description:
+    'Reconnect to an existing agent stream to receive missed events. Supports position-based resume with offset for efficient reconnection.',
+  tags: ['Agents', 'Streaming'],
+  requiresAuth: true,
+  handler: async ({ mastra, agentId, runId, offset, abortSignal }) => {
+    try {
+      // Verify agent exists and get its pubsub for stream subscription.
+      // Durable agents have their own CachingPubSub instance separate from mastra.pubsub,
+      // so we must subscribe to the agent's pubsub to receive the correct stream events.
+      const agent = await getAgentFromSystem({ mastra, agentId });
+      const agentPubsub = isDurableAgentLike(agent) ? (agent as DurableAgentLike).pubsub : undefined;
+      const pubsub = agentPubsub ?? mastra.pubsub;
+
+      // Create a ReadableStream that subscribes to the agent stream topic
+      // The stream adapter handles replay logic via subscribeWithReplay or subscribeFromOffset
+      const topic = AGENT_STREAM_TOPIC(runId);
+      let handleEvent: ((event: any) => void) | null = null;
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+      // Idle timeout: close the stream if no events are received within 5 minutes.
+      // This prevents subscription leaks when an agent crashes without emitting a terminal event.
+      const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
+      function cleanup(controller: ReadableStreamDefaultController) {
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+        if (handleEvent) {
+          void pubsub.unsubscribe(topic, handleEvent);
+          handleEvent = null;
+        }
+        try {
+          controller.close();
+        } catch {
+          // Stream may already be closed
+        }
+      }
+
+      function resetIdleTimer(controller: ReadableStreamDefaultController) {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => cleanup(controller), IDLE_TIMEOUT_MS);
+      }
+
+      const stream = new ReadableStream({
+        start(controller) {
+          // Wire up abortSignal for cleanup on client disconnect
+          if (abortSignal) {
+            if (abortSignal.aborted) {
+              cleanup(controller);
+              return;
+            }
+            abortSignal.addEventListener('abort', () => cleanup(controller), { once: true });
+          }
+
+          resetIdleTimer(controller);
+
+          handleEvent = (event: any) => {
+            const isTerminal = event.type === 'finish' || event.type === 'error';
+            try {
+              controller.enqueue(event);
+            } catch {
+              // Stream may be closed
+            }
+            if (isTerminal) {
+              cleanup(controller);
+            } else {
+              resetIdleTimer(controller);
+            }
+          };
+
+          // Subscribe with replay support
+          const subscribePromise =
+            offset !== undefined
+              ? pubsub.subscribeFromOffset(topic, offset, handleEvent)
+              : pubsub.subscribeWithReplay(topic, handleEvent);
+
+          subscribePromise.catch((error: any) => {
+            console.error(`[ObserveAgentStream] Failed to subscribe to ${topic}:`, error);
+            if (idleTimer) {
+              clearTimeout(idleTimer);
+              idleTimer = null;
+            }
+            controller.error(error);
+          });
+        },
+        cancel() {
+          if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = null;
+          }
+          if (handleEvent) {
+            void pubsub.unsubscribe(topic, handleEvent);
+            handleEvent = null;
+          }
+        },
+      });
+
+      return stream;
+    } catch (error) {
+      return handleError(error, 'error observing agent stream');
+    }
+  },
+});
+
 export const APPROVE_TOOL_CALL_ROUTE = createRoute({
   method: 'POST',
   path: '/agents/:agentId/approve-tool-call',
@@ -1727,12 +1859,6 @@ export const RESUME_STREAM_ROUTE = createRoute({
   requiresPermission: 'agents:execute',
   handler: async ({ mastra, agentId, abortSignal, requestContext: serverRequestContext, ...params }) => {
     try {
-      const agent = await getAgentFromSystem({
-        mastra,
-        agentId,
-        versionOptions: extractVersionOptions(serverRequestContext),
-      });
-
       if (!params.runId) {
         throw new HTTPException(400, { message: 'Run id is required' });
       }
@@ -1748,6 +1874,15 @@ export const RESUME_STREAM_ROUTE = createRoute({
         versions,
         ...rest
       } = params;
+
+      const agent = await getAgentFromSystem({
+        mastra,
+        agentId,
+        versionOptions: extractVersionOptions(
+          serverRequestContext,
+          bodyRequestContext as Record<string, unknown> | undefined,
+        ),
+      });
 
       if (bodyRequestContext && typeof bodyRequestContext === 'object') {
         for (const [key, value] of Object.entries(bodyRequestContext)) {

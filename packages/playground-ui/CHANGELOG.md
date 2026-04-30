@@ -1,5 +1,89 @@
 # @mastra/playground-ui
 
+## 24.1.0-alpha.0
+
+### Minor Changes
+
+- Removed `<Alert>` in favor of `<Notice>`. The two components had significant visual and behavioral overlap; `<Notice>` is now the single banner primitive and supports every previous `<Alert>` use case. ([#15791](https://github.com/mastra-ai/mastra/pull/15791))
+
+  `<Notice>` is also redesigned with a flatter API: `title` and `icon` are now props, each variant ships a default icon, an optional `action` prop renders a button aligned to the title, and a new `note` variant has been added alongside `warning`, `destructive`, `info`, and `success`. Theme tokens (`notice-warning`, `notice-destructive`, `notice-info`, `notice-success`, `notice-note`) replace the previous hardcoded colors.
+
+  **Migration**
+
+  ```tsx
+  // Before
+  <Alert variant="warning">
+    <AlertTitle>Provider not connected</AlertTitle>
+    <AlertDescription as="p">Set the API key environment variable.</AlertDescription>
+  </Alert>
+
+  // After
+  <Notice variant="warning" title="Provider not connected">
+    <Notice.Message>Set the API key environment variable.</Notice.Message>
+  </Notice>
+  ```
+
+### Patch Changes
+
+- Removed the "Avg Score" KPI card from the Metrics dashboard and the avg-score summary from the Scores card. ([#15967](https://github.com/mastra-ai/mastra/pull/15967))
+
+## 24.0.2
+
+### Patch Changes
+
+- Updated the look and motion of `Dialog`. The surface is now lighter and translucent with a subtle backdrop blur, the typography is tighter, and the open/close animation feels snappier. `SideDialog` and `AlertDialog` pick up the refined ambient shadow as well, since they share the same shadow style. ([#15958](https://github.com/mastra-ai/mastra/pull/15958))
+
+- Polished DataList visuals: removed the trailing "No more data to load" message and dropped the bottom border on the last row for a cleaner end-of-list appearance. ([#15959](https://github.com/mastra-ai/mastra/pull/15959))
+
+- Refined the DataPanel loading state with a smaller spinner and tightened layout for a less prominent appearance. ([#15965](https://github.com/mastra-ai/mastra/pull/15965))
+
+- Updated dependencies [[`920c757`](https://github.com/mastra-ai/mastra/commit/920c75799c6bd71787d86deaf654a35af4c839ca), [`d587199`](https://github.com/mastra-ai/mastra/commit/d5871993c0371bde2b0717d6b47194755baa1443), [`5339dbe`](https://github.com/mastra-ai/mastra/commit/5339dbef397378847975bb93856353d6c6a722ca), [`1fe2533`](https://github.com/mastra-ai/mastra/commit/1fe2533c4382ca6858aac7c4b63e888c2eac6541), [`f8694b6`](https://github.com/mastra-ai/mastra/commit/f8694b6fa0b7a5cde71d794c3bbef4957c55bcb8)]:
+  - @mastra/core@1.30.0
+  - @mastra/client-js@1.15.2
+  - @mastra/react@0.2.32
+
+## 24.0.2-alpha.1
+
+### Patch Changes
+
+- Updated the look and motion of `Dialog`. The surface is now lighter and translucent with a subtle backdrop blur, the typography is tighter, and the open/close animation feels snappier. `SideDialog` and `AlertDialog` pick up the refined ambient shadow as well, since they share the same shadow style. ([#15958](https://github.com/mastra-ai/mastra/pull/15958))
+
+- Polished DataList visuals: removed the trailing "No more data to load" message and dropped the bottom border on the last row for a cleaner end-of-list appearance. ([#15959](https://github.com/mastra-ai/mastra/pull/15959))
+
+- Refined the DataPanel loading state with a smaller spinner and tightened layout for a less prominent appearance. ([#15965](https://github.com/mastra-ai/mastra/pull/15965))
+
+- Updated dependencies [[`920c757`](https://github.com/mastra-ai/mastra/commit/920c75799c6bd71787d86deaf654a35af4c839ca), [`1fe2533`](https://github.com/mastra-ai/mastra/commit/1fe2533c4382ca6858aac7c4b63e888c2eac6541), [`f8694b6`](https://github.com/mastra-ai/mastra/commit/f8694b6fa0b7a5cde71d794c3bbef4957c55bcb8)]:
+  - @mastra/core@1.30.0-alpha.1
+  - @mastra/client-js@1.15.2-alpha.1
+  - @mastra/react@0.2.32-alpha.1
+
+## 24.0.2-alpha.0
+
+### Patch Changes
+
+- Updated dependencies [[`d587199`](https://github.com/mastra-ai/mastra/commit/d5871993c0371bde2b0717d6b47194755baa1443), [`5339dbe`](https://github.com/mastra-ai/mastra/commit/5339dbef397378847975bb93856353d6c6a722ca)]:
+  - @mastra/core@1.29.2-alpha.0
+  - @mastra/client-js@1.15.2-alpha.0
+  - @mastra/react@0.2.32-alpha.0
+
+## 24.0.1
+
+### Patch Changes
+
+- Updated dependencies [[`6db978c`](https://github.com/mastra-ai/mastra/commit/6db978c42e94e75540a504f7230086f0b5cd35f9), [`512a013`](https://github.com/mastra-ai/mastra/commit/512a013f285aa9c0aa8f08a35b2ce09f9938b017), [`e9becde`](https://github.com/mastra-ai/mastra/commit/e9becdeed9176b9f8392e557bde12b933f99cf7a), [`703a443`](https://github.com/mastra-ai/mastra/commit/703a44390c587d9c0b8ae94ec4edd8afb2a74044), [`808df1b`](https://github.com/mastra-ai/mastra/commit/808df1b39358b5f10b7317107e42b1fda7c87185)]:
+  - @mastra/core@1.29.1
+  - @mastra/client-js@1.15.1
+  - @mastra/react@0.2.31
+
+## 24.0.1-alpha.2
+
+### Patch Changes
+
+- Updated dependencies [[`512a013`](https://github.com/mastra-ai/mastra/commit/512a013f285aa9c0aa8f08a35b2ce09f9938b017), [`e9becde`](https://github.com/mastra-ai/mastra/commit/e9becdeed9176b9f8392e557bde12b933f99cf7a)]:
+  - @mastra/core@1.29.1-alpha.2
+  - @mastra/client-js@1.15.1-alpha.2
+  - @mastra/react@0.2.31-alpha.2
+
 ## 24.0.1-alpha.1
 
 ### Patch Changes

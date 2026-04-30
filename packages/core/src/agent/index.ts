@@ -14,6 +14,10 @@ export {
 } from './rollout';
 export type { RolloutScoreStats } from './rollout';
 
+// Note: DurableAgent is NOT re-exported here to avoid circular dependencies.
+// Import from '@mastra/core/agent/durable' instead:
+//   import { DurableAgent } from '@mastra/core/agent/durable';
+
 export type {
   AgentExecutionOptions,
   AgentExecutionOptionsBase,

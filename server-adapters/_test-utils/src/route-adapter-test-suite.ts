@@ -106,10 +106,11 @@ export function createRouteAdapterTestSuite(config: AdapterTestSuiteConfig) {
       '/memory/observational-memory/buffer-status',
       // skill publish requires blob storage not available in InMemoryStore
       '/stored/skills/:storedSkillId/publish',
-      // Long-poll watch SSE: stays open until the client disconnects, so the
+      // Long-lived SSE streams: stay open until the client disconnects, so the
       // test harness's real-HTTP-server cleanup (server.close awaiting drain)
-      // hangs. The route's behavior is exercised in unit tests.
+      // hangs. These routes' behavior is exercised in unit tests.
       '/background-tasks/stream',
+      '/agents/:agentId/observe',
     ];
     // Rollout routes that require complex pre-populated state (valid version IDs,
     // agent records in the store, etc.) — tested separately in dedicated tests
