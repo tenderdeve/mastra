@@ -24,6 +24,41 @@ import type { MessageList } from '../message-list';
 import type { SerializedMessageListState } from '../message-list/state';
 import type { SaveQueueManager } from '../save-queue';
 
+export type DurableAgentSignalType = 'user-message' | 'system-reminder' | string;
+
+export interface DurableAgentSignal {
+  id?: string;
+  type: DurableAgentSignalType;
+  contents: string;
+  createdAt?: Date | string;
+  metadata?: Record<string, unknown>;
+}
+
+export type SendDurableAgentSignalOptions =
+  | { runId: string; resourceId?: string; threadId?: string; streamOptions?: Record<string, unknown> }
+  | { runId?: string; resourceId: string; threadId: string; streamOptions?: Record<string, unknown> };
+
+export type DurableAgentRunStatus = 'active' | 'suspended' | 'completed' | 'error' | 'aborted';
+
+export interface DurableAgentActiveRun {
+  resourceId: string;
+  threadId: string;
+  runId: string;
+  ownerId?: string;
+  status: DurableAgentRunStatus;
+}
+
+export interface DurableAgentClaimThreadOptions {
+  resourceId: string;
+  threadId: string;
+  runId: string;
+  ownerId?: string;
+}
+
+export type DurableAgentClaimThreadResult =
+  | { claimed: true; activeRun: DurableAgentActiveRun }
+  | { claimed: false; activeRun: DurableAgentActiveRun };
+
 /**
  * Metadata about a tool that can be serialized (without the execute function)
  */
@@ -425,8 +460,12 @@ export interface RunRegistryEntry {
   backgroundTaskManager?: BackgroundTaskManager;
   /** Agent background tasks configuration */
   backgroundTasksConfig?: AgentBackgroundConfig;
+  /** Signals queued for injection at the next LLM boundary */
+  signalQueue?: DurableAgentSignal[];
   /** PubSub that streams durable agent events to subscribers */
   pubsub?: PubSub;
+  /** External abort signal for canceling local durable execution */
+  abortSignal?: AbortSignal;
 }
 
 /**

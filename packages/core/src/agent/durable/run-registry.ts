@@ -4,7 +4,11 @@ import type { CoreTool } from '../../tools/types';
 import type { MessageList } from '../message-list';
 import type { SaveQueueManager } from '../save-queue';
 import { AGENT_STREAM_TOPIC, AgentStreamEventTypes } from './constants';
-import type { RunRegistryEntry } from './types';
+import type { DurableAgentRunStatus, DurableAgentSignal, RunRegistryEntry } from './types';
+
+function threadKey(resourceId: string, threadId: string): string {
+  return `${resourceId}\0${threadId}`;
+}
 
 export const GLOBAL_RUN_REGISTRY_TTL_MS = 2 * 60 * 60 * 1000;
 
@@ -178,6 +182,10 @@ export interface ExtendedRunRegistryEntry extends RunRegistryEntry {
 export class ExtendedRunRegistry extends RunRegistry {
   #messageLists = new Map<string, MessageList>();
   #memoryInfo = new Map<string, { threadId?: string; resourceId?: string }>();
+  #runIdByThread = new Map<string, string>();
+  #threadKeyByRunId = new Map<string, string>();
+  #statusByRunId = new Map<string, DurableAgentRunStatus>();
+  #signalsByRunId = new Map<string, DurableAgentSignal[]>();
 
   /**
    * Register non-serializable state for a run including MessageList
@@ -190,8 +198,14 @@ export class ExtendedRunRegistry extends RunRegistry {
   ): void {
     this.register(runId, entry);
     this.#messageLists.set(runId, messageList);
+    this.#statusByRunId.set(runId, 'active');
     if (memoryInfo) {
       this.#memoryInfo.set(runId, memoryInfo);
+      if (memoryInfo.resourceId && memoryInfo.threadId) {
+        const key = threadKey(memoryInfo.resourceId, memoryInfo.threadId);
+        this.#runIdByThread.set(key, runId);
+        this.#threadKeyByRunId.set(runId, key);
+      }
     }
   }
 
@@ -207,6 +221,38 @@ export class ExtendedRunRegistry extends RunRegistry {
    */
   getMemoryInfo(runId: string): { threadId?: string; resourceId?: string } | undefined {
     return this.#memoryInfo.get(runId);
+  }
+
+  getRunIdForThread(resourceId: string, threadId: string): string | undefined {
+    return this.#runIdByThread.get(threadKey(resourceId, threadId));
+  }
+
+  setStatus(runId: string, status: DurableAgentRunStatus): void {
+    this.#statusByRunId.set(runId, status);
+  }
+
+  getStatus(runId: string): DurableAgentRunStatus | undefined {
+    return this.#statusByRunId.get(runId);
+  }
+
+  enqueueSignal(runId: string, signal: DurableAgentSignal): void {
+    const signals = this.#signalsByRunId.get(runId) ?? [];
+    signals.push(signal);
+    this.#signalsByRunId.set(runId, signals);
+    const entry = this.get(runId);
+    if (entry) {
+      entry.signalQueue = signals;
+    }
+  }
+
+  drainSignals(runId: string): DurableAgentSignal[] {
+    const signals = this.#signalsByRunId.get(runId) ?? [];
+    this.#signalsByRunId.delete(runId);
+    const entry = this.get(runId);
+    if (entry) {
+      entry.signalQueue = [];
+    }
+    return signals;
   }
 
   /**
@@ -229,6 +275,13 @@ export class ExtendedRunRegistry extends RunRegistry {
     super.cleanup(runId);
     this.#messageLists.delete(runId);
     this.#memoryInfo.delete(runId);
+    this.#statusByRunId.delete(runId);
+    this.#signalsByRunId.delete(runId);
+    const key = this.#threadKeyByRunId.get(runId);
+    if (key) {
+      this.#runIdByThread.delete(key);
+      this.#threadKeyByRunId.delete(runId);
+    }
   }
 
   /**
@@ -238,5 +291,9 @@ export class ExtendedRunRegistry extends RunRegistry {
     super.clear();
     this.#messageLists.clear();
     this.#memoryInfo.clear();
+    this.#runIdByThread.clear();
+    this.#threadKeyByRunId.clear();
+    this.#statusByRunId.clear();
+    this.#signalsByRunId.clear();
   }
 }
