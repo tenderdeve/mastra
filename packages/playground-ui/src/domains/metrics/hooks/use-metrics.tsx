@@ -3,10 +3,9 @@ import { format } from 'date-fns';
 import { createContext, useContext, useMemo } from 'react';
 import type { ReactNode } from 'react';
 
-import type { PropertyFilterToken } from '@/ds/components/PropertyFilter/types';
-
 import { buildMetricsDimensionalFilter } from '../metrics-filters';
 import type { MetricsDimensionalFilter } from '../metrics-filters';
+import type { PropertyFilterToken } from '@/ds/components/PropertyFilter/types';
 
 const DATE_PRESETS = [
   { label: 'Last 24 hours', value: '24h' },

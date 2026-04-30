@@ -1,4 +1,5 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { MetricsCard } from '../../../ds/components/MetricsCard';
 import { MetricsDataTable } from '../../../ds/components/MetricsDataTable';
 import { MetricsLineChart } from '../../../ds/components/MetricsLineChart';

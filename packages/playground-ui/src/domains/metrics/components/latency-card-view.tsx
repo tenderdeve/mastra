@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { MetricsCard } from '../../../ds/components/MetricsCard';
 import { MetricsLineChart } from '../../../ds/components/MetricsLineChart';
 import { Tab, TabContent, TabList, Tabs } from '../../../ds/components/Tabs';
