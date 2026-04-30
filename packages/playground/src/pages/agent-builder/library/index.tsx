@@ -19,6 +19,10 @@ import {
 import { useAgents } from '@/domains/agents/hooks/use-agents';
 import { useBuilderLibraryVisibility } from '@/domains/builder';
 
+// Mastra-internal code-defined agents that should never appear in the user-facing
+// Library, regardless of visibility config or unrestricted mode.
+const INTERNAL_HIDDEN_AGENT_IDS = new Set(['builder-agent']);
+
 export default function AgentBuilderLibraryPage() {
   const [search, setSearch] = useState('');
 
@@ -28,7 +32,8 @@ export default function AgentBuilderLibraryPage() {
   const agents = useMemo(() => {
     const all = Object.entries(data ?? {})
       .filter(([, agent]) => (agent as { source?: 'code' | 'stored' }).source === 'code')
-      .map(([id, agent]) => codeAgentToRow(id, agent));
+      .map(([id, agent]) => codeAgentToRow(id, agent))
+      .filter(row => !INTERNAL_HIDDEN_AGENT_IDS.has(row.id));
     if (visibility.unrestricted) return all;
     return all.filter(row => visibility.visibleAgents.has(row.id));
   }, [data, visibility]);

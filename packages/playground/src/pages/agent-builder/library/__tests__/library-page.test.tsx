@@ -136,6 +136,22 @@ describe('AgentBuilderLibraryPage', () => {
     expect(rows[0].getAttribute('href')).toBe('/agent-builder/agents/c1/view');
   });
 
+  it('always hides the internal builder-agent, even in unrestricted mode', async () => {
+    mockBuilderSettings();
+    mockAgents([
+      { id: 'builder-agent', name: 'Agent Builder Agent', description: 'internal', source: 'code' },
+      { id: 'c1', name: 'Code One', description: 'visible', source: 'code' },
+    ]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Code One')).toBeTruthy();
+    });
+    expect(screen.queryByText('Agent Builder Agent')).toBeNull();
+    expect(screen.getAllByTestId('library-agent-row')).toHaveLength(1);
+  });
+
   it('respects library.visibleAgents allowlist', async () => {
     mockBuilderSettings({ visibleAgents: ['c1'], unrestricted: false });
     mockAgents([
