@@ -1,8 +1,6 @@
 import type { DatePreset, PropertyFilterToken } from '@mastra/playground-ui';
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
+  Notice,
   Button,
   ButtonWithTooltip,
   DateRangeSelector,
@@ -37,12 +35,7 @@ import { useEntityNames, useEnvironments, useServiceNames, useTags } from '@mast
 import { useMastraPackages } from '@/domains/configuration/hooks/use-mastra-packages';
 import { LatencyCard } from '@/domains/metrics/components/latency-card';
 import { MemoryCard } from '@/domains/metrics/components/memory-card';
-import {
-  AgentRunsKpiCard,
-  AvgScoreKpiCard,
-  ModelCostKpiCard,
-  TotalTokensKpiCard,
-} from '@/domains/metrics/components/metrics-kpi-cards';
+import { AgentRunsKpiCard, ModelCostKpiCard, TotalTokensKpiCard } from '@/domains/metrics/components/metrics-kpi-cards';
 import { MetricsToolbar } from '@/domains/metrics/components/metrics-toolbar';
 import { ModelUsageCostCard } from '@/domains/metrics/components/model-usage-cost-card';
 import { ScoresCard } from '@/domains/metrics/components/scores-card';
@@ -302,20 +295,18 @@ function MetricsContent() {
       ) : (
         <div className="grid gap-8 content-start pb-10">
           {isInMemory && (
-            <Alert variant="info">
-              <AlertTitle>Metrics are not persisted</AlertTitle>
-              <AlertDescription as="p">
+            <Notice variant="info" title="Metrics are not persisted">
+              <Notice.Message>
                 This project uses in-memory storage for observability. Metrics will be lost on every server restart. For
                 persistent metrics, switch the observability storage to ClickHouse or DuckDB.
-              </AlertDescription>
-            </Alert>
+              </Notice.Message>
+            </Notice>
           )}
 
           <MetricsFlexGrid>
             <AgentRunsKpiCard />
             <ModelCostKpiCard />
             <TotalTokensKpiCard />
-            <AvgScoreKpiCard />
           </MetricsFlexGrid>
 
           <MetricsFlexGrid>
