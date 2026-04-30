@@ -93,4 +93,70 @@ describe('DurableAgent signals', () => {
     expect(secondPrompt).toContain('system-reminder');
     expect(secondPrompt).toContain('agent-signal');
   });
+
+  it('rejects run-id-only signals when no active run exists', () => {
+    const model = new MockLanguageModelV2({
+      doStream: async () => ({
+        stream: convertArrayToReadableStream([]),
+        rawCall: { rawPrompt: null, rawSettings: {} },
+        warnings: [],
+      }),
+    });
+
+    const agent = new Agent({
+      id: 'signal-agent',
+      name: 'Signal Agent',
+      instructions: 'Use tools',
+      model: model as LanguageModelV2,
+    });
+    const durableAgent = createDurableAgent({ agent, pubsub: new EventEmitterPubSub(), cleanupTimeoutMs: 0 });
+
+    expect(() => {
+      durableAgent.sendSignal({ type: 'user-message', contents: 'queued before stream' }, { runId: 'run-1' });
+    }).toThrow('No active durable agent run found for signal target');
+  });
+
+  it('starts an idle thread when sendSignal targets resource and thread', async () => {
+    const prompts: unknown[] = [];
+    let resolvePrompt!: () => void;
+    const promptSeen = new Promise<void>(resolve => {
+      resolvePrompt = resolve;
+    });
+    const model = new MockLanguageModelV2({
+      doStream: async options => {
+        prompts.push(options.prompt);
+        resolvePrompt();
+        return {
+          stream: convertArrayToReadableStream([
+            { type: 'stream-start', warnings: [] },
+            { type: 'response-metadata', id: 'id-0', modelId: 'mock-model-id', timestamp: new Date(0) },
+            { type: 'text-start', id: 'text-1' },
+            { type: 'text-delta', id: 'text-1', delta: 'done' },
+            { type: 'text-end', id: 'text-1' },
+            { type: 'finish', finishReason: 'stop', usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 } },
+          ]),
+          rawCall: { rawPrompt: null, rawSettings: {} },
+          warnings: [],
+        };
+      },
+    });
+
+    const agent = new Agent({
+      id: 'signal-agent',
+      name: 'Signal Agent',
+      instructions: 'Use tools',
+      model: model as LanguageModelV2,
+    });
+    const durableAgent = createDurableAgent({ agent, pubsub: new EventEmitterPubSub(), cleanupTimeoutMs: 0 });
+
+    const result = durableAgent.sendSignal(
+      { type: 'user-message', contents: 'start from signal' },
+      { resourceId: 'user-1', threadId: 'thread-1' },
+    );
+    await promptSeen;
+
+    expect(result.accepted).toBe(true);
+    expect(result.runId).toBeTruthy();
+    expect(JSON.stringify(prompts[0])).toContain('start from signal');
+  });
 });
