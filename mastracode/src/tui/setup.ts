@@ -30,6 +30,23 @@ export function setupKeyboardShortcuts(
     queueFollowUpMessage: (text: string) => void;
   },
 ): void {
+  const queueCurrentInput = (): boolean => {
+    if (!state.harness.isRunning()) {
+      return false;
+    }
+
+    const text = state.editor.getExpandedText().trim();
+    if (!text) {
+      return true;
+    }
+
+    state.editor.addToHistory(text);
+    state.editor.setText('');
+    callbacks.queueFollowUpMessage(text);
+    state.ui.requestRender();
+    return true;
+  };
+
   // Ctrl+C / Escape - abort if running, clear input if idle, double-tap always exits
   state.editor.onAction('clear', () => {
     const now = Date.now();
@@ -151,24 +168,18 @@ export function setupKeyboardShortcuts(
     showInfo(state, current ? 'YOLO mode off' : 'YOLO mode on');
   });
 
-  // Enter - submit immediately when idle, queue follow-up input while streaming
+  // Enter submits immediately when idle or when the active durable stream accepts user-message signals.
   state.editor.onAction('followUp', () => {
-    if (!state.harness.isRunning()) {
+    if (!state.harness.isRunning() || (state.harness as any).canSendWhileRunning?.()) {
       state.editor.onSubmit?.(state.editor.getExpandedText());
       return true;
     }
 
-    const text = state.editor.getExpandedText().trim();
-    if (!text) {
-      return true;
-    }
-
-    state.editor.addToHistory(text);
-    state.editor.setText('');
-    callbacks.queueFollowUpMessage(text);
-    state.ui.requestRender();
-    return true;
+    return queueCurrentInput();
   });
+
+  // Ctrl+F preserves the old follow-up behavior: queue until the stream is fully idle.
+  state.editor.onAction('queueFollowUp', queueCurrentInput);
 }
 
 // =============================================================================

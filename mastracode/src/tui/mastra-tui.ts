@@ -242,33 +242,37 @@ export class MastraTUI {
         const { content, images } = consumePendingImages(userInput, this.state.pendingImages);
         this.state.pendingImages = [];
 
-        // Show the user message in the TUI right away — before any async work
-        // (thread creation, hooks, sending) so the UI feels instant even when
-        // GC pauses or I/O slow things down.
-        const messageId = `user-${Date.now()}`;
-        addUserMessage(this.state, {
-          id: messageId,
-          role: 'user',
-          content: [
-            { type: 'text', text: content },
-            ...(images?.map(img => ({
-              type: 'image' as const,
-              data: img.data,
-              mimeType: img.mimeType,
-            })) ?? []),
-          ],
-          createdAt: new Date(),
-        });
-        this.state.ui.requestRender();
+        const sendWhileRunning = this.state.harness.isRunning() && (this.state.harness as any).canSendWhileRunning?.();
+        const messageId = sendWhileRunning ? undefined : `user-${Date.now()}`;
+        if (messageId) {
+          // Add user message to chat immediately. When sending into an active durable stream,
+          // the stream's data-user-message event is the source of truth for display.
+          addUserMessage(this.state, {
+            id: messageId,
+            role: 'user',
+            content: [
+              { type: 'text', text: content },
+              ...(images?.map(img => ({
+                type: 'image' as const,
+                data: img.data,
+                mimeType: img.mimeType,
+              })) ?? []),
+            ],
+            createdAt: new Date(),
+          });
+          this.state.ui.requestRender();
+        }
 
         const allowed = await this.runUserPromptHook(userInput);
         if (!allowed) {
           // Hook blocked the message — remove it from the chat
-          const comp = this.state.messageComponentsById.get(messageId);
-          if (comp) {
-            this.state.chatContainer.removeChild(comp as never);
-            this.state.messageComponentsById.delete(messageId);
-            this.state.ui.requestRender();
+          if (messageId) {
+            const comp = this.state.messageComponentsById.get(messageId);
+            if (comp) {
+              this.state.chatContainer.removeChild(comp as never);
+              this.state.messageComponentsById.delete(messageId);
+              this.state.ui.requestRender();
+            }
           }
           continue;
         }
@@ -303,6 +307,7 @@ export class MastraTUI {
     if (text.startsWith('/')) {
       this.state.pendingSlashCommands.push(text);
       this.state.pendingQueuedActions.push('slash');
+      showInfo(this.state, `Slash command queued: ${text}`);
       updateStatusLine(this.state);
       this.state.ui.requestRender();
       return;
