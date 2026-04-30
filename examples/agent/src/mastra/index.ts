@@ -30,6 +30,7 @@ import {
   agentWithSequentialModeration,
   supervisorAgent,
   subscriptionOrchestratorAgent,
+  cryptoResearchAgent,
 } from './agents/model-v2-agent';
 import { myWorkflowX, nestedWorkflow, findUserWorkflow } from './workflows/other';
 import { moderationProcessor } from './agents/model-v2-agent';
@@ -48,6 +49,7 @@ import {
   sensitiveTopicBlocker,
   stepLoggerProcessor,
 } from './processors/index';
+import { gatewayAgent } from './agents/gateway';
 
 const libsqlStore = new LibSQLStore({
   id: 'mastra-storage',
@@ -66,6 +68,7 @@ const storage = new MastraCompositeStore({
 
 const config = {
   agents: {
+    gatewayAgent,
     chefAgent,
     chefAgentResponses,
     dynamicAgent,
@@ -85,6 +88,7 @@ const config = {
     agentWithSequentialModeration,
     supervisorAgent,
     subscriptionOrchestratorAgent,
+    cryptoResearchAgent,
   },
   processors: {
     moderationProcessor,
@@ -112,14 +116,19 @@ const config = {
     sourcemap: true,
   },
   editor: new MastraEditor(),
-  // server: {
-  //   auth: mastraAuth,
-  //   rbac: rbacProvider,
-  // },
+  server: {
+    auth: mastraAuth,
+    rbac: rbacProvider,
+  },
 };
 
 export const mastra = new Mastra({
   ...config,
+  backgroundTasks: {
+    enabled: true,
+    globalConcurrency: 10,
+    perAgentConcurrency: 5,
+  },
   editor: new MastraEditor({
     toolProviders: {
       composio: new ComposioToolProvider({ apiKey: '' }),

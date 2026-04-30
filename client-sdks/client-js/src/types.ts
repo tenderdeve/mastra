@@ -219,8 +219,8 @@ export type ResponsesDeleteResponse = {
 };
 
 export type CreateResponseParams = {
-  /** Target model identifier, such as `openai/gpt-5`. */
-  model: string;
+  /** Optional model override, such as `openai/gpt-5`. When omitted, the agent default model is used. */
+  model?: string;
   /** Mastra agent ID for the request. Required on initial requests; stored follow-ups can omit it when using `previous_response_id`. */
   agent_id?: string;
   /** Input text or message history for the current turn. */
@@ -367,6 +367,8 @@ export interface GetAgentResponse {
   agents: Record<string, { id: string; name: string }>;
   skills?: SkillMetadata[];
   workspaceTools?: string[];
+  /** Browser tool names available to this agent (if browser is configured) */
+  browserTools?: string[];
   /** ID of the agent's workspace (if configured) */
   workspaceId?: string;
   provider: string;
@@ -615,7 +617,9 @@ export interface UpdateMemoryThreadParams {
   requestContext?: RequestContext | Record<string, any>;
 }
 
-export type ListMemoryThreadMessagesParams = Omit<StorageListMessagesInput, 'threadId'>;
+export type ListMemoryThreadMessagesParams = Omit<StorageListMessagesInput, 'threadId'> & {
+  includeSystemReminders?: boolean;
+};
 
 export type ListMemoryThreadMessagesResponse = {
   messages: MastraDBMessage[];
@@ -1616,8 +1620,10 @@ export interface GetSystemPackagesResponse {
   packages: MastraPackage[];
   isDev: boolean;
   cmsEnabled: boolean;
+  observabilityEnabled: boolean;
   storageType?: string;
   observabilityStorageType?: string;
+  observabilityRuntimeStrategy?: 'realtime' | 'batch-with-updates' | 'insert-only' | 'event-sourced';
 }
 
 // ============================================================================
@@ -2069,6 +2075,10 @@ export interface GetObservationalMemoryParams {
   agentId: string;
   resourceId?: string;
   threadId?: string;
+  from?: Date | string;
+  to?: Date | string;
+  offset?: number;
+  limit?: number;
   requestContext?: RequestContext | Record<string, any>;
 }
 
@@ -2102,6 +2112,7 @@ export interface AwaitBufferStatusResponse {
  */
 export interface GetMemoryStatusResponse {
   result: boolean;
+  memoryType?: 'local' | 'gateway';
   observationalMemory?: {
     enabled: boolean;
     hasRecord?: boolean;
@@ -2118,6 +2129,7 @@ export interface GetMemoryStatusResponse {
  * Extended memory config response with OM config
  */
 export interface GetMemoryConfigResponseExtended {
+  memoryType?: 'local' | 'gateway';
   config: MemoryConfig & {
     observationalMemory?: {
       enabled: boolean;
@@ -2303,6 +2315,7 @@ export interface DatasetItem {
   datasetVersion: number;
   input: unknown;
   groundTruth?: unknown;
+  expectedTrajectory?: unknown;
   requestContext?: Record<string, unknown>;
   metadata?: unknown;
   source?: DatasetItemSource;
@@ -2407,6 +2420,7 @@ export interface AddDatasetItemParams {
   datasetId: string;
   input: unknown;
   groundTruth?: unknown;
+  expectedTrajectory?: unknown;
   requestContext?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   source?: DatasetItemSource;
@@ -2417,6 +2431,7 @@ export interface UpdateDatasetItemParams {
   itemId: string;
   input?: unknown;
   groundTruth?: unknown;
+  expectedTrajectory?: unknown;
   requestContext?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   source?: DatasetItemSource;
@@ -2427,6 +2442,7 @@ export interface BatchInsertDatasetItemsParams {
   items: Array<{
     input: unknown;
     groundTruth?: unknown;
+    expectedTrajectory?: unknown;
     requestContext?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
     source?: DatasetItemSource;
@@ -2646,6 +2662,58 @@ export interface ActivatePromptBlockVersionResponse {
 export interface DeletePromptBlockVersionResponse {
   success: boolean;
   message: string;
+}
+
+export type BackgroundTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
+
+export type BackgroundTaskDateColumn = 'createdAt' | 'startedAt' | 'completedAt';
+
+export interface BackgroundTaskResponse {
+  id: string;
+  status: BackgroundTaskStatus;
+  toolName: string;
+  toolCallId: string;
+  args: Record<string, unknown>;
+  agentId: string;
+  threadId?: string;
+  resourceId?: string;
+  runId: string;
+  result?: unknown;
+  error?: { message: string; stack?: string };
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  retryCount: number;
+  maxRetries: number;
+  timeoutMs: number;
+}
+
+export interface ListBackgroundTasksParams {
+  agentId?: string;
+  status?: BackgroundTaskStatus;
+  runId?: string;
+  threadId?: string;
+  resourceId?: string;
+  fromDate?: Date;
+  toDate?: Date;
+  dateFilterBy?: BackgroundTaskDateColumn;
+  orderBy?: BackgroundTaskDateColumn;
+  orderDirection?: 'asc' | 'desc';
+  page?: number;
+  perPage?: number;
+}
+
+export interface ListBackgroundTasksResponse {
+  tasks: BackgroundTaskResponse[];
+  total: number;
+}
+
+export interface StreamBackgroundTasksParams {
+  agentId?: string;
+  runId?: string;
+  threadId?: string;
+  resourceId?: string;
+  taskId?: string;
 }
 
 export interface ExperimentReviewCounts {
