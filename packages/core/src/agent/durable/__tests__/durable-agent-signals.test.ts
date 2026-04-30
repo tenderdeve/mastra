@@ -94,6 +94,94 @@ describe('DurableAgent signals', () => {
     expect(secondPrompt).toContain('agent-signal');
   });
 
+  it('continues the loop when a signal arrives during final text streaming', async () => {
+    const prompts: unknown[] = [];
+    let callCount = 0;
+    let resolveFirstTextStarted!: () => void;
+    let releaseFirstStream!: () => void;
+    const firstTextStarted = new Promise<void>(resolve => {
+      resolveFirstTextStarted = resolve;
+    });
+    const firstStreamCanFinish = new Promise<void>(resolve => {
+      releaseFirstStream = resolve;
+    });
+
+    const model = new MockLanguageModelV2({
+      doStream: async options => {
+        prompts.push(options.prompt);
+        callCount++;
+
+        if (callCount === 1) {
+          return {
+            stream: new ReadableStream({
+              async start(controller) {
+                controller.enqueue({ type: 'stream-start', warnings: [] });
+                controller.enqueue({
+                  type: 'response-metadata',
+                  id: 'id-0',
+                  modelId: 'mock-model-id',
+                  timestamp: new Date(0),
+                });
+                controller.enqueue({ type: 'text-start', id: 'text-1' });
+                controller.enqueue({ type: 'text-delta', id: 'text-1', delta: 'final text' });
+                resolveFirstTextStarted();
+                await firstStreamCanFinish;
+                controller.enqueue({ type: 'text-end', id: 'text-1' });
+                controller.enqueue({
+                  type: 'finish',
+                  finishReason: 'stop',
+                  usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
+                });
+                controller.close();
+              },
+            }),
+            rawCall: { rawPrompt: null, rawSettings: {} },
+            warnings: [],
+          };
+        }
+
+        return {
+          stream: convertArrayToReadableStream([
+            { type: 'stream-start', warnings: [] },
+            { type: 'response-metadata', id: 'id-1', modelId: 'mock-model-id', timestamp: new Date(0) },
+            { type: 'text-start', id: 'text-2' },
+            { type: 'text-delta', id: 'text-2', delta: 'responded to signal' },
+            { type: 'text-end', id: 'text-2' },
+            { type: 'finish', finishReason: 'stop', usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 } },
+          ]),
+          rawCall: { rawPrompt: null, rawSettings: {} },
+          warnings: [],
+        };
+      },
+    });
+
+    const agent = new Agent({
+      id: 'signal-during-final-agent',
+      name: 'Signal During Final Agent',
+      instructions: 'Respond to signals',
+      model: model as LanguageModelV2,
+    });
+    const durableAgent = createDurableAgent({ agent, pubsub: new EventEmitterPubSub(), cleanupTimeoutMs: 0 });
+
+    const result = await durableAgent.stream('start', { memory: { resource: 'user-1', thread: 'thread-1' } });
+    const drainPromise = (async () => {
+      for await (const _chunk of result.fullStream as AsyncIterable<any>) {
+      }
+    })();
+
+    await firstTextStarted;
+    durableAgent.sendSignal(
+      { type: 'user-message', contents: 'interrupt during final text' },
+      { resourceId: 'user-1', threadId: 'thread-1' },
+    );
+    releaseFirstStream();
+    await drainPromise;
+    result.cleanup();
+
+    expect(prompts).toHaveLength(2);
+    expect(JSON.stringify(prompts[1])).toContain('interrupt during final text');
+  });
+
   it('rejects run-id-only signals when no active run exists', () => {
     const model = new MockLanguageModelV2({
       doStream: async () => ({
