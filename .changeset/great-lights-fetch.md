@@ -1,11 +1,5 @@
 ---
 '@mastra/core': minor
-'@mastra/client-js': patch
-'@mastra/observability': patch
-'@mastra/inngest': patch
-'@mastra/server': patch
-'@mastra/upstash': patch
-'@mastra/redis': patch
 'mastracode': patch
 ---
 

@@ -113,6 +113,15 @@ export function handleToolApprovalRequired(
 
 export function handleToolStart(ctx: EventHandlerContext, toolCallId: string, toolName: string, args: unknown): void {
   const { state } = ctx;
+
+  if (toolName === 'task_write' && state.taskProgress) {
+    const tasks = (args as { tasks?: TaskItem[] } | undefined)?.tasks;
+    if (Array.isArray(tasks)) {
+      state.taskProgress.updateTasks(tasks);
+      state.ui.requestRender();
+    }
+  }
+
   // Component may already exist if created early by handleToolInputStart
   const existingComponent = state.pendingTools.get(toolCallId);
 
