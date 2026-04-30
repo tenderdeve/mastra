@@ -132,7 +132,7 @@ describe('Bun Runtime Detection', () => {
     expect(mocks.mockExec).toHaveBeenCalledWith('bun init -y');
 
     // Check if bun add was used for dependencies
-    expect(mocks.mockExec).toHaveBeenCalledWith(expect.stringContaining('bun add zod@^4'));
+    expect(mocks.mockExec).toHaveBeenCalledWith(expect.stringContaining('bun add zod@4.3.4'));
   });
 
   it('should use npm init when npm is detected', async () => {
@@ -151,7 +151,7 @@ describe('Bun Runtime Detection', () => {
     // Check if npm install was used for dependencies
     expect(mocks.mockExec).toHaveBeenCalledWith(
       expect.stringContaining(
-        'npm install --audit=false --fund=false --loglevel=error --progress=false --update-notifier=false zod@^4',
+        'npm install --audit=false --fund=false --loglevel=error --progress=false --update-notifier=false zod@4.3.4',
       ),
     );
   });

@@ -554,7 +554,7 @@ export const checkAndInstallCoreDeps = async (addExample: boolean, versionTag?: 
     }
 
     if (needsZod) {
-      packages.push({ name: 'zod', version: '^4' });
+      packages.push({ name: 'zod', version: '4.3.4' });
     }
 
     if (addExample) {
