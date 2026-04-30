@@ -229,6 +229,37 @@ describe('DurableAgent memory configuration', () => {
       expect(seenThreadIds).toContain('thread-string-for-processor');
     });
 
+    it('should apply processInputStep model overrides before model execution', async () => {
+      const modelOverrideProcessor: InputProcessor = {
+        id: 'model-override-processor',
+        processInputStep: async () => ({
+          model: createTextModel('processed response') as LanguageModelV2,
+        }),
+      };
+
+      const baseAgent = new Agent({
+        id: 'model-override-agent',
+        name: 'Model Override Agent',
+        instructions: 'Test processInputStep model override',
+        model: createTextModel('original response') as LanguageModelV2,
+        inputProcessors: [modelOverrideProcessor],
+      });
+      const durableAgent = createDurableAgent({ agent: baseAgent, pubsub });
+
+      const result = await durableAgent.stream('Hello');
+      const chunks: any[] = [];
+      for await (const chunk of result.fullStream as AsyncIterable<any>) {
+        chunks.push(chunk);
+      }
+
+      const text = chunks
+        .filter(chunk => chunk?.type === 'text-delta')
+        .map(chunk => chunk?.payload?.text ?? chunk?.textDelta ?? chunk?.delta ?? '')
+        .join('');
+
+      expect(text).toBe('processed response');
+    });
+
     it('should handle missing memory options gracefully', async () => {
       const mockModel = createTextModel('Hello!');
 

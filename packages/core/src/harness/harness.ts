@@ -1567,6 +1567,7 @@ export class Harness<TState = {}> {
 
     let claimedRunId: string | undefined;
     let stopSignalHandler: (() => void) | undefined;
+    let stopRunAbortHandler: (() => void) | undefined;
     let followedStreamCleanup: (() => void) | undefined;
 
     try {
@@ -1647,6 +1648,12 @@ export class Harness<TState = {}> {
         stopSignalHandler = await durableClient.onSignal(runId, signal => {
           if (typeof (agent as any).sendSignal === 'function') {
             (agent as any).sendSignal(signal, { runId });
+          }
+        });
+        stopRunAbortHandler = await durableClient.subscribeRun(runId, event => {
+          const error = (event as any)?.payload?.error;
+          if ((event as any)?.type === 'error' && error?.name === 'AbortError') {
+            this.abort();
           }
         });
       }
@@ -1767,6 +1774,7 @@ export class Harness<TState = {}> {
     } finally {
       this.publishingDurableRunId = null;
       stopSignalHandler?.();
+      stopRunAbortHandler?.();
       followedStreamCleanup?.();
 
       if (this.currentOperationId === operationId) {
@@ -2570,6 +2578,10 @@ export class Harness<TState = {}> {
   abort(): void {
     if (this.abortController) {
       this.abortRequested = true;
+      const followedRunId = this.followingDurableRunId;
+      if (followedRunId && this.durableRunClient) {
+        void this.durableRunClient.abortRun(followedRunId, 'Durable run aborted by follower').catch(() => undefined);
+      }
       try {
         this.abortController.abort();
       } catch {}
