@@ -1,0 +1,30 @@
+{
+  "name": "custom-working-memory-processor-example",
+  "type": "module",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "mastra dev",
+    "build": "mastra build -s",
+    "demo": "node --env-file=.env --import tsx src/demo.ts",
+    "clean": "rm -rf .mastra mastra.db custom-working-memory.json"
+  },
+  "dependencies": {
+    "@mastra/core": "latest",
+    "@mastra/libsql": "latest",
+    "@mastra/memory": "latest",
+    "mastra": "latest",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@mastra/core": "link:../../packages/core",
+      "@mastra/libsql": "link:../../stores/libsql",
+      "@mastra/memory": "link:../../packages/memory",
+      "mastra": "link:../../packages/cli"
+    }
+  },
+  "devDependencies": {},
+  "packageManager": "pnpm@10.29.3+sha512.498e1fb4cca5aa06c1dcf2611e6fafc50972ffe7189998c409e90de74566444298ffe43e6cd2acdc775ba1aa7cc5e092a8b7054c811ba8c5770f84693d33d2dc"
+}

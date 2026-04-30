@@ -199,6 +199,11 @@ const sidebars = {
             },
             {
               type: 'doc',
+              id: 'guide/incremental-working-memory',
+              label: 'Memory: Working Memory vnext Behavior',
+            },
+            {
+              type: 'doc',
               id: 'guide/notes-mcp-server',
               label: 'MCP Server: Notes MCP Server',
             },

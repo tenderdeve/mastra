@@ -183,15 +183,15 @@ type BaseWorkingMemory = {
   scope?: 'thread' | 'resource';
   /** @deprecated The `use` option has been removed. Working memory always uses tool-call mode. */
   use?: never;
+  /**
+   * @deprecated `version: 'vnext'` will be removed in a future major release. Use Observational Memory or the default stable working memory mode instead.
+   */
+  version?: 'stable' | 'vnext';
 };
 
 type TemplateWorkingMemory = BaseWorkingMemory & {
   template: string;
   schema?: never;
-  /**
-   * @deprecated `version: 'vnext'` will be removed in a future major release. Use the default `stable` mode.
-   */
-  version?: 'stable' | 'vnext';
 };
 
 type SchemaWorkingMemory = BaseWorkingMemory & {

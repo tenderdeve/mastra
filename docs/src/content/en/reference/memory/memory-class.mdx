@@ -97,7 +97,7 @@ To enable `workingMemory` on an agent, you’ll need a storage provider configur
             name: 'workingMemory',
             type: 'WorkingMemory',
             description:
-              "Configuration for working memory feature. Can be `{ enabled: boolean; template?: string; schema?: ZodObject<any> | JSONSchema7; scope?: 'thread' | 'resource' }` or `{ enabled: boolean }` to disable.",
+              "Configuration for working memory. Can be `{ enabled: boolean; template?: string; schema?: ZodObject<any> | JSONSchema7; scope?: 'thread' | 'resource'; version?: 'stable' | 'vnext' }` or `{ enabled: boolean }` to disable. The `version` option is deprecated. `version: 'vnext'` has been superseded by [Observational Memory](/reference/memory/observational-memory).",
             isOptional: true,
             defaultValue:
               "{ enabled: false, template: '# User Information\\n- **First Name**:\\n- **Last Name**:\\n...' }",

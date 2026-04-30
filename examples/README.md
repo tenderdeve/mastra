@@ -3,7 +3,7 @@
 Navigate to the example directory you want to run. For example:
 
 ```bash
-cd examples/ai-sdk-v5
+cd examples/custom-working-memory-processor
 ```
 
 Install the packages:
@@ -16,8 +16,14 @@ npm install
 > Most examples can use `npm install`.
 > If an example links local workspace packages, use `pnpm install --ignore-workspace` from that example directory instead.
 
-Run the appropriate CLI command in your terminal (may vary by example). For example for the `ai-sdk-v5` example:
+Run the appropriate CLI command in your terminal (may vary by example). For example for the custom working memory processor example:
 
 ```bash
-npm run dev
+pnpm demo
+```
+
+Or run it as a Mastra project in Studio:
+
+```bash
+pnpm dev
 ```

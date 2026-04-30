@@ -1,0 +1,248 @@
+---
+title: "Guide: Retaining working memory vnext behavior with a custom processor"
+description: Retain working memory vnext behavior with a custom processor that updates Markdown memory after an agent responds.
+---
+
+# Retaining working memory vnext behavior with a custom processor
+
+Working memory vnext has been deprecated and superseded by [Observational Memory](/docs/memory/observational-memory). If you still need working memory vnext behavior, disable built-in working memory and write a custom processor that owns the read and update flow.
+
+In this guide, you'll read custom memory from thread metadata before generation, provide it as system context, then write the next full memory value back to the thread after the response finishes.
+
+## Prerequisites
+
+- Node.js `v22.13.0` or later installed
+- An API key from a supported [Model Provider](/models)
+- An existing Mastra project. Follow the [installation guide](/guides/getting-started/quickstart) if needed.
+- Built-in working memory disabled. This guide uses thread metadata instead of `memory.options.workingMemory`.
+
+## Create the store
+
+Create a store that reads and writes your custom memory value in thread metadata. The example uses a `customWorkingMemory` metadata key so it doesn't depend on built-in working memory.
+
+```typescript title="src/mastra/storage/custom-working-memory-store.ts"
+import type { Memory } from '@mastra/memory'
+
+const CUSTOM_WORKING_MEMORY_METADATA_KEY = 'customWorkingMemory'
+
+export type CustomWorkingMemoryStore = {
+  get: (args: { threadId: string; resourceId: string }) => Promise<string | null>
+  set: (args: { threadId: string; resourceId: string; workingMemory: string }) => Promise<void>
+}
+
+export class ThreadMetadataWorkingMemoryStore implements CustomWorkingMemoryStore {
+  constructor(private memory: Memory) {}
+
+  async get({ threadId }: { threadId: string; resourceId: string }) {
+    const thread = await this.memory.getThreadById({ threadId })
+    const workingMemory = thread?.metadata?.[CUSTOM_WORKING_MEMORY_METADATA_KEY]
+
+    return typeof workingMemory === 'string' ? workingMemory : null
+  }
+
+  async set({
+    threadId,
+    workingMemory,
+  }: {
+    threadId: string
+    resourceId: string
+    workingMemory: string
+  }) {
+    const thread = await this.memory.getThreadById({ threadId })
+
+    if (!thread) {
+      throw new Error(`Thread ${threadId} not found`)
+    }
+
+    await this.memory.updateThread({
+      id: threadId,
+      title: thread.title ?? threadId,
+      metadata: {
+        ...thread.metadata,
+        [CUSTOM_WORKING_MEMORY_METADATA_KEY]: workingMemory,
+      },
+    })
+  }
+}
+```
+
+## Create the processor
+
+Create a processor that runs before and after the model response. Before generation, it reads custom memory from your store and adds it as system context. After generation, it builds the next memory value and writes that full value back to your store.
+
+```typescript title="src/mastra/processors/custom-working-memory.ts"
+import type { MastraDBMessage, MemoryRequestContext } from '@mastra/core/memory'
+import type { Processor, ProcessInputArgs, ProcessOutputResultArgs } from '@mastra/core/processors'
+import type { CustomWorkingMemoryStore } from '../storage/custom-working-memory-store'
+
+type CustomWorkingMemoryProcessorOptions = {
+  store: CustomWorkingMemoryStore
+  buildNextMemory: (args: {
+    currentMemory: string
+    messages: MastraDBMessage[]
+    responseText: string
+  }) => Promise<string>
+}
+
+export class CustomWorkingMemoryProcessor implements Processor {
+  id = 'custom-working-memory'
+
+  constructor(private options: CustomWorkingMemoryProcessorOptions) {}
+
+  async processInput({ messages, systemMessages, requestContext, state }: ProcessInputArgs) {
+    const memoryContext = requestContext?.get<'MastraMemory', MemoryRequestContext>('MastraMemory')
+    const threadId = memoryContext?.thread?.id
+    const resourceId = memoryContext?.resourceId
+
+    if (!threadId || !resourceId) {
+      return { messages, systemMessages }
+    }
+
+    const currentMemory =
+      (await this.options.store.get({
+        threadId,
+        resourceId,
+      })) ?? ''
+
+    state.currentWorkingMemory = currentMemory
+    state.currentRequestMessages = messages
+
+    return {
+      messages,
+      systemMessages: [
+        ...systemMessages,
+        {
+          role: 'system',
+          content: `<working_memory>\n${currentMemory}\n</working_memory>`,
+        },
+      ],
+    }
+  }
+
+  async processOutputResult({ messages, result, requestContext, state }: ProcessOutputResultArgs) {
+    const memoryContext = requestContext?.get<'MastraMemory', MemoryRequestContext>('MastraMemory')
+    const threadId = memoryContext?.thread?.id
+    const resourceId = memoryContext?.resourceId
+
+    if (!threadId || !resourceId) {
+      return messages
+    }
+
+    const currentMemory =
+      typeof state.currentWorkingMemory === 'string' ? state.currentWorkingMemory : ''
+    const requestMessages = Array.isArray(state.currentRequestMessages)
+      ? state.currentRequestMessages
+      : messages
+
+    const nextMemory = await this.options.buildNextMemory({
+      currentMemory,
+      messages: requestMessages,
+      responseText: result.text,
+    })
+
+    if (nextMemory === currentMemory) {
+      return messages
+    }
+
+    await this.options.store.set({
+      threadId,
+      resourceId,
+      workingMemory: nextMemory,
+    })
+
+    return messages
+  }
+}
+```
+
+The processor uses `requestContext` to get the active thread and resource. It skips the read or update when either value is missing, and skips the write when `buildNextMemory` returns unchanged memory.
+
+## Attach the processor to an agent
+
+Create a `Memory` instance without `workingMemory` enabled, then attach your custom processor. The `Memory` instance still provides thread and resource context, while the processor owns the custom memory behavior.
+
+```typescript title="src/mastra/agents/support-agent.ts"
+import { Agent } from '@mastra/core/agent'
+import { Memory } from '@mastra/memory'
+import { CustomWorkingMemoryProcessor } from '../processors/custom-working-memory'
+import { ThreadMetadataWorkingMemoryStore } from '../storage/custom-working-memory-store'
+
+const memory = new Memory()
+const customWorkingMemoryProcessor = new CustomWorkingMemoryProcessor({
+  store: new ThreadMetadataWorkingMemoryStore(memory),
+  buildNextMemory: async ({ currentMemory }) => {
+    return currentMemory
+  },
+})
+
+export const supportAgent = new Agent({
+  name: 'support-agent',
+  instructions: 'Answer the user first. Keep custom working memory concise.',
+  model: 'openai/gpt-5-mini',
+  memory,
+  inputProcessors: [customWorkingMemoryProcessor],
+  outputProcessors: [customWorkingMemoryProcessor],
+})
+```
+
+The example `buildNextMemory` function returns the current value so the processor shape is clear. In production, replace it with a separate model call, deterministic merge logic, or a background job that produces the next full Markdown value.
+
+Call the agent with a stable thread and resource so the processor can load and update the right custom memory record:
+
+```typescript title="src/mastra/agents/support-agent.ts"
+await supportAgent.generate('My name is Sam.', {
+  memory: {
+    thread: 'thread-123',
+    resource: 'user-456',
+  },
+})
+```
+
+After the response finishes, the output processor runs and can update the custom memory value on the thread.
+
+## Add update safeguards
+
+Before writing generated memory in production, add checks that protect the existing memory value:
+
+- Validate the updated memory against your expected template or schema.
+- Limit the maximum diff size.
+- Detect stale writes if another process may update the same memory.
+- Skip the update when generated memory is unsafe or incomplete.
+
+## Test the processor
+
+Start the dev server and call the agent with a stable thread and resource:
+
+```bash npm2yarn
+npm run dev
+```
+
+Send a message that contains a durable user fact:
+
+```text
+My name is Sam and I prefer concise answers.
+```
+
+The response can vary, but the flow should be:
+
+```md
+The agent answers the user.
+The input processor reads the current custom memory from thread metadata and adds it as context.
+The output processor writes the updated custom memory to thread metadata after the response.
+```
+
+Check the thread metadata for the same `thread` and `resource` to confirm that the processor wrote the expected full memory value.
+
+## Next steps
+
+You can extend this processor to:
+
+- Use a separate model call to summarize new facts into the Markdown template.
+- Mirror updates to a JSON file while developing so you can inspect the memory value quickly.
+- Store pending memory updates in a background queue.
+- Add stale-write detection for concurrent conversations.
+
+Learn more:
+
+- [Working Memory](/docs/memory/working-memory)
+- [Processors](/docs/agents/processors)
