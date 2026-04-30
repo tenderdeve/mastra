@@ -19,6 +19,7 @@ type Features = {
   skills: boolean;
   model: boolean;
   stars: boolean;
+  browser: boolean;
 };
 
 const sentMessages: Array<{ message: string; threadId?: string; clientTools: Record<string, any> }> = [];
@@ -157,6 +158,7 @@ const allOff: Features = {
   skills: false,
   model: false,
   stars: false,
+  browser: false,
 };
 const allOn: Features = { ...allOff, tools: true };
 
