@@ -113,6 +113,22 @@ const processor = new PIIDetector({
             isOptional: true,
             default: 'undefined',
           },
+          {
+            name: 'cacheLLMResponse',
+            type: 'boolean | ProcessorCache',
+            description:
+              "Enable caching of LLM detection results to avoid redundant LLM calls for identical content. Set to `true` to use the Mastra instance's server cache, or pass a custom `ProcessorCache` implementation.",
+            isOptional: true,
+            default: 'false',
+          },
+          {
+            name: 'cacheKeyNormalizer',
+            type: '((content: string) => string) | null',
+            description:
+              'Function to normalize content before generating cache keys. Increases cache hit rates by treating semantically equivalent content as identical. Set to `null` to disable normalization.',
+            isOptional: true,
+            default: 'Trims whitespace and collapses multiple spaces',
+          },
         ],
       },
     ],

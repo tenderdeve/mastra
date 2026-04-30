@@ -5,7 +5,7 @@ import type { MastraServerCache } from '../cache';
 /**
  * Lightweight cache interface for processors that use LLM-based detection.
  *
- * When `cache: true` is set on an LLM-based processor, the Mastra instance's
+ * When `cacheLLMResponse: true` is set on an LLM-based processor, the Mastra instance's
  * server cache (MastraServerCache) is automatically adapted to this interface.
  *
  * You can also provide a custom implementation directly.
@@ -14,14 +14,14 @@ import type { MastraServerCache } from '../cache';
  * ```typescript
  * // Simplest: use the Mastra server cache
  * const moderation = new ModerationProcessor({
- *   model: 'openai/gpt-4o-mini',
- *   cache: true, // uses mastra.getServerCache()
+ *   model: 'openai/gpt-5-nano',
+ *   cacheLLMResponse: true, // uses mastra.getServerCache()
  * });
  *
  * // Custom implementation
  * const moderation = new ModerationProcessor({
- *   model: 'openai/gpt-4o-mini',
- *   cache: myCustomCacheImpl,
+ *   model: 'openai/gpt-5-nano',
+ *   cacheLLMResponse: myCustomCacheImpl,
  * });
  * ```
  */
@@ -42,14 +42,26 @@ export interface ProcessorCache {
 }
 
 /**
+ * Default content normalizer for cache key generation.
+ * Trims whitespace and collapses multiple spaces to a single space.
+ */
+export function defaultCacheKeyNormalizer(content: string): string {
+  return content.trim().replace(/\s+/g, ' ');
+}
+
+/**
  * Generate a deterministic cache key for a processor detection call.
  *
  * The key incorporates:
  * - The processor ID (e.g., 'moderation', 'pii-detector')
- * - A hash of the content being analyzed
+ * - A hash of the content being analyzed (after normalization)
  * - A hash of the processor config that affects detection results
  *
  * This ensures cache invalidation when processor settings change.
+ *
+ * @param processorId - Unique processor identifier
+ * @param content - Content to hash (should be pre-normalized by caller)
+ * @param configValues - Processor config values that affect detection results
  */
 export function createProcessorCacheKey(
   processorId: string,
@@ -66,7 +78,8 @@ export function createProcessorCacheKey(
 
 /**
  * Create a ProcessorCache adapter from a MastraServerCache instance.
- * This bridges the generic server cache to the processor-specific cache interface.
+ * Bridges the server cache to the processor cache interface, converting TTL units.
+ * @internal
  */
 export function createProcessorCacheFromServerCache(serverCache: MastraServerCache): ProcessorCache {
   return {

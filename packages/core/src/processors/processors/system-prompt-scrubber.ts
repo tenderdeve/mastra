@@ -11,7 +11,11 @@ import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
 import type { ProcessorCache } from '../processor-cache';
-import { createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
+import {
+  createProcessorCacheKey,
+  createProcessorCacheFromServerCache,
+  defaultCacheKeyNormalizer,
+} from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -41,13 +45,23 @@ export interface SystemPromptScrubberOptions extends LastMessageOnlyOption {
   };
 
   /**
-   * Enable caching of detection results to avoid redundant LLM calls.
+   * Enable caching of LLM detection results to avoid redundant LLM calls for identical content.
    *
    * - `true`: Use the Mastra instance's server cache (requires registering with Mastra)
    * - `ProcessorCache`: Use a custom cache implementation
    * - `undefined`/`false`: No caching (default)
    */
-  cache?: boolean | ProcessorCache;
+  cacheLLMResponse?: boolean | ProcessorCache;
+
+  /**
+   * Optional function to normalize content before generating cache keys.
+   * Normalization increases cache hit rates by treating semantically equivalent
+   * content as identical (e.g., collapsing whitespace, lowercasing).
+   *
+   * Default: trims whitespace and collapses multiple spaces to a single space.
+   * Set to `null` to disable normalization entirely.
+   */
+  cacheKeyNormalizer?: ((content: string) => string) | null;
 }
 
 export interface SystemPromptDetectionResult {
@@ -79,7 +93,7 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
   public readonly name = 'System Prompt Scrubber';
 
   __registerMastra(mastra: Mastra<any, any, any, any, any, any, any, any, any, any>): void {
-    if (this.cacheEnabled === true) {
+    if (this.pendingCacheResolution) {
       const serverCache = mastra.getServerCache();
       if (serverCache) {
         this.cache = createProcessorCacheFromServerCache(serverCache);
@@ -98,7 +112,8 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
   private lastMessageOnly: boolean;
   private structuredOutputOptions?: SystemPromptScrubberOptions['structuredOutputOptions'];
   private cache?: ProcessorCache;
-  private cacheEnabled: boolean | ProcessorCache;
+  private pendingCacheResolution: boolean;
+  private cacheKeyNormalizer: ((content: string) => string) | null;
 
   constructor(options: SystemPromptScrubberOptions) {
     if (!options.model) {
@@ -112,9 +127,11 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
     this.placeholderText = options.placeholderText || '[SYSTEM_PROMPT]';
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
-    this.cacheEnabled = options.cache ?? false;
-    if (typeof options.cache === 'object') {
-      this.cache = options.cache;
+    this.pendingCacheResolution = options.cacheLLMResponse === true;
+    this.cacheKeyNormalizer =
+      options.cacheKeyNormalizer !== undefined ? options.cacheKeyNormalizer : defaultCacheKeyNormalizer;
+    if (typeof options.cacheLLMResponse === 'object') {
+      this.cache = options.cacheLLMResponse;
     }
 
     // Initialize instructions after customPatterns is set
@@ -289,7 +306,8 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
     observabilityContext?: ObservabilityContext,
   ): Promise<SystemPromptDetectionResult> {
     if (this.cache) {
-      const cacheKey = createProcessorCacheKey(this.id, text, {
+      const normalizedText = this.cacheKeyNormalizer ? this.cacheKeyNormalizer(text) : text;
+      const cacheKey = createProcessorCacheKey(this.id, normalizedText, {
         strategy: this.strategy,
         customPatterns: this.customPatterns,
       });
@@ -354,7 +372,8 @@ export class SystemPromptScrubber implements Processor<'system-prompt-scrubber'>
       }
 
       if (this.cache) {
-        const cacheKey = createProcessorCacheKey(this.id, text, {
+        const normalizedText = this.cacheKeyNormalizer ? this.cacheKeyNormalizer(text) : text;
+        const cacheKey = createProcessorCacheKey(this.id, normalizedText, {
           strategy: this.strategy,
           customPatterns: this.customPatterns,
         });

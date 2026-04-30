@@ -11,7 +11,11 @@ import { resolveObservabilityContext } from '../../observability';
 import { standardSchemaToJSONSchema } from '../../schema';
 import type { Processor } from '../index';
 import type { ProcessorCache } from '../processor-cache';
-import { createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
+import {
+  createProcessorCacheKey,
+  createProcessorCacheFromServerCache,
+  defaultCacheKeyNormalizer,
+} from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -118,13 +122,23 @@ export interface LanguageDetectorOptions extends LastMessageOnlyOption {
   providerOptions?: ProviderOptions;
 
   /**
-   * Enable caching of detection results to avoid redundant LLM calls.
+   * Enable caching of LLM detection results to avoid redundant LLM calls for identical content.
    *
    * - `true`: Use the Mastra instance's server cache (requires registering with Mastra)
    * - `ProcessorCache`: Use a custom cache implementation
    * - `undefined`/`false`: No caching (default)
    */
-  cache?: boolean | ProcessorCache;
+  cacheLLMResponse?: boolean | ProcessorCache;
+
+  /**
+   * Optional function to normalize content before generating cache keys.
+   * Normalization increases cache hit rates by treating semantically equivalent
+   * content as identical (e.g., collapsing whitespace, lowercasing).
+   *
+   * Default: trims whitespace and collapses multiple spaces to a single space.
+   * Set to `null` to disable normalization entirely.
+   */
+  cacheKeyNormalizer?: ((content: string) => string) | null;
 }
 
 /**
@@ -139,7 +153,7 @@ export class LanguageDetector implements Processor<'language-detector'> {
   readonly name = 'Language Detector';
 
   __registerMastra(mastra: Mastra<any, any, any, any, any, any, any, any, any, any>): void {
-    if (this.cacheEnabled === true) {
+    if (this.pendingCacheResolution) {
       const serverCache = mastra.getServerCache();
       if (serverCache) {
         this.cache = createProcessorCacheFromServerCache(serverCache);
@@ -158,7 +172,8 @@ export class LanguageDetector implements Processor<'language-detector'> {
   private lastMessageOnly: boolean;
   private providerOptions?: ProviderOptions;
   private cache?: ProcessorCache;
-  private cacheEnabled: boolean | ProcessorCache;
+  private pendingCacheResolution: boolean;
+  private cacheKeyNormalizer: ((content: string) => string) | null;
 
   // Default target language
   private static readonly DEFAULT_TARGET_LANGUAGES = ['English', 'en'];
@@ -214,9 +229,11 @@ export class LanguageDetector implements Processor<'language-detector'> {
     this.translationQuality = options.translationQuality || 'quality';
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.providerOptions = options.providerOptions;
-    this.cacheEnabled = options.cache ?? false;
-    if (typeof options.cache === 'object') {
-      this.cache = options.cache;
+    this.pendingCacheResolution = options.cacheLLMResponse === true;
+    this.cacheKeyNormalizer =
+      options.cacheKeyNormalizer !== undefined ? options.cacheKeyNormalizer : defaultCacheKeyNormalizer;
+    if (typeof options.cacheLLMResponse === 'object') {
+      this.cache = options.cacheLLMResponse;
     }
 
     // Create internal detection and translation agent
@@ -313,7 +330,8 @@ export class LanguageDetector implements Processor<'language-detector'> {
     observabilityContext?: ObservabilityContext,
   ): Promise<LanguageDetectionResult> {
     if (this.cache) {
-      const cacheKey = createProcessorCacheKey(this.id, content, {
+      const normalizedContent = this.cacheKeyNormalizer ? this.cacheKeyNormalizer(content) : content;
+      const cacheKey = createProcessorCacheKey(this.id, normalizedContent, {
         targetLanguages: this.targetLanguages,
         threshold: this.threshold,
         strategy: this.strategy,
@@ -371,7 +389,8 @@ export class LanguageDetector implements Processor<'language-detector'> {
       }
 
       if (this.cache) {
-        const cacheKey = createProcessorCacheKey(this.id, content, {
+        const normalizedContent = this.cacheKeyNormalizer ? this.cacheKeyNormalizer(content) : content;
+        const cacheKey = createProcessorCacheKey(this.id, normalizedContent, {
           targetLanguages: this.targetLanguages,
           threshold: this.threshold,
           strategy: this.strategy,

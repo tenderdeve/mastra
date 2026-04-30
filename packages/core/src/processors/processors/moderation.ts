@@ -13,7 +13,11 @@ import { toStandardSchema, standardSchemaToJSONSchema } from '../../schema';
 import type { ChunkType } from '../../stream';
 import type { Processor } from '../index';
 import type { ProcessorCache } from '../processor-cache';
-import { createProcessorCacheKey, createProcessorCacheFromServerCache } from '../processor-cache';
+import {
+  createProcessorCacheKey,
+  createProcessorCacheFromServerCache,
+  defaultCacheKeyNormalizer,
+} from '../processor-cache';
 import { selectMessagesToCheck } from './message-selection';
 import type { LastMessageOnlyOption } from './message-selection';
 
@@ -108,13 +112,23 @@ export interface ModerationOptions extends LastMessageOnlyOption {
   providerOptions?: ProviderOptions;
 
   /**
-   * Enable caching of detection results to avoid redundant LLM calls.
+   * Enable caching of LLM detection results to avoid redundant LLM calls for identical content.
    *
    * - `true`: Use the Mastra instance's server cache (requires registering with Mastra)
    * - `ProcessorCache`: Use a custom cache implementation
    * - `undefined`/`false`: No caching (default)
    */
-  cache?: boolean | ProcessorCache;
+  cacheLLMResponse?: boolean | ProcessorCache;
+
+  /**
+   * Optional function to normalize content before generating cache keys.
+   * Normalization increases cache hit rates by treating semantically equivalent
+   * content as identical (e.g., collapsing whitespace, lowercasing).
+   *
+   * Default: trims whitespace and collapses multiple spaces to a single space.
+   * Set to `null` to disable normalization entirely.
+   */
+  cacheKeyNormalizer?: ((content: string) => string) | null;
 }
 
 /**
@@ -129,7 +143,7 @@ export class ModerationProcessor implements Processor<'moderation'> {
   readonly name = 'Moderation';
 
   __registerMastra(mastra: Mastra<any, any, any, any, any, any, any, any, any, any>): void {
-    if (this.cacheEnabled === true) {
+    if (this.pendingCacheResolution) {
       const serverCache = mastra.getServerCache();
       if (serverCache) {
         this.cache = createProcessorCacheFromServerCache(serverCache);
@@ -147,7 +161,8 @@ export class ModerationProcessor implements Processor<'moderation'> {
   private structuredOutputOptions?: ModerationOptions['structuredOutputOptions'];
   private providerOptions?: ProviderOptions;
   private cache?: ProcessorCache;
-  private cacheEnabled: boolean | ProcessorCache;
+  private pendingCacheResolution: boolean;
+  private cacheKeyNormalizer: ((content: string) => string) | null;
 
   // Default OpenAI moderation categories
   private static readonly DEFAULT_CATEGORIES = [
@@ -173,9 +188,11 @@ export class ModerationProcessor implements Processor<'moderation'> {
     this.lastMessageOnly = options.lastMessageOnly ?? false;
     this.structuredOutputOptions = options.structuredOutputOptions;
     this.providerOptions = options.providerOptions;
-    this.cacheEnabled = options.cache ?? false;
-    if (typeof options.cache === 'object') {
-      this.cache = options.cache;
+    this.pendingCacheResolution = options.cacheLLMResponse === true;
+    this.cacheKeyNormalizer =
+      options.cacheKeyNormalizer !== undefined ? options.cacheKeyNormalizer : defaultCacheKeyNormalizer;
+    if (typeof options.cacheLLMResponse === 'object') {
+      this.cache = options.cacheLLMResponse;
     }
 
     // Create internal moderation agent
@@ -303,7 +320,8 @@ export class ModerationProcessor implements Processor<'moderation'> {
     observabilityContext?: ObservabilityContext,
   ): Promise<ModerationResult> {
     if (this.cache) {
-      const cacheKey = createProcessorCacheKey(this.id, content, {
+      const normalizedContent = this.cacheKeyNormalizer ? this.cacheKeyNormalizer(content) : content;
+      const cacheKey = createProcessorCacheKey(this.id, normalizedContent, {
         categories: this.categories,
         threshold: this.threshold,
         isStream,
@@ -368,7 +386,8 @@ export class ModerationProcessor implements Processor<'moderation'> {
       }
 
       if (this.cache) {
-        const cacheKey = createProcessorCacheKey(this.id, content, {
+        const normalizedContent = this.cacheKeyNormalizer ? this.cacheKeyNormalizer(content) : content;
+        const cacheKey = createProcessorCacheKey(this.id, normalizedContent, {
           categories: this.categories,
           threshold: this.threshold,
           isStream,

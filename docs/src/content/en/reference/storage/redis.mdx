@@ -310,3 +310,67 @@ await storage.init()
 const memoryStore = await storage.getStore('memory')
 const thread = await memoryStore?.getThreadById({ threadId: '...' })
 ```
+
+## RedisServerCache
+
+The `@mastra/redis` package also exports `RedisServerCache`, a Redis-backed implementation of `MastraServerCache`. Use it as the Mastra instance's server cache for distributed caching of workflow stream buffers and processor LLM responses.
+
+```typescript
+import { Mastra } from '@mastra/core/mastra'
+import { RedisServerCache } from '@mastra/redis'
+
+const mastra = new Mastra({
+  cache: new RedisServerCache({
+    connectionString: 'redis://localhost:6379',
+  }),
+  // ...
+})
+```
+
+`RedisServerCache` supports per-key TTL. When a processor sets `cacheLLMResponse: true`, detection results are stored with per-entry TTL in Redis, so stale entries expire automatically.
+
+### Constructor parameters
+
+<PropertiesTable
+  content={[
+  {
+    name: 'options',
+    type: 'Options',
+    description: 'Configuration for the Redis server cache',
+    isOptional: false,
+    properties: [
+      {
+        type: 'Options',
+        parameters: [
+          {
+            name: 'connectionString',
+            type: 'string',
+            description: 'Redis connection URL (e.g., `redis://localhost:6379`)',
+            isOptional: true,
+          },
+          {
+            name: 'client',
+            type: 'RedisClientType',
+            description: 'Pre-configured redis client. Use this for Sentinel, Cluster, or shared connections.',
+            isOptional: true,
+          },
+          {
+            name: 'keyPrefix',
+            type: 'string',
+            description: 'Prefix for all cache keys. Useful for namespacing in shared Redis instances.',
+            isOptional: true,
+            default: "'mastra:cache:'",
+          },
+          {
+            name: 'ttlSeconds',
+            type: 'number',
+            description: 'Default TTL for cache entries in seconds.',
+            isOptional: true,
+            default: '300 (5 minutes)',
+          },
+        ],
+      },
+    ],
+  },
+]}
+/>

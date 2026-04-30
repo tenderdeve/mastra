@@ -344,6 +344,20 @@ new PIIDetector({ model: GUARDRAIL_MODEL })
 new PromptInjectionDetector({ model: GUARDRAIL_MODEL })
 ```
 
+### Cache LLM results
+
+LLM-based guardrails can cache detection results to avoid redundant calls when the same content is re-checked across agentic loop steps. Set `cacheLLMResponse: true` on any LLM-based processor:
+
+```typescript
+new ModerationProcessor({ model: GUARDRAIL_MODEL, cacheLLMResponse: true })
+new PIIDetector({ model: GUARDRAIL_MODEL, cacheLLMResponse: true })
+new PromptInjectionDetector({ model: GUARDRAIL_MODEL, cacheLLMResponse: true })
+```
+
+This uses the Mastra instance's server cache (in-memory by default, or Redis when configured). Cache keys incorporate the content hash and processor configuration, so changing a threshold or category list automatically invalidates stale entries.
+
+See [Cache LLM responses](/docs/agents/processors#cache-llm-responses) for details on custom normalizers and cache implementations.
+
 ### Batch stream parts
 
 Output guardrails that implement `processOutputStream` run on every streamed chunk. Use `BatchPartsProcessor` _before_ heavier processors to combine chunks and reduce the number of LLM classification calls:

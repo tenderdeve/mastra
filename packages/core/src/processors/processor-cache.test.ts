@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createProcessorCacheKey, createProcessorCacheFromServerCache } from './processor-cache';
+import {
+  createProcessorCacheKey,
+  createProcessorCacheFromServerCache,
+  defaultCacheKeyNormalizer,
+} from './processor-cache';
 
 describe('createProcessorCacheKey', () => {
   it('should generate deterministic keys for the same input', () => {
@@ -40,6 +44,36 @@ describe('createProcessorCacheKey', () => {
   it('should work with empty config', () => {
     const key = createProcessorCacheKey('moderation', 'test');
     expect(key).toMatch(/^processor:moderation:/);
+  });
+});
+
+describe('defaultCacheKeyNormalizer', () => {
+  it('should trim leading and trailing whitespace', () => {
+    expect(defaultCacheKeyNormalizer('  hello world  ')).toBe('hello world');
+  });
+
+  it('should collapse multiple spaces to a single space', () => {
+    expect(defaultCacheKeyNormalizer('hello    world')).toBe('hello world');
+  });
+
+  it('should collapse tabs and newlines to a single space', () => {
+    expect(defaultCacheKeyNormalizer('hello\t\n  world')).toBe('hello world');
+  });
+
+  it('should handle already-normalized content', () => {
+    expect(defaultCacheKeyNormalizer('hello world')).toBe('hello world');
+  });
+
+  it('should preserve case', () => {
+    expect(defaultCacheKeyNormalizer('Hello World')).toBe('Hello World');
+  });
+
+  it('should produce same cache key for content differing only in whitespace', () => {
+    const normalized1 = defaultCacheKeyNormalizer('  hello   world  ');
+    const normalized2 = defaultCacheKeyNormalizer('hello world');
+    const key1 = createProcessorCacheKey('moderation', normalized1, { threshold: 0.5 });
+    const key2 = createProcessorCacheKey('moderation', normalized2, { threshold: 0.5 });
+    expect(key1).toBe(key2);
   });
 });
 

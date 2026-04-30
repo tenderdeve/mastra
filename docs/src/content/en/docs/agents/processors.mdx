@@ -138,6 +138,90 @@ await agent.stream('Summarize this', {
 })
 ```
 
+## Cache LLM responses
+
+LLM-based processors (moderation, PII detection, prompt injection detection, language detection, and system prompt scrubbing) make internal LLM calls for every check. When the same content is re-checked across agentic loop steps, this creates redundant LLM calls.
+
+Set `cacheLLMResponse: true` on any LLM-based processor to cache detection results. When enabled, the processor uses the Mastra instance's server cache to store results keyed by content hash and processor configuration. Identical content returns the cached result instead of making another LLM call.
+
+```typescript title="src/mastra/index.ts"
+import { Mastra } from '@mastra/core/mastra'
+import { Agent } from '@mastra/core/agent'
+import { ModerationProcessor, PIIDetector } from '@mastra/core/processors'
+
+export const mastra = new Mastra({
+  agents: {
+    myAgent: new Agent({
+      name: 'my-agent',
+      instructions: 'You are a helpful assistant',
+      model: 'openai/gpt-5-mini',
+      inputProcessors: [
+        new ModerationProcessor({
+          model: 'openai/gpt-5-nano',
+          cacheLLMResponse: true,
+        }),
+        new PIIDetector({
+          model: 'openai/gpt-5-nano',
+          cacheLLMResponse: true,
+        }),
+      ],
+    }),
+  },
+})
+```
+
+By default, the Mastra instance uses an in-memory cache. For distributed environments, configure a `RedisServerCache`:
+
+```typescript title="src/mastra/index.ts"
+import { Mastra } from '@mastra/core/mastra'
+import { RedisServerCache } from '@mastra/redis'
+
+export const mastra = new Mastra({
+  cache: new RedisServerCache({
+    connectionString: 'redis://localhost:6379',
+  }),
+  // ... agents with cacheLLMResponse: true
+})
+```
+
+### Cache key normalization
+
+By default, content is normalized before generating cache keys: whitespace is trimmed and multiple spaces are collapsed to a single space. This increases cache hit rates when the same content has minor formatting differences.
+
+Pass a custom `cacheKeyNormalizer` function to apply different normalization:
+
+```typescript
+new ModerationProcessor({
+  model: 'openai/gpt-5-nano',
+  cacheLLMResponse: true,
+  cacheKeyNormalizer: content => content.trim().toLowerCase(),
+})
+```
+
+Set `cacheKeyNormalizer: null` to disable normalization and use content exactly as provided.
+
+### Custom cache implementation
+
+Instead of `true`, pass a `ProcessorCache` object for full control over cache behavior:
+
+```typescript
+import type { ProcessorCache } from '@mastra/core/processors'
+
+const myCache: ProcessorCache = {
+  async get<T>(key: string): Promise<T | undefined> {
+    // Your custom cache lookup
+  },
+  async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+    // Your custom cache storage
+  },
+}
+
+new ModerationProcessor({
+  model: 'openai/gpt-5-nano',
+  cacheLLMResponse: myCache,
+})
+```
+
 ## Create custom processors
 
 Custom processors implement the `Processor` interface.
