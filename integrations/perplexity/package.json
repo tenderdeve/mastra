@@ -1,7 +1,7 @@
 {
-  "name": "@mastra/opencode",
-  "version": "0.0.32-alpha.1",
-  "description": "OpenCode plugin for Mastra Observational Memory",
+  "name": "@mastra/perplexity",
+  "version": "0.1.0-alpha.0",
+  "description": "Perplexity Search tool for Mastra agents",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,19 +25,21 @@
   "scripts": {
     "build:lib": "tsup --silent --config tsup.config.ts",
     "build:watch": "pnpm build:lib --watch",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "keywords": [
     "mastra",
-    "opencode",
-    "observational-memory",
-    "plugin"
+    "perplexity",
+    "web-search",
+    "tools",
+    "ai-agent"
   ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mastra-ai/mastra.git",
-    "directory": "integrations/opencode"
+    "directory": "integrations/perplexity"
   },
   "bugs": {
     "url": "https://github.com/mastra-ai/mastra/issues"
@@ -46,21 +48,17 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "dependencies": {
-    "@mastra/core": "workspace:*",
-    "@mastra/libsql": "workspace:*",
-    "@mastra/memory": "workspace:*"
-  },
   "peerDependencies": {
-    "@opencode-ai/plugin": "*"
+    "@mastra/core": ">=1.0.0-0 <2.0.0-0",
+    "zod": ">=3.0.0 || >=4.0.0"
   },
   "devDependencies": {
     "@internal/lint": "workspace:*",
     "@internal/types-builder": "workspace:*",
-    "@opencode-ai/plugin": "^1.2.27",
-    "@opencode-ai/sdk": "^1.2.27",
+    "@mastra/core": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }
