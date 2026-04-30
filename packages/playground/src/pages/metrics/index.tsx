@@ -27,18 +27,20 @@ import {
   toast,
   useAgentRunsKpiMetrics,
   useMetrics,
+  useEntityNames,
+  useEnvironments,
+  useServiceNames,
+  useTags,
 } from '@mastra/playground-ui';
 import { BarChart3Icon, BookIcon, CircleSlashIcon, ExternalLinkIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { useEntityNames, useEnvironments, useServiceNames, useTags } from '@mastra/playground-ui';
 import { useMastraPackages } from '@/domains/configuration/hooks/use-mastra-packages';
 import { LatencyCard } from '@/domains/metrics/components/latency-card';
 import { MemoryCard } from '@/domains/metrics/components/memory-card';
 import { AgentRunsKpiCard, ModelCostKpiCard, TotalTokensKpiCard } from '@/domains/metrics/components/metrics-kpi-cards';
 import { MetricsToolbar } from '@/domains/metrics/components/metrics-toolbar';
 import { ModelUsageCostCard } from '@/domains/metrics/components/model-usage-cost-card';
-import { ScoresCard } from '@/domains/metrics/components/scores-card';
 import { TokenUsageByAgentCard } from '@/domains/metrics/components/token-usage-by-agent-card';
 import { TracesVolumeCard } from '@/domains/metrics/components/traces-volume-card';
 
@@ -313,7 +315,6 @@ function MetricsContent() {
             <ModelUsageCostCard />
             <TokenUsageByAgentCard />
             <MemoryCard />
-            <ScoresCard />
             <TracesVolumeCard />
             <LatencyCard />
           </MetricsFlexGrid>
