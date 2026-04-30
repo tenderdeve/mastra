@@ -22,6 +22,7 @@ import { CustomEditor } from './components/custom-editor.js';
 import type { GradientAnimator } from './components/obi-loader.js';
 import type { OMMarkerComponent } from './components/om-marker.js';
 import type { OMProgressComponent } from './components/om-progress.js';
+import type { PendingUserMessageComponent } from './components/pending-user-message.js';
 import type { PlanApprovalInlineComponent } from './components/plan-approval-inline.js';
 import type { ShellStreamComponent } from './components/shell-output.js';
 import type { SlashCommandComponent } from './components/slash-command.js';
@@ -115,6 +116,8 @@ export interface TUIState {
   allSystemReminderComponents: Array<SystemReminderComponent | TemporalGapComponent>;
   /** Track rendered message components by message id for anchored inserts */
   messageComponentsById: Map<string, Component>;
+  /** Pending durable signal messages waiting for stream confirmation */
+  pendingSignalMessageComponentsById: Map<string, PendingUserMessageComponent>;
   /** Track shell passthrough components for expand/collapse */
   allShellComponents: ShellStreamComponent[];
   /** Track active subagent tasks */
@@ -241,6 +244,7 @@ export function createTUIState(options: MastraTUIOptions): TUIState {
     allSlashCommandComponents: [],
     allSystemReminderComponents: [],
     messageComponentsById: new Map(),
+    pendingSignalMessageComponentsById: new Map(),
     allShellComponents: [],
     pendingSubagents: new Map(),
     toolOutputExpanded: false,

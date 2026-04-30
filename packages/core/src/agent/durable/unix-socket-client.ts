@@ -209,7 +209,10 @@ export class UnixSocketDurableRunClient {
     };
   }
 
-  async sendSignal(signal: unknown, target: { runId: string }): Promise<{ accepted: true; runId: string }> {
+  async sendSignal(
+    signal: unknown,
+    target: { runId: string } | { resourceId: string; threadId: string },
+  ): Promise<{ accepted: true; runId: string }> {
     return this.#request('sendSignal', { signal, target });
   }
 

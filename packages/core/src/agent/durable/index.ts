@@ -102,6 +102,16 @@ export {
   type UnixSocketDurableRunCoordinatorOptions,
 } from './unix-socket-coordinator';
 export { UnixSocketDurableRunClient, type UnixSocketDurableRunClientOptions } from './unix-socket-client';
+export {
+  DurableThreadRuntime,
+  type DurableThreadRuntimeAgent,
+  type DurableThreadRuntimeOptions,
+  type DurableThreadSignalInput,
+  type DurableThreadObservationInput,
+  type DurableThreadSignalResult,
+  type DurableThreadRuntimeCompletion,
+  type ObservedDurableThreadRun,
+} from './thread-runtime';
 
 // Stream adapter for pubsub-based streaming
 export {

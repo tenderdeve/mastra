@@ -320,10 +320,16 @@ export class UnixSocketDurableRunCoordinator {
     return { ok: true };
   }
 
-  sendSignal(signal: unknown, target: { runId?: string } | undefined): { accepted: true; runId: string } {
-    const runId = target?.runId;
+  sendSignal(
+    signal: unknown,
+    target: { runId?: string; resourceId?: string; threadId?: string } | undefined,
+  ): { accepted: true; runId: string } {
+    let runId = target?.runId;
+    if (!runId && target?.resourceId && target.threadId) {
+      runId = this.getActiveRun({ resourceId: target.resourceId, threadId: target.threadId })?.runId;
+    }
     if (!runId) {
-      throw new Error('sendSignal requires target.runId');
+      throw new Error('sendSignal requires target.runId or an active target thread');
     }
 
     const handler = this.#signalHandlersByRunId.get(runId);
@@ -346,7 +352,6 @@ export class UnixSocketDurableRunCoordinator {
       this.#threadKeyByRunId.delete(runId);
       this.#signalHandlersByRunId.delete(runId);
       this.#subscribersByRunId.delete(runId);
-      this.#eventsByRunId.delete(runId);
     }
     return { ok: true };
   }

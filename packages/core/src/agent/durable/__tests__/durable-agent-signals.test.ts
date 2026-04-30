@@ -163,9 +163,15 @@ describe('DurableAgent signals', () => {
     });
     const durableAgent = createDurableAgent({ agent, pubsub: new EventEmitterPubSub(), cleanupTimeoutMs: 0 });
 
-    const result = await durableAgent.stream('start', { memory: { resource: 'user-1', thread: 'thread-1' } });
+    const streamChunks: any[] = [];
+    const result = await durableAgent.stream('start', {
+      memory: { resource: 'user-1', thread: 'thread-1' },
+      onChunk: chunk => streamChunks.push(chunk),
+    });
+    const chunks: any[] = [];
     const drainPromise = (async () => {
-      for await (const _chunk of result.fullStream as AsyncIterable<any>) {
+      for await (const chunk of result.fullStream as AsyncIterable<any>) {
+        chunks.push(chunk);
       }
     })();
 
@@ -180,6 +186,17 @@ describe('DurableAgent signals', () => {
 
     expect(prompts).toHaveLength(2);
     expect(JSON.stringify(prompts[1])).toContain('interrupt during final text');
+    const firstTextEndIndex = streamChunks.findIndex(chunk => chunk.type === 'text-end');
+    const signalMessageIndex = streamChunks.findIndex(chunk => chunk.type === 'data-user-message');
+    const secondTextStartIndex = streamChunks.findIndex(
+      (chunk, index) => index > signalMessageIndex && chunk.type === 'text-start',
+    );
+    expect(signalMessageIndex).toBeGreaterThan(firstTextEndIndex);
+    expect(signalMessageIndex).toBeLessThan(secondTextStartIndex);
+    expect(streamChunks[signalMessageIndex]).toMatchObject({
+      type: 'data-user-message',
+      data: { message: { role: 'user', content: [{ type: 'text', text: 'interrupt during final text' }] } },
+    });
   });
 
   it('rejects run-id-only signals when no active run exists', () => {

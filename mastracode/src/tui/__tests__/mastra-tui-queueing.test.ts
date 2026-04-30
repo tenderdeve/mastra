@@ -23,7 +23,12 @@ vi.mock('../display.js', () => ({
 
 import { handleAgentEnd } from '../handlers/agent-lifecycle.js';
 import type { EventHandlerContext } from '../handlers/types.js';
-import { MastraTUI, consumePendingImages } from '../mastra-tui.js';
+import {
+  MastraTUI,
+  consumePendingImages,
+  shouldRenderPendingSignalMessage,
+  shouldRenderUserMessageOptimistically,
+} from '../mastra-tui.js';
 import { setupKeyboardShortcuts } from '../setup.js';
 import type { TUIState } from '../state.js';
 
@@ -42,6 +47,7 @@ function createQueueState(overrides: Partial<TUIState> = {}): TUIState {
     pendingQueuedActions: [],
     pendingSlashCommands: [],
     pendingTools: new Map(),
+    pendingSignalMessageComponentsById: new Map(),
     ui: { requestRender: vi.fn() } as TUIState['ui'],
     ...overrides,
   } as unknown as TUIState;
@@ -313,6 +319,23 @@ describe('MastraTUI queueing', () => {
     expect(ctx.fireMessage).not.toHaveBeenCalled();
     expect(state.pendingQueuedActions).toEqual(['message']);
     expect(state.pendingFollowUpMessages).toEqual([{ content: 'queued' }]);
+  });
+});
+
+describe('durable signal message display mode', () => {
+  it('does not optimistically render when durable signal streams render user messages', () => {
+    expect(shouldRenderUserMessageOptimistically({ canSendWhileRunning: () => true })).toBe(false);
+  });
+
+  it('renders pending signal messages only while a durable signal stream is running', () => {
+    expect(shouldRenderPendingSignalMessage({ isRunning: () => true, canSendWhileRunning: () => true })).toBe(true);
+    expect(shouldRenderPendingSignalMessage({ isRunning: () => false, canSendWhileRunning: () => true })).toBe(false);
+    expect(shouldRenderPendingSignalMessage({ isRunning: () => true, canSendWhileRunning: () => false })).toBe(false);
+  });
+
+  it('optimistically renders for normal harness streams', () => {
+    expect(shouldRenderUserMessageOptimistically({})).toBe(true);
+    expect(shouldRenderUserMessageOptimistically({ canSendWhileRunning: () => false })).toBe(true);
   });
 });
 

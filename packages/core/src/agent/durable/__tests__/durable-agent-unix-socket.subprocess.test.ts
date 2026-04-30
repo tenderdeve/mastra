@@ -166,7 +166,10 @@ describe('DurableAgent Unix socket subprocess integration', () => {
     const signaler = new UnixSocketDurableRunClient({ socketPath, clientId: 'signaler' });
     await signaler.connect();
     await expect(
-      signaler.sendSignal({ type: 'user-message', contents: 'signal from another process' }, { runId: 'run-owner' }),
+      signaler.sendSignal(
+        { type: 'user-message', contents: 'signal from another process' },
+        { resourceId: 'resource-1', threadId: 'thread-1' },
+      ),
     ).resolves.toEqual({ accepted: true, runId: 'run-owner' });
 
     const done = await waitForEvent(owner, event => event.event === 'done').catch(error => {

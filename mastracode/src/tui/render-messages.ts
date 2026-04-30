@@ -12,6 +12,7 @@ import { AskQuestionInlineComponent } from './components/ask-question-inline.js'
 import { AssistantMessageComponent } from './components/assistant-message.js';
 import { OMMarkerComponent } from './components/om-marker.js';
 import { OMOutputComponent } from './components/om-output.js';
+import { PendingUserMessageComponent } from './components/pending-user-message.js';
 import { PlanResultComponent } from './components/plan-approval-inline.js';
 import { SlashCommandComponent } from './components/slash-command.js';
 import { SubagentExecutionComponent } from './components/subagent-execution.js';
@@ -118,9 +119,12 @@ function createReminderComponent(
 }
 
 function addChildBeforeFollowUps(state: TUIState, child: Component): void {
-  if (state.followUpComponents.length > 0) {
-    const firstFollowUp = state.followUpComponents[0];
-    const idx = state.chatContainer.children.indexOf(firstFollowUp as never);
+  const firstPinned = [...state.followUpComponents, ...state.pendingSignalMessageComponentsById.values()].find(component =>
+    state.chatContainer.children.includes(component as never),
+  );
+
+  if (firstPinned) {
+    const idx = state.chatContainer.children.indexOf(firstPinned as never);
     if (idx >= 0) {
       (state.chatContainer.children as unknown[]).splice(idx, 0, child);
       state.chatContainer.invalidate();
@@ -129,6 +133,39 @@ function addChildBeforeFollowUps(state: TUIState, child: Component): void {
   }
 
   state.chatContainer.addChild(child);
+}
+
+export function addPendingSignalMessage(
+  state: TUIState,
+  message: { id: string; content: string; images?: Array<{ data: string; mimeType: string }> },
+): void {
+  const existing = state.pendingSignalMessageComponentsById.get(message.id);
+  if (existing) {
+    state.chatContainer.removeChild(existing as never);
+  }
+
+  const component = new PendingUserMessageComponent(message.content, message.images?.length ?? 0);
+  state.pendingSignalMessageComponentsById.set(message.id, component);
+  state.chatContainer.addChild(component);
+  state.ui.requestRender();
+}
+
+export function removePendingSignalMessage(state: TUIState, messageId: string): boolean {
+  const component = state.pendingSignalMessageComponentsById.get(messageId);
+  if (!component) return false;
+
+  state.chatContainer.removeChild(component as never);
+  state.pendingSignalMessageComponentsById.delete(messageId);
+  state.ui.requestRender();
+  return true;
+}
+
+export function clearPendingSignalMessages(state: TUIState): void {
+  for (const component of state.pendingSignalMessageComponentsById.values()) {
+    state.chatContainer.removeChild(component as never);
+  }
+  state.pendingSignalMessageComponentsById.clear();
+  state.ui.requestRender();
 }
 
 export function addChildBeforeMessageOrFollowUps(state: TUIState, child: Component, precedesMessageId?: string): void {
@@ -218,8 +255,14 @@ export function addUserMessage(state: TUIState, message: HarnessMessage): void {
   const prefix = imageCount > 0 ? `[${imageCount} image${imageCount > 1 ? 's' : ''}] ` : '';
   if (displayText || prefix) {
     const userComponent = new UserMessageComponent(prefix + displayText);
+    const confirmedPendingSignal = removePendingSignalMessage(state, message.id);
 
     state.messageComponentsById.set(message.id, userComponent);
+
+    if (confirmedPendingSignal) {
+      addChildBeforeFollowUps(state, userComponent);
+      return;
+    }
 
     if (state.streamingComponent && state.harness.getDisplayState().isRunning) {
       state.chatContainer.addChild(userComponent);
@@ -243,6 +286,7 @@ export async function renderExistingMessages(state: TUIState): Promise<void> {
   const messages = await state.harness.listMessages({ limit: 40 });
 
   state.chatContainer.clear();
+  state.pendingSignalMessageComponentsById.clear();
   state.pendingTools.clear();
   state.allToolComponents = [];
   state.allSlashCommandComponents = [];

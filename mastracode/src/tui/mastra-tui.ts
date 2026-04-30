@@ -44,7 +44,9 @@ import type { EventHandlerContext } from './handlers/types.js';
 import { promptForApiKeyIfNeeded } from './prompt-api-key.js';
 
 import {
+  addPendingSignalMessage,
   addUserMessage,
+  removePendingSignalMessage,
   renderCompletedTasksInline,
   renderClearedTasksInline,
   renderExistingMessages,
@@ -82,6 +84,17 @@ const CAFFEINATE_ARGS = ['-i', '-m'];
 
 function shouldUseCaffeinate(): boolean {
   return process.platform === 'darwin' && process.env.MASTRACODE_DISABLE_CAFFEINATE !== '1';
+}
+
+export function shouldRenderUserMessageOptimistically(harness: { canSendWhileRunning?: () => boolean }): boolean {
+  return !harness.canSendWhileRunning?.();
+}
+
+export function shouldRenderPendingSignalMessage(harness: {
+  isRunning?: () => boolean;
+  canSendWhileRunning?: () => boolean;
+}): boolean {
+  return !!harness.isRunning?.() && !!harness.canSendWhileRunning?.();
 }
 
 export function consumePendingImages(
@@ -207,11 +220,11 @@ export class MastraTUI {
         const { content, images } = consumePendingImages(userInput, this.state.pendingImages);
         this.state.pendingImages = [];
 
-        const sendWhileRunning = this.state.harness.isRunning() && (this.state.harness as any).canSendWhileRunning?.();
-        const messageId = sendWhileRunning ? undefined : `user-${Date.now()}`;
+        const messageId = shouldRenderUserMessageOptimistically(this.state.harness) ? `user-${Date.now()}` : undefined;
+        const pendingSignalMessageId = shouldRenderPendingSignalMessage(this.state.harness) ? `user-${Date.now()}` : undefined;
         if (messageId) {
-          // Add user message to chat immediately. When sending into an active durable stream,
-          // the stream's data-user-message event is the source of truth for display.
+          // Add user message to chat immediately. In durable signal mode, the stream's
+          // data-user-message event is the source of truth for display.
           addUserMessage(this.state, {
             id: messageId,
             role: 'user',
@@ -249,8 +262,12 @@ export class MastraTUI {
           this.state.pendingNewThread = false;
         }
 
+        if (pendingSignalMessageId) {
+          addPendingSignalMessage(this.state, { id: pendingSignalMessageId, content, images });
+        }
+
         // Normal send — fire and forget; events handle the rest
-        this.fireMessage(content, images);
+        this.fireMessage(content, images, pendingSignalMessageId);
       } catch (error) {
         showError(this.state, error instanceof Error ? error.message : 'Unknown error');
       }
@@ -261,9 +278,17 @@ export class MastraTUI {
    * Fire off a message without blocking the main loop.
    * Errors are handled via harness events.
    */
-  private fireMessage(content: string, images?: Array<{ data: string; mimeType: string }>): void {
+  private fireMessage(content: string, images?: Array<{ data: string; mimeType: string }>, messageId?: string): void {
     const files = images?.map(img => ({ data: img.data, mediaType: img.mimeType }));
-    this.state.harness.sendMessage({ content, files }).catch(error => {
+    const message: Parameters<TUIState['harness']['sendMessage']>[0] & { messageId?: string } = {
+      content,
+      files,
+      messageId,
+    };
+    this.state.harness.sendMessage(message).catch(error => {
+      if (messageId) {
+        removePendingSignalMessage(this.state, messageId);
+      }
       showError(this.state, error instanceof Error ? error.message : 'Unknown error');
     });
   }
@@ -657,9 +682,13 @@ export class MastraTUI {
    * If no follow-ups are pending, appends to end.
    */
   private addChildBeforeFollowUps(child: Component): void {
-    if (this.state.followUpComponents.length > 0) {
-      const firstFollowUp = this.state.followUpComponents[0];
-      const idx = this.state.chatContainer.children.indexOf(firstFollowUp as any);
+    const firstPinned = [
+      ...this.state.followUpComponents,
+      ...this.state.pendingSignalMessageComponentsById.values(),
+    ].find(component => this.state.chatContainer.children.includes(component as any));
+
+    if (firstPinned) {
+      const idx = this.state.chatContainer.children.indexOf(firstPinned as any);
       if (idx >= 0) {
         (this.state.chatContainer.children as unknown[]).splice(idx, 0, child);
         this.state.chatContainer.invalidate();

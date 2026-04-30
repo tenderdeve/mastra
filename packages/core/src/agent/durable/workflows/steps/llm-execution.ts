@@ -15,7 +15,7 @@ import type { MastraDBMessage } from '../../../message-list';
 import { isSupportedLanguageModel } from '../../../utils';
 import { DurableStepIds } from '../../constants';
 import { globalRunRegistry } from '../../run-registry';
-import { signalToMessage } from '../../signal-message';
+import { signalToMessage, signalToUserMessageStreamChunk } from '../../signal-message';
 import { emitChunkEvent, emitStepStartEvent } from '../../stream-adapter';
 import type {
   DurableAgenticWorkflowInput,
@@ -199,9 +199,19 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               );
             }
 
+            const registryEntry = globalRunRegistry.get(runId);
+            const streamPubsub = registryEntry?.pubsub ?? pubsub;
+            const executionAbortSignal = registryEntry?.abortSignal ?? abortSignal;
+
             const signals = drainGlobalSignals(runId);
             if (signals.length > 0) {
               messageList.add(signals.map(signalToMessage), 'input');
+              if (streamPubsub) {
+                for (const signal of signals) {
+                  const chunk = signalToUserMessageStreamChunk(signal);
+                  if (chunk) await emitChunkEvent(streamPubsub, runId, chunk as any);
+                }
+              }
             }
 
             let currentMessageId = messageId;
@@ -243,9 +253,6 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                   }
                 : undefined;
 
-            const registryEntry = globalRunRegistry.get(runId);
-            const streamPubsub = registryEntry?.pubsub ?? pubsub;
-            const executionAbortSignal = registryEntry?.abortSignal ?? abortSignal;
             if (registryEntry?.inputProcessors?.length) {
               const inputStepWriter = streamPubsub
                 ? {

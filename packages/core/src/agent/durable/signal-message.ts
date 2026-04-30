@@ -9,6 +9,43 @@ function escapeXmlAttribute(value: string): string {
   return escapeXml(value).replaceAll('"', '&quot;');
 }
 
+function signalFiles(signal: DurableAgentSignal): Array<{ data: string; mediaType: string; filename?: string }> {
+  const files = signal.metadata?.files;
+  if (!Array.isArray(files)) return [];
+  return files.filter(
+    (file): file is { data: string; mediaType: string; filename?: string } =>
+      !!file &&
+      typeof file === 'object' &&
+      typeof (file as any).data === 'string' &&
+      typeof (file as any).mediaType === 'string' &&
+      ((file as any).filename === undefined || typeof (file as any).filename === 'string'),
+  );
+}
+
+export function signalToUserMessageStreamChunk(signal: DurableAgentSignal): unknown | undefined {
+  if (signal.type !== 'user-message') return undefined;
+  const content: Array<Record<string, unknown>> = [{ type: 'text', text: signal.contents }];
+  for (const file of signalFiles(signal)) {
+    if (file.mediaType.startsWith('image/')) {
+      content.push({ type: 'image', data: file.data, mimeType: file.mediaType });
+    } else {
+      content.push({ type: 'file', data: file.data, mediaType: file.mediaType, filename: file.filename });
+    }
+  }
+  return {
+    type: 'data-user-message',
+    data: {
+      message: {
+        id: signal.id ?? `user-${Date.now()}`,
+        role: 'user',
+        content,
+        createdAt: signal.createdAt ? new Date(signal.createdAt) : new Date(),
+        metadata: { source: 'durable-signal' },
+      },
+    },
+  };
+}
+
 export function signalToMessage(signal: DurableAgentSignal): MastraDBMessage {
   const contentMetadata =
     signal.type === 'system-reminder'
