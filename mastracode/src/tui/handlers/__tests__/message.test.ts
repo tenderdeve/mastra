@@ -5,7 +5,7 @@ import { SystemReminderComponent } from '../../components/system-reminder.js';
 import { TemporalGapComponent } from '../../components/temporal-gap.js';
 import { UserMessageComponent } from '../../components/user-message.js';
 import type { TUIState } from '../../state.js';
-import { handleMessageUpdate } from '../message.js';
+import { handleMessageStart, handleMessageUpdate } from '../message.js';
 import type { EventHandlerContext } from '../types.js';
 
 function createAssistantMessage(content: HarnessMessage['content']): HarnessMessage {
@@ -45,6 +45,22 @@ describe('handleMessageUpdate system reminders', () => {
         state.chatContainer.addChild(child);
       },
     } as EventHandlerContext;
+  });
+
+  it('moves pinned user signal messages into history before the next assistant response', () => {
+    const previousAssistant = new Text('agent loop architecture', 0, 0);
+    const pinnedUserMessage = new UserMessageComponent('thanks');
+    state.chatContainer.addChild(previousAssistant);
+    state.chatContainer.addChild(pinnedUserMessage);
+    state.followUpComponents = [pinnedUserMessage];
+
+    handleMessageStart(ctx, createAssistantMessage([{ type: 'text', text: "You're welcome." }]));
+
+    expect(state.followUpComponents).toHaveLength(0);
+    expect(state.chatContainer.children).toHaveLength(3);
+    expect(state.chatContainer.children[0]).toBe(previousAssistant);
+    expect(state.chatContainer.children[1]).toBe(pinnedUserMessage);
+    expect(state.chatContainer.children[2]).toBe(state.streamingComponent);
   });
 
   it('renders a streamed placeholder when reminder content is not available yet', () => {

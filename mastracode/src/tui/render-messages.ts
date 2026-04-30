@@ -221,6 +221,12 @@ export function addUserMessage(state: TUIState, message: HarnessMessage): void {
 
     state.messageComponentsById.set(message.id, userComponent);
 
+    if (state.streamingComponent && state.harness.getDisplayState().isRunning) {
+      state.chatContainer.addChild(userComponent);
+      state.followUpComponents.push(userComponent);
+      return;
+    }
+
     addChildBeforeFollowUps(state, userComponent);
   }
 }

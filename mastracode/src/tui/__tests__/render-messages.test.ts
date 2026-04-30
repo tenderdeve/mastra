@@ -123,7 +123,7 @@ describe('addUserMessage', () => {
     expect(state.messageComponentsById.get('user-1')).toBe(state.chatContainer.children[0]);
   });
 
-  it('renders streamed user messages inline without anchoring them as follow-ups', () => {
+  it('pins streamed user messages as follow-ups while assistant text is still streaming', () => {
     const state = createState();
     const existing = new Container();
     state.chatContainer.addChild(existing);
@@ -137,7 +137,7 @@ describe('addUserMessage', () => {
     expect(state.chatContainer.children).toHaveLength(2);
     expect(state.chatContainer.children[0]).toBe(existing);
     expect(state.chatContainer.children[1]).toBeInstanceOf(UserMessageComponent);
-    expect(state.followUpComponents).toHaveLength(0);
+    expect(state.followUpComponents).toEqual([state.chatContainer.children[1]]);
     expect(state.messageComponentsById.get('user-signal')).toBe(state.chatContainer.children[1]);
   });
 });
