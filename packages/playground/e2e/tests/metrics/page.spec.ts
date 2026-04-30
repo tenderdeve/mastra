@@ -10,17 +10,25 @@ test('renders metrics dashboard with title and date preset', async ({ page }) =>
 
   await expect(page).toHaveTitle(/Mastra Studio/);
   await expect(page.locator('h1').first()).toHaveText('Metrics');
-  await expect(page.getByRole('button', { name: 'Last 24 hours' })).toBeVisible();
+  await expect(page.getByRole('combobox').filter({ hasText: 'Last 24 hours' })).toBeVisible();
 });
 
-test('renders memory KPI cards and Memory card with thread/resource tabs', async ({ page }) => {
+test('renders Memory card with thread/resource tabs when metrics are available', async ({ page }) => {
   await page.goto('/metrics');
 
-  await expect(page.getByText('Active Threads', { exact: true })).toBeVisible();
-  await expect(page.getByText('Active Resources', { exact: true })).toBeVisible();
+  const unsupportedStorageNotice = page.getByRole('heading', {
+    name: 'Metrics are not available with your current storage',
+  });
+  await page
+    .getByRole('heading', { name: /^(Memory|Metrics are not available with your current storage)$/ })
+    .first()
+    .waitFor();
+  test.skip(
+    await unsupportedStorageNotice.isVisible(),
+    'Metrics are not available with the current kitchen-sink storage',
+  );
 
-  const memoryCard = page.getByText('Memory', { exact: true });
-  await expect(memoryCard).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Memory' })).toBeVisible();
 
   await expect(page.getByRole('tab', { name: 'Threads' })).toBeVisible();
   const resourcesTab = page.getByRole('tab', { name: 'Resources' });
@@ -41,8 +49,8 @@ test('persists dimensional filter as URL param', async ({ page }) => {
 test('changing date preset updates URL', async ({ page }) => {
   await page.goto('/metrics');
 
-  await page.getByRole('button', { name: 'Last 24 hours' }).click();
-  await page.getByRole('menuitem', { name: 'Last 7 days' }).click();
+  await page.getByRole('combobox').filter({ hasText: 'Last 24 hours' }).click();
+  await page.getByRole('option', { name: 'Last 7 days' }).click();
 
   await expect(page).toHaveURL(/period=7d/);
 });

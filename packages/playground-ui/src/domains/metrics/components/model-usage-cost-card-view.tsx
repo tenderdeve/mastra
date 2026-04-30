@@ -41,7 +41,7 @@ export function ModelUsageCostCardView({
             }
             return <MetricsCard.Summary value={value} label="Total cost" />;
           })()}
-        {hasData && actions ? <MetricsCard.Actions>{actions}</MetricsCard.Actions> : null}
+        {actions ? <MetricsCard.Actions>{actions}</MetricsCard.Actions> : null}
       </MetricsCard.TopBar>
       {isLoading ? (
         <MetricsCard.Loading />

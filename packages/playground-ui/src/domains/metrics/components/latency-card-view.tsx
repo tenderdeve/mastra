@@ -104,7 +104,7 @@ export function LatencyCardView({ data, isLoading, isError, onPointClick, action
       <MetricsCard.TopBar>
         <MetricsCard.TitleAndDescription title="Latency" description="Hourly p50 and p95 latency." />
         {hasData && <MetricsCard.Summary value={avgP50} label="Avg p50" />}
-        {hasData && renderedActions ? <MetricsCard.Actions>{renderedActions}</MetricsCard.Actions> : null}
+        {renderedActions ? <MetricsCard.Actions>{renderedActions}</MetricsCard.Actions> : null}
       </MetricsCard.TopBar>
       {isLoading ? (
         <MetricsCard.Loading />

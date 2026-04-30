@@ -89,7 +89,7 @@ export function TracesVolumeCardView({
       <MetricsCard.TopBar>
         <MetricsCard.TitleAndDescription title="Trace Volume" description="Runs and call counts." />
         {hasData && <MetricsCard.Summary value={formatCompact(total)} label="Total runs" />}
-        {hasData && renderedActions ? <MetricsCard.Actions>{renderedActions}</MetricsCard.Actions> : null}
+        {renderedActions ? <MetricsCard.Actions>{renderedActions}</MetricsCard.Actions> : null}
       </MetricsCard.TopBar>
       {isLoading ? (
         <MetricsCard.Loading />
