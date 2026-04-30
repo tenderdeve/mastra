@@ -106,9 +106,7 @@ describe('AgentBuilderAgentView MSW integration', () => {
     let sendRequestCount = 0;
     server.use(
       http.get(`${BASE_URL}/api/stored/agents/agent-123`, () => HttpResponse.json(storedAgent)),
-      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () =>
-        HttpResponse.json({ messages: [] }),
-      ),
+      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () => HttpResponse.json({ messages: [] })),
       http.post(`${BASE_URL}/api/agents/agent-123/stream`, () => {
         sendRequestCount += 1;
         return HttpResponse.json({});
@@ -132,9 +130,7 @@ describe('AgentBuilderAgentView MSW integration', () => {
   it('shows an active Publish to Slack button for the owner', async () => {
     server.use(
       http.get(`${BASE_URL}/api/stored/agents/agent-123`, () => HttpResponse.json(storedAgent)),
-      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () =>
-        HttpResponse.json({ messages: [] }),
-      ),
+      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () => HttpResponse.json({ messages: [] })),
     );
 
     renderPage();
@@ -147,9 +143,7 @@ describe('AgentBuilderAgentView MSW integration', () => {
     const otherAgent = { ...storedAgent, authorId: 'someone-else' };
     server.use(
       http.get(`${BASE_URL}/api/stored/agents/agent-123`, () => HttpResponse.json(otherAgent)),
-      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () =>
-        HttpResponse.json({ messages: [] }),
-      ),
+      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () => HttpResponse.json({ messages: [] })),
     );
 
     renderPage();
@@ -162,9 +156,7 @@ describe('AgentBuilderAgentView MSW integration', () => {
   it('shows Chat and Configuration tabs for the owner via real stored-agent data', async () => {
     server.use(
       http.get(`${BASE_URL}/api/stored/agents/agent-123`, () => HttpResponse.json(storedAgent)),
-      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () =>
-        HttpResponse.json({ messages: [] }),
-      ),
+      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () => HttpResponse.json({ messages: [] })),
     );
 
     renderPage();
@@ -177,9 +169,7 @@ describe('AgentBuilderAgentView MSW integration', () => {
     const otherAgent = { ...storedAgent, authorId: 'someone-else' };
     server.use(
       http.get(`${BASE_URL}/api/stored/agents/agent-123`, () => HttpResponse.json(otherAgent)),
-      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () =>
-        HttpResponse.json({ messages: [] }),
-      ),
+      http.get(`${BASE_URL}/api/memory/threads/user-1-agent-123/messages`, () => HttpResponse.json({ messages: [] })),
     );
 
     renderPage();

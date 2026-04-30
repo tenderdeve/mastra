@@ -91,12 +91,7 @@ export function AgentBuilderList({ agents, search, rowTestId }: AgentBuilderList
                 <span className="text-ui-sm text-neutral3 line-clamp-1">{agent.description || 'No description'}</span>
               </div>
               <div className="mt-2 md:hidden">
-                <StarButton
-                  agentId={agent.id}
-                  isStarred={agent.isStarred}
-                  starCount={agent.starCount}
-                  size="sm"
-                />
+                <StarButton agentId={agent.id} isStarred={agent.isStarred} starCount={agent.starCount} size="sm" />
               </div>
             </div>
             <StarButton

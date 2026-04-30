@@ -7,12 +7,14 @@ import { extractSkillInstructions, extractSkillLicense } from '../components/age
 import type { InMemoryFileNode } from '../components/agent-edit-page/utils/form-validation';
 import { useWriteWorkspaceFile } from '@/domains/workspace/hooks';
 
-interface CreateSkillParams {
-  name: string;
-  description: string;
+interface UpdateSkillParams {
+  id: string;
+  name?: string;
+  description?: string;
   visibility?: 'private' | 'public';
+  instructions?: string;
+  files?: InMemoryFileNode[];
   workspaceId?: string;
-  files: InMemoryFileNode[];
 }
 
 function flattenFiles(nodes: InMemoryFileNode[], basePath: string): { path: string; content: string }[] {
@@ -28,17 +30,17 @@ function flattenFiles(nodes: InMemoryFileNode[], basePath: string): { path: stri
   return results;
 }
 
-export function useCreateSkill() {
+export function useUpdateSkill() {
   const client = useMastraClient();
   const queryClient = useQueryClient();
   const writeFile = useWriteWorkspaceFile();
 
   return useMutation({
-    mutationFn: async (params: CreateSkillParams): Promise<StoredSkillResponse> => {
-      const { name, description, workspaceId, files } = params;
+    mutationFn: async (params: UpdateSkillParams): Promise<StoredSkillResponse> => {
+      const { id, name, description, visibility, instructions, files, workspaceId } = params;
 
-      // Write files to workspace filesystem if a workspace is available
-      if (workspaceId) {
+      // Write updated files to workspace filesystem if we have files and a workspace
+      if (files?.length && workspaceId) {
         const filesToWrite = flattenFiles(files, '');
         await Promise.all(
           filesToWrite.map(file =>
@@ -52,25 +54,23 @@ export function useCreateSkill() {
         );
       }
 
-      // Create stored skill via API (DB record always created)
-      return client.createStoredSkill({
+      // Update stored skill via API
+      return client.getStoredSkill(id).update({
         name,
         description,
-        visibility: params.visibility,
-        instructions: extractSkillInstructions(files),
-        license: extractSkillLicense(files),
+        visibility,
+        instructions: instructions ?? (files ? extractSkillInstructions(files) : undefined),
+        license: files ? extractSkillLicense(files) : undefined,
         files,
       });
     },
-    onSuccess: (_, variables) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['stored-skills'] });
-      if (variables.workspaceId) {
-        void queryClient.invalidateQueries({ queryKey: ['workspace', 'skills', variables.workspaceId] });
-      }
-      toast.success('Skill created');
+      void queryClient.invalidateQueries({ queryKey: ['stored-skill'] });
+      toast.success('Skill updated');
     },
     onError: error => {
-      toast.error(`Failed to create skill: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to update skill: ${error instanceof Error ? error.message : 'Unknown error'}`);
     },
   });
 }

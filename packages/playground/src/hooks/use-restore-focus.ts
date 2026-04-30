@@ -13,5 +13,5 @@ export const useRestoreFocus = <T extends HTMLElement>(isOpened: boolean, el: Re
       previousFocusRef.current.focus();
       previousFocusRef.current = null;
     }
-  }, [isOpened]);
+  }, [isOpened, el]);
 };

@@ -177,9 +177,7 @@ export const WorkspaceLayout = ({
                   // On <lg, when this panel is the active tab, always show fully visible.
                   // On lg+, fall back to the existing expanded/collapsed transitions.
                   'translate-x-0 opacity-100 lg:transition-all',
-                  expanded
-                    ? 'lg:translate-x-0 lg:opacity-100'
-                    : 'lg:translate-x-4 lg:opacity-0 lg:pointer-events-none',
+                  expanded ? 'lg:translate-x-0 lg:opacity-100' : 'lg:translate-x-4 lg:opacity-0 lg:pointer-events-none',
                 )}
                 style={expanded ? { viewTransitionName: 'agent-builder-configure-panel' } : undefined}
               >
