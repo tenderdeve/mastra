@@ -123,7 +123,37 @@ export interface AgentFeatures {
  * are dropped from the resolved list and surfaced as warnings.
  */
 export interface BuilderLibraryConfig {
-  /** Allowlist of agent IDs visible in the Library. Omit to show all. */
+  /**
+   * Allowlist of agent IDs visible in the Library. Omit to show all.
+   *
+   * IDs must match the canonical `Agent.id` (e.g. `'test-agent'`) — i.e. the
+   * value passed to `new Agent({ id })`, **not** the registration map key
+   * (e.g. `agents: { testAgent: ... }`). When the two differ, the map key is
+   * accepted as a fallback, but `Agent.id` is the documented form because it
+   * matches what users see in URLs, traces, and the `/agents` API response.
+   *
+   * Unknown IDs are dropped at resolution time and surfaced via
+   * `BuilderSettingsResponse.modelPolicyWarnings`.
+   *
+   * @example
+   * ```ts
+   * const testAgent = new Agent({ id: 'test-agent', ... });
+   *
+   * new Mastra({
+   *   agents: { testAgent }, // map key is 'testAgent'
+   *   editor: new MastraEditor({
+   *     builder: {
+   *       configuration: {
+   *         library: {
+   *           // Use the canonical Agent.id, not the map key.
+   *           visibleAgents: ['test-agent'],
+   *         },
+   *       },
+   *     },
+   *   }),
+   * });
+   * ```
+   */
   visibleAgents?: string[];
 }
 

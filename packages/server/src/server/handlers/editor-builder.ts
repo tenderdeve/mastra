@@ -91,10 +91,13 @@ export const GET_EDITOR_BUILDER_SETTINGS_ROUTE = createRoute({
       const configuration = builder.getConfiguration();
 
       // Resolve Library visibility against the registered (non-stored) agents.
+      // Use `agent.id` (the canonical identifier admins reference in config),
+      // not the map key — those can differ when agents are registered via
+      // `agents: { someKey: agent }` with a different `id` on the Agent itself.
       const allRegistered = mastra.listAgents();
       const registeredAgentIds = Object.entries(allRegistered)
         .filter(([, agent]) => (agent as { source?: string }).source !== 'stored')
-        .map(([id]) => id);
+        .map(([key, agent]) => (agent as { id?: string }).id ?? key);
 
       const library = resolveLibraryVisibility({
         config: configuration?.library,

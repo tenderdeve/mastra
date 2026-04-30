@@ -31,8 +31,7 @@ export default function AgentBuilderFavoritePage() {
   );
 
   const { data, isLoading, error } = useStoredAgents(listParams);
-  const storedAgents = data?.agents ?? [];
-  const agents = useMemo(() => storedAgents.map(storedAgentToRow), [storedAgents]);
+  const agents = useMemo(() => (data?.agents ?? []).map(storedAgentToRow), [data?.agents]);
 
   const body = (() => {
     if (isLoading) {

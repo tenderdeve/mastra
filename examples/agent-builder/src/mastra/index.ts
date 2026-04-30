@@ -4,16 +4,26 @@ import { LibSQLStore } from '@mastra/libsql';
 import { builderAgent } from '@mastra/editor/ee';
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
 import { initWorkOS } from './auth';
+import { Agent } from '@mastra/core/agent';
 
 const storage = new LibSQLStore({
   id: 'mastra-storage',
   url: 'file:./mastra.db',
 });
 
+const testAgent = new Agent({
+  id: 'test-agent',
+  name: 'Test Agent',
+  description: 'An agent used for testing purposes',
+  instructions: 'you only say hello',
+  model: 'openai/gpt-5.1-mini',
+})
+
 export const mastra = new Mastra({
   storage,
   agents: {
     builderAgent,
+    testAgent,
   },
   bundler: {
     sourcemap: true,
@@ -67,7 +77,7 @@ export const mastra = new Mastra({
           },
         },
         library: {
-          visibleAgents: [],
+          visibleAgents: ['test-agent'],
         }
       },
     },

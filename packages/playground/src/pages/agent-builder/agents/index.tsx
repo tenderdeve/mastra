@@ -38,8 +38,7 @@ export default function AgentBuilderAgentsPage() {
   const [search, setSearch] = useState('');
   const { Link: FrameworkLink } = useLinkComponent();
 
-  const storedAgents = data?.agents ?? [];
-  const agents = useMemo(() => storedAgents.map(storedAgentToRow), [storedAgents]);
+  const agents = useMemo(() => (data?.agents ?? []).map(storedAgentToRow), [data?.agents]);
 
   const body = (() => {
     if (isCurrentUserLoading || isLoading || (!data && !error)) {

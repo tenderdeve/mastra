@@ -5,7 +5,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { GET_EDITOR_BUILDER_SETTINGS_ROUTE } from './editor-builder';
 
 // Minimal mock mastra for handler testing
-const createMockMastra = (editor?: Partial<IMastraEditor>, agents: Record<string, { source?: string }> = {}) =>
+const createMockMastra = (
+  editor?: Partial<IMastraEditor>,
+  agents: Record<string, { id?: string; source?: string }> = {},
+) =>
   ({
     getEditor: () => editor,
     listAgents: () => agents,
@@ -192,6 +195,32 @@ describe('GET /editor/builder/settings', () => {
       });
       expect((result as any).modelPolicyWarnings).toHaveLength(1);
       expect((result as any).modelPolicyWarnings[0]).toContain('"ghost"');
+    });
+
+    it('matches admin allowlist against agent.id, not the registration map key', async () => {
+      // Admins reference agents by their canonical `id` (e.g. 'test-agent'),
+      // even when registered under a different map key (e.g. `agents: { testAgent }`).
+      const mockBuilder: IAgentBuilder = {
+        enabled: true,
+        getFeatures: () => ({ agent: { tools: true } }),
+        getConfiguration: () => ({
+          agent: {},
+          library: { visibleAgents: ['test-agent'] },
+        }),
+      };
+      const mastra = createMockMastra(
+        {
+          hasEnabledBuilderConfig: () => true,
+          resolveBuilder: vi.fn().mockResolvedValue(mockBuilder),
+        },
+        { testAgent: { id: 'test-agent', source: 'code' } },
+      );
+      const result = await GET_EDITOR_BUILDER_SETTINGS_ROUTE.handler({ mastra } as any);
+
+      expect(result).toMatchObject({
+        library: { visibleAgents: ['test-agent'], unrestricted: false },
+      });
+      expect((result as any).modelPolicyWarnings).toBeUndefined();
     });
 
     it('returns empty allowlist (lockdown) when visibleAgents is []', async () => {
