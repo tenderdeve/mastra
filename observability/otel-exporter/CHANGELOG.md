@@ -1,5 +1,35 @@
 # @mastra/otel-exporter
 
+## 1.0.21-alpha.0
+
+### Patch Changes
+
+- Renamed emitted OTel GenAI cache usage attributes to match the OpenTelemetry semantic conventions: ([#15966](https://github.com/mastra-ai/mastra/pull/15966))
+  - `gen_ai.usage.cached_input_tokens` → `gen_ai.usage.cache_read.input_tokens`
+  - `gen_ai.usage.cache_write_tokens` → `gen_ai.usage.cache_creation.input_tokens`
+
+  `gen_ai.usage.input_tokens` is unchanged and remains the total prompt-token count. Cache attributes are emitted separately as subsets of that total.
+
+  Updated Arize, Arthur, and Sentry mappings so cache values continue to flow through those exporters.
+
+  Direct consumers should update any dashboards, alerts, or queries that reference the old attribute names.
+
+## 1.0.20
+
+### Patch Changes
+
+- Updated dependencies [[`920c757`](https://github.com/mastra-ai/mastra/commit/920c75799c6bd71787d86deaf654a35af4c839ca), [`d587199`](https://github.com/mastra-ai/mastra/commit/d5871993c0371bde2b0717d6b47194755baa1443), [`1fe2533`](https://github.com/mastra-ai/mastra/commit/1fe2533c4382ca6858aac7c4b63e888c2eac6541), [`f8694b6`](https://github.com/mastra-ai/mastra/commit/f8694b6fa0b7a5cde71d794c3bbef4957c55bcb8), [`496e11d`](https://github.com/mastra-ai/mastra/commit/496e11d5b3c65d3a58e791de958554009cbd2eda)]:
+  - @mastra/core@1.30.0
+  - @mastra/observability@1.10.3
+
+## 1.0.20-alpha.0
+
+### Patch Changes
+
+- Updated dependencies [[`920c757`](https://github.com/mastra-ai/mastra/commit/920c75799c6bd71787d86deaf654a35af4c839ca), [`1fe2533`](https://github.com/mastra-ai/mastra/commit/1fe2533c4382ca6858aac7c4b63e888c2eac6541), [`f8694b6`](https://github.com/mastra-ai/mastra/commit/f8694b6fa0b7a5cde71d794c3bbef4957c55bcb8), [`496e11d`](https://github.com/mastra-ai/mastra/commit/496e11d5b3c65d3a58e791de958554009cbd2eda)]:
+  - @mastra/core@1.30.0-alpha.1
+  - @mastra/observability@1.10.3-alpha.0
+
 ## 1.0.19
 
 ### Patch Changes
