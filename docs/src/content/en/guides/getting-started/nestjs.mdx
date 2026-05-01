@@ -3,12 +3,9 @@ title: "NestJS | Frameworks"
 description: "Get started with Mastra and NestJS"
 ---
 
-import Tabs from "@theme/Tabs";
-import TabItem from "@theme/TabItem";
+# Integrate Mastra in your NestJS project
 
-# Integrate Mastra in Your NestJS Project
-
-In this guide, you'll build a tool-calling AI agent using Mastra and NestJS. The [NestJS server adapter](/reference/server/nestjs-adapter) registers Mastra's agent and workflow routes as a NestJS module, so they run inside your existing NestJS application.
+In this guide, you'll build a tool-calling AI agent using Mastra and NestJS. Using the [NestJS server adapter](/reference/server/nestjs-adapter), you can expose your agents as HTTP endpoints from inside your existing NestJS application without writing the routing yourself or running a separate Mastra server.
 
 ## Before you begin
 
@@ -30,15 +27,11 @@ This creates a project called `mastra-nest`, but you can replace it with any nam
 
 ## Initialize Mastra
 
-Navigate to your NestJS project directory:
+Inside your NestJS project directory, run [`mastra init`](/reference/cli/mastra#mastra-init).
+
+When prompted, choose a provider (e.g. OpenAI) and enter your key:
 
 ```bash
-cd mastra-nest
-```
-
-Run [`mastra init`](/reference/cli/mastra#mastra-init). When prompted, choose a provider (e.g. OpenAI) and enter your key:
-
-```bash npm2yarn
 npx mastra@latest init
 ```
 
@@ -87,7 +80,7 @@ By default, Mastra's endpoints are added under the `/api` subpath and use your a
 
 Start your NestJS server:
 
-```bash npm2yarn
+```bash
 npm run start
 ```
 
@@ -97,13 +90,9 @@ In a separate terminal window, use `curl` to ask the weather agent:
 curl -X POST http://localhost:3000/api/agents/weather-agent/generate -H "Content-Type: application/json" -d "{\"messages\":[{\"role\":\"user\",\"content\":\"What is the weather like in Seoul?\"}]}"
 ```
 
-## Use Mastra in Your Own Services
+## Use Mastra in your own services
 
-The module exports two ways to access Mastra from your NestJS services: the `MastraService` wrapper and the `MASTRA` injection token.
-
-### MastraService
-
-`MastraService` is an injectable wrapper with convenience methods for common operations:
+`MastraModule` registers the `Mastra` instance in NestJS's DI container. Inject it into your own services with the `MASTRA` token, or use the `MastraService` wrapper for common shortcuts:
 
 ```typescript title="src/agent.service.ts"
 import { Injectable } from '@nestjs/common'
@@ -119,52 +108,22 @@ export class AgentService {
       messages: [{ role: 'user', content: message }],
     })
   }
-
-  async runWorkflow(workflowId: string, input: Record<string, unknown>) {
-    const workflow = this.mastraService.getWorkflow(workflowId)
-    return workflow.start({ inputData: input })
-  }
 }
 ```
 
-`MastraService` exposes:
-
-- `getMastra()` — returns the underlying `Mastra` instance
-- `getAgent(id)` — shorthand for `mastra.getAgent(id)`
-- `getWorkflow(id)` — shorthand for `mastra.getWorkflow(id)`
-- `getOptions()` — returns the module configuration
-- `isShuttingDown` — `true` after graceful shutdown begins
-
-### MASTRA token
-
-If you need the `Mastra` instance directly (e.g., to access storage, memory, or other core APIs), inject it with the `MASTRA` token:
-
-```typescript title="src/memory.service.ts"
-import { Injectable, Inject } from '@nestjs/common'
-import { MASTRA } from '@mastra/nestjs'
-import type { Mastra } from '@mastra/core/mastra'
-
-@Injectable()
-export class MemoryService {
-  constructor(@Inject(MASTRA) private readonly mastra: Mastra) {}
-
-  async getThreadMessages(threadId: string) {
-    const memory = this.mastra.getMemory()
-    return memory?.getMessages({ threadId })
-  }
-}
-```
-
-Both approaches use the same singleton `Mastra` instance registered by `MastraModule`.
+For the full surface, see [`MastraService`](/reference/server/nestjs-adapter#mastraservice) and the [`MASTRA`](/reference/server/nestjs-adapter#mastra-token) token.
 
 ## Next steps
 
-You now have a working Mastra agent running inside NestJS. To extend the project:
+Congratulations on building your Mastra agent with NestJS! 🎉
 
-- [Agents overview](/docs/agents/overview)
-- [Using tools](/docs/agents/using-tools)
-- [Agent memory](/docs/memory/overview)
+From here, you can extend the project with your own tools and logic:
 
-For details on the NestJS integration:
+- Learn more about [agents](/docs/agents/overview)
+- Give your agent its own [tools](/docs/agents/using-tools)
+- Add human-like [memory](/docs/memory/overview) to your agent
 
-- [NestJS Adapter reference](/reference/server/nestjs-adapter)
+When you're ready, read more about how Mastra integrates with NestJS:
+
+- [Server Adapters](/docs/server/server-adapters)
+- [NestJS adapter reference](/reference/server/nestjs-adapter)

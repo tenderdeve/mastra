@@ -1,5 +1,5 @@
 ---
-title: "Reference: NestJS Adapter | Server"
+title: "Reference: NestJS adapter | Server"
 description: "API reference for the @mastra/nestjs server adapter."
 packages:
   - "@mastra/nestjs"
@@ -7,15 +7,13 @@ packages:
 
 import PropertiesTable from "@site/src/components/PropertiesTable";
 
-# NestJS Adapter
+# NestJS adapter
 
-The `@mastra/nestjs` package provides a NestJS module for running Mastra with the Express-based NestJS platform.
-
-It is intentionally Express-only for v1. If Nest is bootstrapped with a different HTTP adapter, `MastraModule` throws during startup instead of attempting a partial integration.
+The `@mastra/nestjs` package provides a NestJS module for running Mastra with the Express-based NestJS platform. If Nest is bootstrapped with a different HTTP adapter, `MastraModule` throws during startup instead of attempting a partial integration.
 
 :::info
 
-For general adapter concepts, see [Server Adapters](/docs/server/server-adapters).
+For general adapter concepts (constructor options, initialization flow, etc.), see [Server Adapters](/docs/server/server-adapters).
 
 :::
 
@@ -71,83 +69,190 @@ By default, Mastra routes mount under `/api`. Use `prefix` to change it.
   {
     name: 'mastra',
     type: 'Mastra',
-    description: 'Mastra instance',
+    description: 'Mastra instance to register with NestJS.',
     isOptional: false,
   },
   {
     name: 'prefix',
     type: 'string',
-    description: 'Route path prefix (e.g., `/api/v2`)',
+    description: 'Route path prefix (e.g., `/api/v2`).',
     isOptional: true,
     defaultValue: '`/api`',
   },
   {
     name: 'rateLimitOptions',
-    type: '{ enabled?: boolean; defaultLimit?: number; windowMs?: number; generateLimit?: number }',
-    description: 'Rate limiting config (enabled by default)',
+    type: 'object',
+    description: 'Rate limiting config. Enabled by default.',
     isOptional: true,
+    properties: [
+      {
+        name: 'enabled',
+        type: 'boolean',
+        description: 'Enable rate limiting.',
+        isOptional: true,
+        defaultValue: 'true',
+      },
+      {
+        name: 'defaultLimit',
+        type: 'number',
+        description: 'Maximum requests per window for non-generation routes.',
+        isOptional: true,
+      },
+      { name: 'windowMs', type: 'number', description: 'Window length in milliseconds.', isOptional: true },
+      {
+        name: 'generateLimit',
+        type: 'number',
+        description: 'Maximum requests per window for agent and workflow generation routes.',
+        isOptional: true,
+      },
+    ],
   },
   {
     name: 'shutdownOptions',
-    type: '{ timeoutMs?: number; notifyClients?: boolean }',
-    description: 'Graceful shutdown configuration',
+    type: 'object',
+    description: 'Graceful shutdown configuration.',
     isOptional: true,
+    properties: [
+      {
+        name: 'timeoutMs',
+        type: 'number',
+        description: 'Maximum time to wait for in-flight requests before forcing shutdown.',
+        isOptional: true,
+      },
+      {
+        name: 'notifyClients',
+        type: 'boolean',
+        description: 'Notify streaming clients before closing connections.',
+        isOptional: true,
+      },
+    ],
   },
   {
     name: 'bodyLimitOptions',
-    type: '{ maxSize?: number; maxFileSize?: number; tempDir?: string; allowedMimeTypes?: string[] }',
-    description: 'Request body size limits',
+    type: 'object',
+    description: 'Request body size limits.',
     isOptional: true,
+    properties: [
+      {
+        name: 'maxSize',
+        type: 'number',
+        description: 'Maximum JSON or URL-encoded body size in bytes.',
+        isOptional: true,
+      },
+      { name: 'maxFileSize', type: 'number', description: 'Maximum upload size per file in bytes.', isOptional: true },
+      { name: 'tempDir', type: 'string', description: 'Directory used for multipart uploads.', isOptional: true },
+      { name: 'allowedMimeTypes', type: 'string[]', description: 'Allowed mime types for uploads.', isOptional: true },
+    ],
   },
   {
     name: 'streamOptions',
-    type: '{ redact?: boolean; heartbeatMs?: number }',
-    description: 'Streaming configuration',
+    type: 'object',
+    description: 'Streaming configuration.',
     isOptional: true,
+    properties: [
+      {
+        name: 'redact',
+        type: 'boolean',
+        description: 'Redact sensitive data from streamed payloads.',
+        isOptional: true,
+        defaultValue: 'true',
+      },
+      {
+        name: 'heartbeatMs',
+        type: 'number',
+        description: 'Interval for SSE heartbeat events in milliseconds.',
+        isOptional: true,
+      },
+    ],
   },
   {
     name: 'tracingOptions',
-    type: '{ enabled?: boolean; serviceName?: string }',
-    description: 'OpenTelemetry tracing configuration',
+    type: 'object',
+    description: 'OpenTelemetry tracing configuration.',
     isOptional: true,
+    properties: [
+      { name: 'enabled', type: 'boolean', description: 'Enable tracing.', isOptional: true },
+      { name: 'serviceName', type: 'string', description: 'Service name reported in traces.', isOptional: true },
+    ],
   },
   {
     name: 'contextOptions',
-    type: '{ strict?: boolean; logWarnings?: boolean }',
-    description: 'Request context parsing config',
+    type: 'object',
+    description: 'Request context parsing config.',
     isOptional: true,
+    properties: [
+      {
+        name: 'strict',
+        type: 'boolean',
+        description: 'Reject requests with invalid context headers.',
+        isOptional: true,
+      },
+      {
+        name: 'logWarnings',
+        type: 'boolean',
+        description: 'Log warnings for malformed context headers.',
+        isOptional: true,
+      },
+    ],
   },
   {
     name: 'customRouteAuthConfig',
     type: 'Map<string, boolean>',
-    description: 'Per-route auth overrides. Keys are `METHOD:PATH`.',
+    description:
+      'Per-route auth overrides. Keys are `METHOD:PATH` (e.g., `GET:/api/health`). Value `false` makes route public, `true` requires auth.',
     isOptional: true,
   },
   {
     name: 'tools',
     type: 'Record<string, Tool>',
-    description: 'Registered tools for the server',
+    description: 'Registered tools for the server.',
     isOptional: true,
   },
   {
     name: 'taskStore',
     type: 'InMemoryTaskStore',
-    description: 'Task store for A2A (Agent-to-Agent) operations',
+    description: 'Task store for A2A (Agent-to-Agent) operations.',
     isOptional: true,
   },
   {
     name: 'mcpOptions',
-    type: '{ serverless?: boolean; sessionIdGenerator?: () => string }',
-    description: 'MCP transport options',
+    type: 'object',
+    description:
+      'MCP transport options. Set `serverless: true` for stateless environments like Cloudflare Workers or Vercel Edge.',
     isOptional: true,
+    properties: [
+      { name: 'serverless', type: 'boolean', description: 'Use stateless MCP transport.', isOptional: true },
+      {
+        name: 'sessionIdGenerator',
+        type: '() => string',
+        description: 'Override the session ID generator.',
+        isOptional: true,
+      },
+    ],
   },
   {
     name: 'auth',
-    type: '{ enabled?: boolean; allowQueryApiKey?: boolean }',
+    type: 'object',
     description:
       'Enable Mastra token auth. Disabled by default — most NestJS apps use their own auth guards. Query-string `apiKey` auth is opt-in for backward compatibility.',
     isOptional: true,
     defaultValue: '`{ enabled: false }`',
+    properties: [
+      {
+        name: 'enabled',
+        type: 'boolean',
+        description: 'Enable Mastra token auth.',
+        isOptional: true,
+        defaultValue: 'false',
+      },
+      {
+        name: 'allowQueryApiKey',
+        type: 'boolean',
+        description: 'Accept the API key as a query string parameter.',
+        isOptional: true,
+        defaultValue: 'false',
+      },
+    ],
   },
 ]}
 />
@@ -184,24 +289,79 @@ import { Mastra } from '@mastra/core/mastra'
 export class AppModule {}
 ```
 
-## Accessing Mastra
+## MASTRA token
 
-Use the `MASTRA` token or `MastraService` in your services:
+`MastraModule` registers the `Mastra` instance under the `MASTRA` injection token. Inject it directly when you need the underlying instance:
 
-```typescript
+```typescript title="src/memory.service.ts"
 import { Injectable, Inject } from '@nestjs/common'
-import { MASTRA, MastraService } from '@mastra/nestjs'
+import { MASTRA } from '@mastra/nestjs'
 import type { Mastra } from '@mastra/core/mastra'
 
 @Injectable()
-export class AgentService {
+export class MemoryService {
   constructor(@Inject(MASTRA) private readonly mastra: Mastra) {}
 }
+```
+
+## MastraService
+
+`MastraService` is an injectable wrapper around the registered `Mastra` instance. Inject it when you want shorthand methods for common lookups:
+
+```typescript title="src/agent.service.ts"
+import { Injectable } from '@nestjs/common'
+import { MastraService } from '@mastra/nestjs'
 
 @Injectable()
-export class WorkflowService {
+export class AgentService {
   constructor(private readonly mastraService: MastraService) {}
 }
+```
+
+### Properties
+
+<PropertiesTable
+  content={[
+  {
+    name: 'isShuttingDown',
+    type: 'boolean',
+    description: '`true` after graceful shutdown begins. Use this to short-circuit long-running work during shutdown.',
+  },
+]}
+/>
+
+### Methods
+
+#### `getMastra()`
+
+Returns the underlying `Mastra` instance registered with the module.
+
+```typescript
+const mastra = this.mastraService.getMastra()
+```
+
+#### `getAgent(id)`
+
+Shorthand for `mastra.getAgent(id)`.
+
+```typescript
+const agent = this.mastraService.getAgent('weather-agent')
+```
+
+#### `getWorkflow(id)`
+
+Shorthand for `mastra.getWorkflow(id)`.
+
+```typescript
+const workflow = this.mastraService.getWorkflow('weather-workflow')
+```
+
+#### `getOptions()`
+
+Returns the module configuration passed to `MastraModule.register` or `registerAsync`.
+
+```typescript
+const options = this.mastraService.getOptions()
 ```
 
 ## MCP routes
@@ -219,8 +379,3 @@ Operational endpoints stay unprefixed on purpose for infrastructure compatibilit
 - `GET /health`
 - `GET /ready`
 - `GET /info`
-
-## Related
-
-- [Server Adapters](/docs/server/server-adapters)
-- [MastraServer Reference](/reference/server/mastra-server)
