@@ -23,13 +23,14 @@ describe('globalRunRegistry', () => {
     globalRunRegistry.clear();
   });
 
-  it('keeps entries alive for two hours unless explicitly cleaned up', () => {
+  it('keeps entries alive for two hours and refreshes TTL when accessed', () => {
     const entry = createEntry();
 
     globalRunRegistry.set('run-1', entry);
 
     expect(globalRunRegistry.getRemainingTTL('run-1')).toBeGreaterThan(GLOBAL_RUN_REGISTRY_TTL_MS - 1000);
     expect(globalRunRegistry.get('run-1')).toBe(entry);
+    expect(globalRunRegistry.getRemainingTTL('run-1')).toBeGreaterThan(GLOBAL_RUN_REGISTRY_TTL_MS - 1000);
   });
 
   it('does not crash if dispose receives a missing entry', () => {

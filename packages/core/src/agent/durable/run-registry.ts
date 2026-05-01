@@ -32,12 +32,14 @@ function publishRegistryExpiredAbort(runId: string, entry: RunRegistryEntry): vo
  * Entries are keyed by runId (which are unique UUIDs).
  *
  * Uses TTLCache as a leak safety net. Durable runs may sit suspended for a long
- * time waiting on approval, so there is no capacity-based eviction; stale expiry
- * publishes an abort before cleanup so listeners do not hang.
+ * time waiting on approval, and active runs refresh their TTL when accessed.
+ * There is no capacity-based eviction; stale expiry publishes an abort before
+ * cleanup so listeners do not hang.
  */
 export const globalRunRegistry = new TTLCache<string, RunRegistryEntry>({
   max: Infinity,
   ttl: GLOBAL_RUN_REGISTRY_TTL_MS,
+  updateAgeOnGet: true,
   dispose: (entry, runId, reason) => {
     if (!entry) return;
     if (reason === 'stale' || reason === 'evict') {
