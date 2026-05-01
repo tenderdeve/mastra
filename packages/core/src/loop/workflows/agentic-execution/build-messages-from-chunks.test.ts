@@ -80,9 +80,9 @@ describe('buildMessagesFromChunks', () => {
       { type: 'text-end', payload: { id: 't1' } },
     ]);
     expect(result).toHaveLength(2);
-    // Parts are emitted in text-end order
-    expect(result[0]).toMatchObject({ type: 'text', text: 'Goodbye' });
-    expect(result[1]).toMatchObject({ type: 'text', text: 'Hello, world!' });
+    // Parts are emitted in text-start order (stream start order), not text-end order
+    expect(result[0]).toMatchObject({ type: 'text', text: 'Hello, world!' });
+    expect(result[1]).toMatchObject({ type: 'text', text: 'Goodbye' });
   });
 
   // ── ProviderMetadata cascading ──────────────────────────────
@@ -303,6 +303,52 @@ describe('buildMessagesFromChunks', () => {
   });
 
   // ── Mixed content ordering ──────────────────────────────────
+
+  it('should preserve stream start order when text-end arrives after tool-call', () => {
+    // Stream order: text starts, text ends, tool-call arrives, then another text span.
+    // But what if text-start arrives BEFORE tool-call, and text-end arrives AFTER?
+    // The parts should reflect the order parts *started* in the stream.
+    const result = parts([
+      { type: 'text-start', payload: { id: 't1' } },
+      { type: 'text-delta', payload: { id: 't1', text: 'Before tool' } },
+      // Tool call arrives while text span t1 is still open
+      {
+        type: 'tool-call',
+        payload: { toolCallId: 'tc1', toolName: 'myTool', args: {} },
+      },
+      {
+        type: 'tool-result',
+        payload: { toolCallId: 'tc1', toolName: 'myTool', args: {}, result: 'ok' },
+      },
+      // Text span t1 closes after the tool-call
+      { type: 'text-end', payload: { id: 't1' } },
+      { type: 'text-start', payload: { id: 't2' } },
+      { type: 'text-delta', payload: { id: 't2', text: 'After tool' } },
+      { type: 'text-end', payload: { id: 't2' } },
+    ]);
+
+    const types = result.map((p: any) => p.type);
+    // text t1 started before tool-call, so it should appear first
+    expect(types).toEqual(['text', 'tool-invocation', 'step-start', 'text']);
+  });
+
+  it('should preserve stream start order when reasoning-end arrives after tool-call', () => {
+    const result = parts([
+      { type: 'reasoning-start', payload: { id: 'r1' } },
+      { type: 'reasoning-delta', payload: { id: 'r1', text: 'Thinking...' } },
+      // Tool call arrives while reasoning span is still open
+      {
+        type: 'tool-call',
+        payload: { toolCallId: 'tc1', toolName: 'myTool', args: {} },
+      },
+      // Reasoning ends after tool-call
+      { type: 'reasoning-end', payload: { id: 'r1' } },
+    ]);
+
+    const types = result.map((p: any) => p.type);
+    // reasoning started before tool-call, so it should appear first
+    expect(types).toEqual(['reasoning', 'tool-invocation']);
+  });
 
   it('should preserve correct order: reasoning, text, tool-call', () => {
     const result = parts([
