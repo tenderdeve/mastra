@@ -549,12 +549,17 @@ export const useChat = ({
     const uiMessages = coreUserMessages.map(fromCoreUserMessageToUIMessage);
     setMessages(s => [...s, ...uiMessages] as MastraUIMessage[]);
 
-    if (mode === 'generate') {
-      await generate({ ...args, coreUserMessages });
-    } else if (mode === 'stream') {
-      await stream({ ...args, coreUserMessages });
-    } else if (mode === 'network') {
-      await network({ ...args, coreUserMessages });
+    try {
+      if (mode === 'generate') {
+        await generate({ ...args, coreUserMessages });
+      } else if (mode === 'stream') {
+        await stream({ ...args, coreUserMessages });
+      } else if (mode === 'network') {
+        await network({ ...args, coreUserMessages });
+      }
+    } catch (error) {
+      setIsRunning(false);
+      throw error;
     }
   };
 

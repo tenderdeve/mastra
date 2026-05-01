@@ -633,6 +633,7 @@ export function MastraRuntimeProvider({
     if (lastProgress) {
       handleProgressUpdate(lastProgress);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
   const {
@@ -1211,7 +1212,12 @@ export function MastraRuntimeProvider({
       if (isSupportedModel) {
         setMessages(currentConversation => [
           ...currentConversation,
-          { role: 'assistant', parts: [{ type: 'text', text: `${error}` }] } as MastraUIMessage,
+          {
+            role: 'assistant',
+            id: `error-${Date.now()}`,
+            parts: [{ type: 'text', text: `${error}` }],
+            metadata: { status: 'error' },
+          } as MastraUIMessage,
         ]);
       } else {
         setLegacyMessages(currentConversation => [
