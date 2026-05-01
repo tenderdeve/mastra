@@ -1,4 +1,4 @@
-import fs, { existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path, { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,89 @@ import type { z } from 'zod';
 import { loadSettings } from '../onboarding/settings.js';
 import type { stateSchema } from '../schema';
 import { TOOL_NAME_OVERRIDES } from '../tool-names.js';
+
+// =============================================================================
+// Sandbox Environment
+// =============================================================================
+
+/**
+ * Allowlist of env vars to inherit into the sandbox.
+ * We avoid spreading all of process.env to prevent secrets from leaking
+ * into observability traces and scorer data.
+ */
+const SANDBOX_ENV_ALLOWLIST = [
+  // System essentials
+  'PATH',
+  'HOME',
+  'SHELL',
+  'USER',
+  'LOGNAME',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  // Locale
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  // Terminal
+  'TERM',
+  'COLORTERM',
+  'TERM_PROGRAM',
+  // Node.js
+  'NODE_PATH',
+  'NODE_OPTIONS',
+  'NODE_ENV',
+  // Package managers
+  'NPM_CONFIG_PREFIX',
+  'NPM_CONFIG_CACHE',
+  'PNPM_HOME',
+  'YARN_GLOBAL_FOLDER',
+  'BUN_INSTALL',
+  // Version managers
+  'NVM_DIR',
+  'FNM_DIR',
+  'VOLTA_HOME',
+  'N_PREFIX',
+  // Build tools
+  'CARGO_HOME',
+  'GOPATH',
+  'GOROOT',
+  'RUSTUP_HOME',
+  'JAVA_HOME',
+  'ANDROID_HOME',
+  // Editor
+  'EDITOR',
+  'VISUAL',
+  // Git
+  'GIT_AUTHOR_NAME',
+  'GIT_AUTHOR_EMAIL',
+  'GIT_COMMITTER_NAME',
+  'GIT_COMMITTER_EMAIL',
+  // Platform specifics (macOS)
+  'XPC_FLAGS',
+  'XPC_SERVICE_NAME',
+  '__CF_USER_TEXT_ENCODING',
+];
+
+function buildSandboxEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+
+  for (const key of SANDBOX_ENV_ALLOWLIST) {
+    if (process.env[key] !== undefined) {
+      env[key] = process.env[key];
+    }
+  }
+
+  // Explicit overrides for non-interactive subprocess execution
+  env.FORCE_COLOR = '1';
+  env.CLICOLOR_FORCE = '1';
+  env.TERM = process.env.TERM || 'xterm-256color';
+  env.CI = 'true';
+  env.NONINTERACTIVE = '1';
+  env.DEBIAN_FRONTEND = 'noninteractive';
+
+  return env;
+}
 
 // =============================================================================
 // Create Workspace with Skills
@@ -36,59 +119,16 @@ const claudeGlobalSkillsPath = path.join(os.homedir(), '.claude', 'skills');
 
 const agentSkillsGlobalPath = path.join(os.homedir(), '.agents', 'skills');
 
-// Mastra's LocalSkillSource.readdir uses Node's Dirent.isDirectory() which
-// returns false for symlinks. Tools like `npx skills add` install skills as
-// symlinks, so we need to resolve them. For each symlinked skill directory,
-// we add the real (resolved) parent path as an additional skill scan path.
-function collectSkillPaths(skillsDirs: string[]): string[] {
-  const paths: string[] = [];
-  const seen = new Set<string>();
-
-  for (const skillsDir of skillsDirs) {
-    if (!fs.existsSync(skillsDir)) continue;
-
-    // Always add the directory itself
-    const resolved = fs.realpathSync(skillsDir);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      paths.push(skillsDir);
-    }
-
-    // Check for symlinked skill subdirectories and add their real parents
-    try {
-      const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isSymbolicLink()) {
-          const linkPath = path.join(skillsDir, entry.name);
-          const realPath = fs.realpathSync(linkPath);
-          const stat = fs.statSync(realPath);
-          if (stat.isDirectory()) {
-            // Add the real parent directory as a skill path
-            // so Mastra discovers it as a regular directory
-            const realParent = path.dirname(realPath);
-            if (!seen.has(realParent)) {
-              seen.add(realParent);
-              paths.push(realParent);
-            }
-          }
-        }
-      }
-    } catch {
-      // Ignore errors during symlink resolution
-    }
-  }
-
-  return paths;
-}
-
-export const skillPaths = collectSkillPaths([
+export const skillPaths = [
   mastraCodeLocalSkillsPath,
   claudeLocalSkillsPath,
   agentSkillsLocalPath,
   mastraCodeGlobalSkillsPath,
   claudeGlobalSkillsPath,
   agentSkillsGlobalPath,
-]);
+];
+
+export const allowedSkillPaths = skillPaths;
 
 const WORKSPACE_ID_PREFIX = 'mastra-code-workspace';
 
@@ -119,7 +159,7 @@ export function getDynamicWorkspace({ requestContext, mastra }: { requestContext
   const projectPath = path.resolve(rawProjectPath);
   const workspaceId = `${WORKSPACE_ID_PREFIX}-${projectPath}`;
   const sandboxPaths = state?.sandboxAllowedPaths ?? [];
-  const allowedPaths = [...skillPaths, ...sandboxPaths.map((p: string) => path.resolve(p))];
+  const allowedPaths = [...allowedSkillPaths, ...sandboxPaths.map((p: string) => path.resolve(p))];
   const isPlanMode = modeId === 'plan';
 
   const planModeTools = {
@@ -160,15 +200,7 @@ export function getDynamicWorkspace({ requestContext, mastra }: { requestContext
     }),
     sandbox: new LocalSandbox({
       workingDirectory: projectPath,
-      env: {
-        ...process.env,
-        FORCE_COLOR: '1',
-        CLICOLOR_FORCE: '1',
-        TERM: process.env.TERM || 'xterm-256color',
-        CI: 'true',
-        NONINTERACTIVE: '1',
-        DEBIAN_FRONTEND: 'noninteractive',
-      },
+      env: buildSandboxEnv(),
     }),
     tools: isPlanMode ? { ...TOOL_NAME_OVERRIDES, ...planModeTools } : TOOL_NAME_OVERRIDES,
     ...(skillPaths.length > 0 ? { skills: skillPaths } : {}),
