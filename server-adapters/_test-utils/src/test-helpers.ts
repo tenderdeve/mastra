@@ -672,8 +672,8 @@ export async function createDefaultTestContext(): Promise<AdapterTestContext> {
         type: 'canary',
         stableVersionId: 'stable-v1',
         allocations: [
-          { versionId: 'stable-v1', weight: 90, label: 'stable' },
-          { versionId: 'candidate-v2', weight: 10, label: 'candidate' },
+          { versionId: 'stable-v1', weight: 0.9, label: 'stable' },
+          { versionId: 'candidate-v2', weight: 0.1, label: 'candidate' },
         ],
       });
     }
