@@ -34,6 +34,12 @@ export interface AskQuestionInlineOptions {
   isNegativeAnswer?: (answer: string) => boolean;
   /** Allow submitting an empty string in free-text mode. */
   allowEmptyInput?: boolean;
+  /**
+   * Use a multiline editor for free-text input (Shift+Enter / \+Enter for new lines).
+   * Defaults to false — most prompts ask for short answers like names, paths, or yes/no.
+   * Enable for prompts that legitimately want paragraph-length replies (e.g. ask_user).
+   */
+  multiline?: boolean;
   onSubmit: (answer: string) => void;
   onCancel: () => void;
 }
@@ -229,6 +235,7 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
   private onCancel?: () => void;
   private isNegativeAnswer?: (answer: string) => boolean;
   private allowEmptyInput = false;
+  private multiline = false;
   private answered = false;
 
   /**
@@ -300,6 +307,7 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
       this.onCancel = options.onCancel;
       this.isNegativeAnswer = options.isNegativeAnswer;
       this.allowEmptyInput = Boolean(options.allowEmptyInput);
+      this.multiline = Boolean(options.multiline);
 
       const questionLines = options.question.split('\n');
 
@@ -308,7 +316,7 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
         hintText = '↑↓ to navigate · Enter to select · Esc to skip';
         this.buildSelectMode(options.options);
       } else {
-        hintText = this.tui
+        hintText = this.useMultiline()
           ? 'Enter to submit · Shift+Enter for new line · Esc to skip'
           : 'Enter to submit · Esc to skip';
         this.buildInputMode();
@@ -358,6 +366,7 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
     options?: Array<{ label: string; description?: string }>;
     isNegativeAnswer?: (answer: string) => boolean;
     allowEmptyInput?: boolean;
+    multiline?: boolean;
     tui?: TUI;
     onSubmit: (answer: string) => void;
     onCancel: () => void;
@@ -368,6 +377,7 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
     this.onCancel = options.onCancel;
     this.isNegativeAnswer = options.isNegativeAnswer;
     this.allowEmptyInput = Boolean(options.allowEmptyInput);
+    this.multiline = Boolean(options.multiline);
 
     // Update question text and items to final values
     this.borderedBox.questionLines = options.question.split('\n');
@@ -379,7 +389,7 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
       hintText = '↑↓ to navigate · Enter to select · Esc to skip';
       this.buildSelectMode(options.options);
     } else {
-      hintText = this.tui
+      hintText = this.useMultiline()
         ? 'Enter to submit · Shift+Enter for new line · Esc to skip'
         : 'Enter to submit · Esc to skip';
       this.buildInputMode();
@@ -431,10 +441,15 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
     );
   }
 
+  /** Whether this prompt should render a multiline editor (vs a single-line input). */
+  private useMultiline(): boolean {
+    return this.multiline && Boolean(this.tui);
+  }
+
   private buildInputMode(): void {
-    if (this.tui) {
-      // Use MultilineInput for multiline support when TUI is available
-      const multilineInput = new MultilineInput(this.tui, getEditorTheme());
+    if (this.useMultiline()) {
+      // Multiline editor — opted in by callers that expect paragraph-length answers.
+      const multilineInput = new MultilineInput(this.tui!, getEditorTheme());
       multilineInput.allowEmptySubmit = this.allowEmptyInput;
       multilineInput.onSubmit = (value: string) => {
         const trimmed = value.trim();
@@ -447,7 +462,7 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
       };
       this.input = multilineInput;
     } else {
-      // Fallback to single-line Input when TUI is not available
+      // Single-line input — the right default for short answers (paths, names, yes/no).
       this.input = new Input();
       this.input.onSubmit = (value: string) => {
         const trimmed = value.trim();

@@ -12,6 +12,11 @@ import { MultilineInput } from './multiline-input.js';
 export interface AskQuestionDialogOptions {
   question: string;
   options?: Array<{ label: string; description?: string }>;
+  /**
+   * Use a multiline editor for free-text input (Shift+Enter / \+Enter for new lines).
+   * Defaults to false. Enable for prompts that legitimately want paragraph-length replies.
+   */
+  multiline?: boolean;
   tui?: TUI;
   onSubmit: (answer: string) => void;
   onCancel: () => void;
@@ -23,6 +28,7 @@ export class AskQuestionDialogComponent extends Box implements Focusable {
   private selectList?: SelectList;
   private input?: Input | MultilineInput;
   private tui?: TUI;
+  private multiline = false;
   private onSubmit: (answer: string) => void;
   private onCancel: () => void;
 
@@ -44,6 +50,7 @@ export class AskQuestionDialogComponent extends Box implements Focusable {
     this.onSubmit = options.onSubmit;
     this.onCancel = options.onCancel;
     this.tui = options.tui;
+    this.multiline = Boolean(options.multiline);
 
     // Title
     this.addChild(new Text(theme.bold(theme.fg('accent', 'Question')), 0, 0));
@@ -97,9 +104,14 @@ export class AskQuestionDialogComponent extends Box implements Focusable {
     this.modeChildren.push(hint);
   }
 
+  /** Whether this prompt should render a multiline editor (vs a single-line input). */
+  private useMultiline(): boolean {
+    return this.multiline && Boolean(this.tui);
+  }
+
   private buildInputMode(): void {
-    if (this.tui) {
-      const multilineInput = new MultilineInput(this.tui, getEditorTheme());
+    if (this.useMultiline()) {
+      const multilineInput = new MultilineInput(this.tui!, getEditorTheme());
       multilineInput.onSubmit = (value: string) => {
         const trimmed = value.trim();
         if (trimmed) {
@@ -127,7 +139,7 @@ export class AskQuestionDialogComponent extends Box implements Focusable {
     const spacer = new Spacer(1);
     this.addChild(spacer);
     this.modeChildren.push(spacer);
-    const hintText = this.tui
+    const hintText = this.useMultiline()
       ? '  Enter to submit · Shift+Enter for new line · \\+Enter for new line · Esc to skip'
       : '  Enter to submit · Esc to skip';
     const hint = new Text(theme.fg('dim', hintText), 0, 0);
