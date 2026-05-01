@@ -1,0 +1,312 @@
+{
+  "meta": {
+    "name": "core-src-agent-__tests__-message-part-ordering.e2e",
+    "testFile": "src/agent/__tests__/message-part-ordering.e2e.test.ts",
+    "model": "gpt-5.4",
+    "createdAt": "2026-04-30T21:08:30.900Z"
+  },
+  "recordings": [
+    {
+      "hash": "6aec207ff90ca3dd",
+      "request": {
+        "url": "https://api.openai.com/v1/responses",
+        "method": "POST",
+        "body": {
+          "model": "gpt-5.4",
+          "input": [
+            {
+              "role": "developer",
+              "content": "You are a careful code investigator. When the user asks a single question that requires multiple lookups, gather all the information you need IN PARALLEL in one batch: call readFile AND grepFiles simultaneously in a single step. After the tool results come back, write a one-sentence summary."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "In ONE batch, in parallel, call readFile on src/a.ts AND grepFiles for `export const value` over **/*.ts. Then summarize in one sentence."
+                }
+              ]
+            }
+          ],
+          "include": ["reasoning.encrypted_content"],
+          "reasoning": {
+            "effort": "medium",
+            "summary": "detailed"
+          },
+          "tools": [
+            {
+              "type": "function",
+              "name": "readFile",
+              "description": "Read the contents of a file at the given path.",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Absolute or repo-relative file path to read."
+                  }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "function",
+              "name": "grepFiles",
+              "description": "Search files matching a glob for a regex pattern.",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to search for."
+                  },
+                  "glob": {
+                    "type": "string",
+                    "description": "Glob of files to search, e.g. **/*.ts."
+                  }
+                },
+                "required": ["pattern", "glob"],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "stream": true
+        },
+        "timestamp": 1777583305347
+      },
+      "response": {
+        "status": 200,
+        "statusText": "OK",
+        "headers": {
+          "alt-svc": "h3=\":443\"; ma=86400",
+          "cf-cache-status": "DYNAMIC",
+          "cf-ray": "9f49858b39abdd1e-ATL",
+          "connection": "keep-alive",
+          "content-type": "text/event-stream; charset=utf-8",
+          "date": "Thu, 30 Apr 2026 21:08:25 GMT",
+          "openai-organization": "work-kxidzh",
+          "openai-processing-ms": "427",
+          "openai-project": "proj_FCyHAyf1sRhVrYbrkAklMIPx",
+          "openai-version": "2020-10-01",
+          "server": "cloudflare",
+          "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+          "x-content-type-options": "nosniff",
+          "x-ratelimit-limit-requests": "500",
+          "x-ratelimit-limit-tokens": "500000",
+          "x-ratelimit-remaining-requests": "499",
+          "x-ratelimit-remaining-tokens": "499348",
+          "x-ratelimit-reset-requests": "120ms",
+          "x-ratelimit-reset-tokens": "78ms",
+          "x-request-id": "req_7c69545e5ec94da4a5625a6f7d26e2fb"
+        },
+        "chunks": [
+          "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_0b779ee3085804690069f3c4c98b048190b67831689adfa3fa\",\"object\":\"response\",\"created_at\":1777583305,\"status\":\"in_progress\",\"background\":false,\"completed_at\":null,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_det",
+          "ails\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5.4-2026-03-05\",\"moderation\":null,\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"detailed\"},\"safety_identifier\":null,\"service_tier\":\"auto\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Read the contents of a file at the given path.\",\"name\":\"readFile\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Absolute or repo-relative file path to read.\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Search files matching a glob for a regex pattern.\",\"name\":\"grepFiles\",\"parameters\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\",\"description\":\"Regex pattern to search for.\"},\"glob\":{\"type\":\"string\",\"description\":\"Glob of files to search, e.g. **/*.ts.\"}},\"required\":[\"pattern\",\"glob\"],\"additionalProperties\":false},\"strict\":true}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null,\"user\":null,\"metadata\":{}},\"sequence_number\":0}\n\nevent: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp",
+          "_0b779ee3085804690069f3c4c98b048190b67831689adfa3fa\",\"object\":\"response\",\"created_at\":1777583305,\"status\":\"in_progress\",\"background\":false,\"completed_at\":null,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5.4-2026-03-05\",\"moderation\":null,\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"detailed\"},\"safety_identifier\":null,\"service_tier\":\"auto\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Read the contents of a file at the given path.\",\"name\":\"readFile\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Absolute or repo-relative file path to read.\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Search files matching a glob for a regex pattern.\",\"name\":\"grepFiles\",\"parameters\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\",\"description\":\"Regex pattern to search for.\"},\"glob\":{\"type\":\"string\",\"description\":\"Glob of files to search, e.g. **/*.ts.\"}},\"required\":[\"pattern\",\"glob\"],\"additionalProperties\":false},\"strict\"",
+          ":true}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null,\"user\":null,\"metadata\":{}},\"sequence_number\":1}\n\n",
+          "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"rs_0b779ee3085804690069f3c4ca2b148190805e3e8f6537ad1a\",\"type\":\"reasoning\",\"encrypted_content\":\"gAAAAABp88TKs4tVEl7Xag8lSd4FVRUk_64y0oq_vfTo0FwIf2T-aghbfIAv254eMWaw86H0h8d8MS-z1mgbda0oIkWTqiA8WhzjF98h4xIPSrYtTXif6up_m1QJ-x7_v1vyCGt8ZQ4D1A-VUbV1fue00N3KfCqHINeEigN0FsdlRKzAPMIZ_qzx4e5UCNL4s393HMbGGD6pvfFbHgH2VysbYA7ougRWYF8mTw3eIP_EXrgca0HeEjWRsTAq1GAlEX0O2CkjtDrvf2JQlbTlf2acchOqxf5LYYXGYAWnYwJj7vixqhvOH7-6T9aHqrFlz7cJ1mqrYvVExyPF9cs1D4_Uclv95TEs8vng5bu_IFZCbZ_cr0mG4BDMg1GOg0_gh1o_d-lQ_7-ykgxQHScs7kf1auRGfcZkLpFx9xUpi1D3wH0IYKBHT17Cn5OlNAeNozyejFUUvv2JxUpTyyyzZ9E-AK9xlUr0Zakxms08Z_yjZGGUCoif8j5BH1P0S7p0yn5Ah9xBnS9HoJxp9_jb658qkrjvPkub6cFGcHNe1dcmNe3dM8ZSJmmmC7rwztEzz_ssClTUDAYSJafAZXYonM7K-SIDnrMI2C45jt6OUunTxIBQ-3Sk8pXAjlBE0Kly8HbxyaZKisSXOOErWaaqeo0dDD7YsoMNPcFNYHtL_y7aojz_fo5lJMTfKoQTiFfooeYJoUpmOakOVE5nmTKgMUQaBwLNn4HUwZV1rFO_n60jFDj9upYeawNfZ1ClhiWFReqQnaETDO6RaSVWDU6bxvZelqx0hR-Qf5af6cLI7FYpXIEBna7-ZRDtJdNgrdo0ZIsWffR-otoc2Df8_AhT7AzNGezs2kLLOxzt4xO40GMH73eXLboUh3FGULr1ZhUsKgnf2VcfbgY3huFkIr1EOiKx4V8E-BrAfw==\",\"summary\":[]},\"output_index\":0,\"sequence_number\":2}\n\n",
+          "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"rs_0b779ee3085804690069f3c4ca2b148190805e3e8f6537ad1a\",\"type\":\"reasoning\",\"encrypted_content\":\"gAAAAABp88TMnwHNaobU8fpPrzrsVmBPefdqwZx0El1dVPFbgGXuQCdpsgCyc-RZfLF5mOLH1fTX2T5TLAvWIzaN9s4gdmIAgOI5JKXn1cTRfTy8xfj3phd1vW5N74dKV38NfuoN0Yd_sg8ioIGf0RkBHh6xoeX8xwH1i7CjLndyROtTtWH0Mn_EFLKD1klILBkq1HROVEgSnv2VDN8lTq68pS9y8BSTaLkKddyTLc6Xmmgvxv0IKIwLNjkuqhSnCKLFtadAnfyB4bvq6NJReuIIQbDuUcjIVMOLfeaLUQBvhTH9fkk-yIHOOe_pTAmOJctv6LCZ1QjLrAUp35jV7soxyjyTceeX4P6xLDb77I_h80dEOjgaIUFY45ke6re1hOCu_1OKyspKS_Brlr2cxtWuqZWQt2AXr4GEUvsB9FrzpsmqPNTF4gz4KsgPWLhj2o8l9HojsDTCRckk8P9rBsAltefBV3TzJt_4wKigF87MlEnsC7a5l82Bugy4sEVGOPOzwF0ZxisEG0Bd-wAwLxJhJzJHzDsWqSv8QQfoRfomxVs1gODylJzleTuwmk51H__PshcGTKPnF5sfxd7Wg-R0Wm9ofnDnxTOzgqTrn1RQY-LMhAmQUVlIXEbuxyLoyaA-Hf9JY_rs234te6L_711XN-gWbsyQ2E-UOlDAkiGke79jT5M3VoDX9o9zDbJ7tkahshBqSHCKy1_mMPjSJ8f65PW2l-kuu_FyXFmY6guhkqHewH-E6cmXQ8gS8Hudlxx86ul9wSEOd0Xp0mfiVk8L-8WMqvDtv4aXpK3WmBfr2SM1T9Gdc5ukHUpIKMKwmtsaVSkJOG6mWUlcXrouQ_0H5CCrcNCDT-hfytJJsLTP9z_Qfk8Xs-oDSlQX9U75M6Ko0Af6vQzRrEmEMimmsTimqm2W911Aim809THnjcEDKVT9yVPDBcSv-QRH5j-YtLBSopInHqZq1NiZBdNWMokBYKZPXMmT6Mlpe_GMdX-S-Ua6MMSMWNq6cgxicfILzYLjDPbALLWKABVkrbEaM2aMi-WRW88OUz43LMyndcuqeOOFPQNgrc4PKp3b6b9RMRjXkwu2IrZo0JOM_sw4nvY6klr3CJpQfxysfx-1WeSyQhJ3rjYkphvZyTboOOcYnJKbxaHcDto9mfLFz3SI3Ez6BKPH",
+          "4WVSTA==\",\"summary\":[]},\"output_index\":0,\"sequence_number\":3}\n\n",
+          "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"fc_0b779ee3085804690069f3c4ccb5188190998f16fe31d9290b\",\"type\":\"function_call\",\"status\":\"in_progress\",\"arguments\":\"\",\"call_id\":\"call_on8QhJXxh0Gn9qvTB5q19sBu\",\"name\":\"readFile\"},\"output_index\":1,\"sequence_number\":4}\n\n",
+          "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"{\\\"path\\\":\\\"src/a.ts\\\"}\",\"item_id\":\"fc_0b779ee3085804690069f3c4ccb5188190998f16fe31d9290b\",\"obfuscation\":\"0UcjyDMnOV7Em\",\"output_index\":1,\"sequence_number\":5}\n\nevent: response.function_call_arguments.done\ndata: {\"type\":\"response.function_call_arguments.done\",\"arguments\":\"{\\\"path\\\":\\\"src/a.ts\\\"}\",\"item_id\":\"fc_0b779ee3085804690069f3c4ccb5188190998f16fe31d9290b\",\"output_index\":1,\"sequence_number\":6}\n\n",
+          "event: response.output_item",
+          ".done\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"fc_0b779ee3085804690069f3c4ccb5188190998f16fe31d9290b\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"path\\\":\\\"src/a.ts\\\"}\",\"call_id\":\"call_on8QhJXxh0Gn9qvTB5q19sBu\",\"name\":\"readFile\"},\"output_index\":1,\"sequence_number\":7}\n\n",
+          "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"fc_0b779ee3085804690069f3c4ccb5288190a9ed6ca60d4611e7\",\"type\":\"function_call\",\"status\":\"in_progress\",\"arguments\":\"\",\"call_id\":\"call_lZrY62BcPXOZUofGjWpU6WQl\",\"name\":\"grepFiles\"},\"output_index\":2,\"sequence_number\":8}\n\nevent: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"{\\\"pattern\\\":\\\"export const value\\\",\\\"glob\\\":\\\"**/*.ts\\\"}\",\"item_id\":\"fc_0b779ee3085804690069f3c4ccb5288190a9ed6ca60d4611e7\",\"obfuscation\":\"t7ElSYINTxggv6T\",\"output_index\":2,\"sequence_number\":9}\n\nevent: response.function_call_arguments.done\ndata: {\"type\":\"response.function_call_arguments.done\",\"arguments\":\"{\\\"pattern\\\":\\\"export const value\\\",\\\"glob\\\":\\\"**/*.ts\\\"}\",\"item_id\":\"fc_0b779ee3085804690069f3c4ccb5288190a9ed6ca60d4611e7\",\"output_index\":2,\"sequence_number\":10}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"fc_0b779ee3085804690069f3c4ccb5288190a9ed6ca60d4611e7\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"pattern\\\":\\\"export const value\\\",\\\"glob\\\":\\\"**/*.ts\\\"}\",\"call_id\":\"call_lZrY62BcPXOZUofGjWpU6WQl\",\"name\":\"grepFiles\"},\"output_index\":2,\"sequence_number\":11}\n\n",
+          "event: response.completed\nd",
+          "ata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_0b779ee3085804690069f3c4c98b048190b67831689adfa3fa\",\"object\":\"response\",\"created_at\":1777583305,\"status\":\"completed\",\"background\":false,\"completed_at\":1777583308,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5.4-2026-03-05\",\"moderation\":null,\"output\":[{\"id\":\"rs_0b779ee3085804690069f3c4ca2b148190805e3e8f6537ad1a\",\"type\":\"reasoning\",\"encrypted_content\":\"gAAAAABp88TMUF6FWoo0wxkuslO6zfl_Th3_t_vZzGJys3BZPmABfEkUt4HmooyYQ6YPnwCxAsEc31byQ00_LNSdB_cLZZgNbKJPVHWLBl8U5fYNIsZ6ZcFwbROFgbOR7CPK8GlRm8k5KBijMuIwfMjxkyxSnXBjaH0Iypsw2vS989BnD46dhNVkDFukvsY-OICMQ1NOHxW4JIJ6u_D2BC8JegL2DwpaQo7PwHjEHdP-fdbuZ3Dh7Uh_REIboJ3u89ANQ_2neg4c-5TeofjepAP7iKHwBSiPIhBPimSGzX2m14o2H1wqyvr5xU1n_GvkCl9_IHVgNBo99OQzyyMASrZewkbAFa7OsKAnWt_05Ui4okTp3G0MLIviHykiRC0YZZBoceDetQpFqkQzhSwzwAp-yVo9v7oSND_ZBG_wkUt-aY_UINYC_1acsjawhdAOuGnSd2Zz7XLRNf9HVHoEk71opiO7h9M3J9FZOHDrdmM-hCCWRvzfq7mcazSpaikVbbB_nZk0GCWkzipnIe5cZaQZEBwTvCOSv6yXX1Zukos6AZXS294D_bcedib4DPuqcvPQQLSBnV3UehgzK_-KTDw9g4APCExmQKi_vUNTJmnOx2kePQ9UDdLV3sDDGESWqB02PH2mOOdPhjeTErHvjZCjDbzXmlTEtEkaOx5YcvEuEZgQUUs1OlYtK3jnH-9k2cnTsJdDOFW35lhOQDyo6zgfDfjdrwpN53tXsmWrU8LN89KVLhBvzCfU4lnFwyqTRAYIat9aPeAK69jLGNgTNsCbqxnP6YZQoCGvkDGoL88Tpjfs8oKfsJdrv-BVfOaTXoS7-UXajchO8LEcjt8Jftha",
+          "bLMxpWyy0syq8LShHaAU8ppFSu5mQti3-5JXJTgZx11MNCUBxUBmfcMieOmeaT0uAJ5hEDaIhxZu7zNawMqi-rh0CYCf5A8bXIsgCgkhvCbFYUVk3WofQ3-kJrBxj0QvsiS_NVTsv6R4JWXRWZsNp97CRG2QKc0bTbrxboM2YAruvJU6gy8cFRqZtZhCeJbe9WaTal2Rwp8DuQ9kQKWDwEgQkMDYTZtVM8774z2oJM9fvFIdRwU9dg-o7Kyd6O3blT4XIvkax4kSkJcxfdLHC107YgaS_LWPnjMpRxwZ6lEMapVozHQarH6LzNkMaK88dW-HTTnqOg==\",\"summary\":[]},{\"id\":\"fc_0b779ee3085804690069f3c4ccb5188190998f16fe31d9290b\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"path\\\":\\\"src/a.ts\\\"}\",\"call_id\":\"call_on8QhJXxh0Gn9qvTB5q19sBu\",\"name\":\"readFile\"},{\"id\":\"fc_0b779ee3085804690069f3c4ccb5288190a9ed6ca60d4611e7\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"pattern\\\":\\\"export const value\\\",\\\"glob\\\":\\\"**/*.ts\\\"}\",\"call_id\":\"call_lZrY62BcPXOZUofGjWpU6WQl\",\"name\":\"grepFiles\"}],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"detailed\"},\"safety_identifier\":null,\"service_tier\":\"default\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Read the contents of a file at the given path.\",\"name\":\"readFile\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Absolute or repo-relative file pat",
+          "h to read.\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Search files matching a glob for a regex pattern.\",\"name\":\"grepFiles\",\"parameters\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\",\"description\":\"Regex pattern to search for.\"},\"glob\":{\"type\":\"string\",\"description\":\"Glob of files to search, e.g. **/*.ts.\"}},\"required\":[\"pattern\",\"glob\"],\"additionalProperties\":false},\"strict\":true}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":203,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":102,\"output_tokens_details\":{\"reasoning_tokens\":41},\"total_tokens\":305},\"user\":null,\"metadata\":{}},\"sequence_number\":12}\n\n"
+        ],
+        "chunkTimings": [1, 0, 0, 1, 196, 2544, 1, 1, 3, 5, 0, 55, 138, 0, 0, 0],
+        "isStreaming": true
+      }
+    },
+    {
+      "hash": "16ddbf6fb820ab7e",
+      "request": {
+        "url": "https://api.openai.com/v1/responses",
+        "method": "POST",
+        "body": {
+          "model": "gpt-5.4",
+          "input": [
+            {
+              "role": "developer",
+              "content": "You are a careful code investigator. When the user asks a single question that requires multiple lookups, gather all the information you need IN PARALLEL in one batch: call readFile AND grepFiles simultaneously in a single step. After the tool results come back, write a one-sentence summary."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "In ONE batch, in parallel, call readFile on src/a.ts AND grepFiles for `export const value` over **/*.ts. Then summarize in one sentence."
+                }
+              ]
+            },
+            {
+              "type": "item_reference",
+              "id": "rs_0b779ee3085804690069f3c4ca2b148190805e3e8f6537ad1a"
+            },
+            {
+              "type": "item_reference",
+              "id": "fc_0b779ee3085804690069f3c4ccb5188190998f16fe31d9290b"
+            },
+            {
+              "type": "item_reference",
+              "id": "fc_0b779ee3085804690069f3c4ccb5288190a9ed6ca60d4611e7"
+            },
+            {
+              "type": "function_call_output",
+              "call_id": "call_on8QhJXxh0Gn9qvTB5q19sBu",
+              "output": "{\"path\":\"src/a.ts\",\"contents\":\"// stub contents of src/a.ts\\nexport const value = 42;\\n\"}"
+            },
+            {
+              "type": "function_call_output",
+              "call_id": "call_lZrY62BcPXOZUofGjWpU6WQl",
+              "output": "{\"pattern\":\"export const value\",\"glob\":\"**/*.ts\",\"matches\":[{\"path\":\"src/a.ts\",\"line\":12,\"text\":\"// matched export const value\"},{\"path\":\"src/b.ts\",\"line\":7,\"text\":\"// matched export const value\"}]}"
+            }
+          ],
+          "include": ["reasoning.encrypted_content"],
+          "reasoning": {
+            "effort": "medium",
+            "summary": "detailed"
+          },
+          "tools": [
+            {
+              "type": "function",
+              "name": "readFile",
+              "description": "Read the contents of a file at the given path.",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Absolute or repo-relative file path to read."
+                  }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "function",
+              "name": "grepFiles",
+              "description": "Search files matching a glob for a regex pattern.",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to search for."
+                  },
+                  "glob": {
+                    "type": "string",
+                    "description": "Glob of files to search, e.g. **/*.ts."
+                  }
+                },
+                "required": ["pattern", "glob"],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "stream": true
+        },
+        "timestamp": 1777583308968
+      },
+      "response": {
+        "status": 200,
+        "statusText": "OK",
+        "headers": {
+          "alt-svc": "h3=\":443\"; ma=86400",
+          "cf-cache-status": "DYNAMIC",
+          "cf-ray": "9f4985a17a0bdd1e-ATL",
+          "connection": "keep-alive",
+          "content-type": "text/event-stream; charset=utf-8",
+          "date": "Thu, 30 Apr 2026 21:08:29 GMT",
+          "openai-organization": "work-kxidzh",
+          "openai-processing-ms": "540",
+          "openai-project": "proj_FCyHAyf1sRhVrYbrkAklMIPx",
+          "openai-version": "2020-10-01",
+          "server": "cloudflare",
+          "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+          "x-content-type-options": "nosniff",
+          "x-ratelimit-limit-requests": "500",
+          "x-ratelimit-limit-tokens": "500000",
+          "x-ratelimit-remaining-requests": "499",
+          "x-ratelimit-remaining-tokens": "499146",
+          "x-ratelimit-reset-requests": "120ms",
+          "x-ratelimit-reset-tokens": "102ms",
+          "x-request-id": "req_928d8d55cff04d67a3b9817a0fee3b85"
+        },
+        "chunks": [
+          "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_0b779ee3085804690069f3c4cd1c58819096a64011c83079f5\",\"object\":\"response\",\"created_at\":1777583309,\"status\":\"in_progress\",\"background\":false,\"completed_at\":null,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_de",
+          "tails\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5.4-2026-03-05\",\"moderation\":null,\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"detailed\"},\"safety_identifier\":null,\"service_tier\":\"auto\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Read the contents of a file at the given path.\",\"name\":\"readFile\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Absolute or repo-relative file path to read.\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Search files matching a glob for a regex pattern.\",\"name\":\"grepFiles\",\"parameters\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\",\"description\":\"Regex pattern to search for.\"},\"glob\":{\"type\":\"string\",\"description\":\"Glob of files to search, e.g. **/*.ts.\"}},\"required\":[\"pattern\",\"glob\"],\"additionalProperties\":false},\"strict\":true}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null,\"user\":null,\"metadata\":{}},\"sequence_number\":0}\n\nevent: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"res",
+          "p_0b779ee3085804690069f3c4cd1c58819096a64011c83079f5\",\"object\":\"response\",\"created_at\":1777583309,\"status\":\"in_progress\",\"background\":false,\"completed_at\":null,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5.4-2026-03-05\",\"moderation\":null,\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"detailed\"},\"safety_identifier\":null,\"service_tier\":\"auto\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Read the contents of a file at the given path.\",\"name\":\"readFile\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Absolute or repo-relative file path to read.\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Search files matching a glob for a regex pattern.\",\"name\":\"grepFiles\",\"parameters\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\",\"description\":\"Regex pattern to search for.\"},\"glob\":{\"type\":\"string\",\"description\":\"Glob of files to search, e.g. **/*.ts.\"}},\"required\":[\"pattern\",\"glob\"],\"additionalProperties\":false},\"strict",
+          "\":true}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":null,\"user\":null,\"metadata\":{}},\"sequence_number\":1}\n\n",
+          "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"type\":\"message\",\"status\":\"in_progress\",\"content\":[],\"phase\":\"final_answer\",\"role\":\"assistant\"},\"output_index\":0,\"sequence_number\":2}\n\n",
+          "event: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"content_index\":0,\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"output_index\":0,\"part\":{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"\"},\"sequence_number\":3}\n\n",
+          "event: response.output_text",
+          ".delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"`\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"Ut65fInk5dYafTl\",\"output_index\":0,\"sequence_number\":4}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"src\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"Xp5sqEaMe1gST\",\"output_index\":0,\"sequence_number\":5}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"/a\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"wI8UbYBT1LjmwD\",\"output_index\":0,\"sequence_number\":6}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\".ts\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"YLCJ2aS2Wxi5h\",\"output_index\":0,\"sequence_number\":7}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"`\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"lDS1Le4YwgRsHQi\",\"output_index\":0,\"sequence_number\":8}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" contains\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"u1rtcSk\",\"output_index\":0,\"sequence_number\":9}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" `\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"X6NiohKlZbdp3m\",\"output_index\":0,\"sequence_number\":10}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"export\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"8m40JQXTTV\",\"output_index\":0,\"sequence_number\":11}\n\n",
+          "event: response.output_text",
+          ".delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" const\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"54Nat379PR\",\"output_index\":0,\"sequence_number\":12}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" value\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"BaSbUJUoDd\",\"output_index\":0,\"sequence_number\":13}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" =\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"S3s0941uPsHcd3\",\"output_index\":0,\"sequence_number\":14}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" \",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"dlIOOrg8vBvxUIS\",\"output_index\":0,\"sequence_number\":15}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"42\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"LunESNDg8giUh8\",\"output_index\":0,\"sequence_number\":16}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\";\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"iN3YX2eO5jSdAJD\",\"output_index\":0,\"sequence_number\":17}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"`,\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"HmTdo6zGIibm03\",\"output_index\":0,\"sequence_number\":18}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" and\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"0HvBpC9BgBDB\",\"output_index\":0,\"sequence_number\":19}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" searching\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"vHW0qQ\",\"output_index\":0,\"sequence_number\":20}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" `\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"lBiIoSwnwtaqq6\",\"output_index\":0,\"sequence_number\":21}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"**\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"bnaU91v8Bt5ah1\",\"output_index\":0,\"sequence_number\":22}\n\n",
+          "event: response.output_text",
+          ".delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"/*.\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"4IMCvEVtIx9wf\",\"output_index\":0,\"sequence_number\":23}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"ts\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"5Bc2sggR3RvrnW\",\"output_index\":0,\"sequence_number\":24}\n\n",
+          "event: response.output_text",
+          ".delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"`\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"c617FmS9zzaSIGZ\",\"output_index\":0,\"sequence_number\":25}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" for\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"W608jyAXMojK\",\"output_index\":0,\"sequence_number\":26}\n\n",
+          "event: response.output_text",
+          ".delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" `\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"VE1j6FffjZcPL6\",\"output_index\":0,\"sequence_number\":27}\n\n",
+          "event: response.output_text",
+          ".delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"export\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"KgAAqwluZ7\",\"output_index\":0,\"sequence_number\":28}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" const\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"Xc9kMiILTK\",\"output_index\":0,\"sequence_number\":29}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" value\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"S1T0fI4GOO\",\"output_index\":0,\"sequence_number\":30}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"`\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"1wIWGhLgGUgUs6R\",\"output_index\":0,\"sequence_number\":31}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" found\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"7e27bLLQoF\",\"output_index\":0,\"sequence_number\":32}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" matches\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"n1SWnSKT\",\"output_index\":0,\"sequence_number\":33}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" in\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"mrgzyZtTWHbZf\",\"output_index\":0,\"sequence_number\":34}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" `\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"TNpH6r0qYQztDx\",\"output_index\":0,\"sequence_number\":35}\n\n",
+          "event: response.output_text",
+          ".delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"src\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"VLpwD6tbuVi6j\",\"output_index\":0,\"sequence_number\":36}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"/a\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"7La1zOQ2F1n01A\",\"output_index\":0,\"sequence_number\":37}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\".ts\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"qEV4kVvZWADjj\",\"output_index\":0,\"sequence_number\":38}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"`\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"SUuE0P08Rd2BUIZ\",\"output_index\":0,\"sequence_number\":39}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" and\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"WXm4QJdJCc3m\",\"output_index\":0,\"sequence_number\":40}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\" `\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"iN4zL5yFj0FeJR\",\"output_index\":0,\"sequence_number\":41}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"src\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"swetKQEtFTUZU\",\"output_index\":0,\"sequence_number\":42}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"/b\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"Gh2Qgf4xlryaVE\",\"output_index\":0,\"sequence_number\":43}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\".ts\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"l1tkPULiL60XM\",\"output_index\":0,\"sequence_number\":44}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"`.\",\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"obfuscation\":\"TqJ4NbDLZQ82r5\",\"output_index\":0,\"sequence_number\":45}\n\n",
+          "event: response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"content_index\":0,\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":46,\"text\":\"`src/a.ts` contains `export const value = 42;`, and searching `**/*.ts` for `export const value` found matches in `src/a.ts` and `src/b.ts`.\"}\n\n",
+          "event: response.content_par",
+          "t.done\ndata: {\"type\":\"response.content_part.done\",\"content_index\":0,\"item_id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"output_index\":0,\"part\":{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"`src/a.ts` contains `export const value = 42;`, and searching `**/*.ts` for `export const value` found matches in `src/a.ts` and `src/b.ts`.\"},\"sequence_number\":47}\n\n",
+          "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"`src/a.ts` contains `export const value = 42;`, and searching `**/*.ts` for `export const value` found matches in `src/a.ts` and `src/b.ts`.\"}],\"phase\":\"final_answer\",\"role\":\"assistant\"},\"output_index\":0,\"sequence_number\":48}\n\n",
+          "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_0b779ee3085804690069f3c4cd1c58819096a64011c83079f5\",\"object\":\"response\",\"created_at\":1777583309,\"status\":\"completed\",\"background\":false,\"completed_at\":1777583310,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5.4-2026-03-05\",\"moderation\":null,\"output\":[{\"id\":\"msg_0b779ee3085804690069f3c4cde0d08190bcfae2fa231624dc\",\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"`src/a.ts` contains `export const value = 42;`, and searching `**/*.ts` for `export const value` found matches in `src/a.ts` and `src/b.ts`.\"}],\"phase\":\"final_answer\",\"role\":\"assistant\"}],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"effort\":\"medium\",\"summary\":\"detailed\"},\"safety_identifier\":null,\"service_tier\":\"default\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Read the contents of a file at the given path.\",\"name\":\"readFile\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Absolute or repo-relative file path to read.\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Search files matching a glob for a regex pattern.\",\"name\":\"grepFiles\",\"parameters\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\",\"description\":\"Regex pattern to search for.\"},\"glob\":{\"type\":\"string\",\"description\":\"Glob of files to search, e.g. **/*.ts.\"}},\"required\":[\"pattern\",\"glob\"],\"additionalProperties\":false},\"strict\":true}],\"top_logprobs\":0,\"top_p\":0.98,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":405,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":46,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":451},\"user\":null,\"metadata\":{}},\"sequence_number\":49}\n\n"
+        ],
+        "chunkTimings": [
+          0, 0, 1, 0, 250, 0, 1, 0, 31, 6, 4, 1, 35, 2, 0, 1, 0, 41, 0, 0, 90, 0, 2, 2, 0, 41, 1, 6, 0, 1, 0, 1, 0, 2,
+          1, 71, 3, 1, 80, 5, 0, 1, 2, 1, 0, 38, 4, 2, 2, 0, 106, 13, 0, 0, 124
+        ],
+        "isStreaming": true
+      }
+    }
+  ]
+}

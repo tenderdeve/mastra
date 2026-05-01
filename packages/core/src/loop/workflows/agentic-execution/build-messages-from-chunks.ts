@@ -43,7 +43,11 @@ export function buildMessagesFromChunks({
   responseModelMetadata?: { metadata: Record<string, unknown> };
   tools?: ToolSet;
 }): MastraDBMessage[] {
-  const parts: MastraMessagePart[] = [];
+  // We allow `null` placeholders so text/reasoning spans can reserve their
+  // position in stream order at *-start time, then fill content at *-end.
+  // This prevents tool-call parts (which push immediately) from being placed
+  // before earlier-but-still-open reasoning/text spans. See #16007.
+  const parts: (MastraMessagePart | null)[] = [];
 
   // Collect tool results so we can match them to tool calls
   const toolResults = new Map<
@@ -63,13 +67,28 @@ export function buildMessagesFromChunks({
     }
   }
 
+  // Reserve a placeholder slot in `parts` for a span and return its index.
+  // The slot is filled with the actual part when the span ends.
+  const reserveSlot = (): number => {
+    parts.push(null);
+    return parts.length - 1;
+  };
+
   // State for text span accumulation (keyed by text ID to handle interleaved spans)
-  const textSpans = new Map<string, { deltas: string[]; providerMetadata: Record<string, any> | undefined }>();
+  const textSpans = new Map<
+    string,
+    { deltas: string[]; providerMetadata: Record<string, any> | undefined; slotIndex: number }
+  >();
 
   // State for reasoning span accumulation (keyed by reasoning ID)
   const reasoningSpans = new Map<
     string,
-    { deltas: string[]; providerMetadata: Record<string, any> | undefined; redacted: boolean }
+    {
+      deltas: string[];
+      providerMetadata: Record<string, any> | undefined;
+      redacted: boolean;
+      slotIndex: number;
+    }
   >();
   for (const chunk of chunks) {
     switch (chunk.type) {
@@ -77,9 +96,11 @@ export function buildMessagesFromChunks({
       case 'text-start': {
         const p = chunk.payload as TextStartPayload;
         if (!textSpans.has(p.id)) {
+          // Reserve the part slot in stream order; we'll fill it on text-end.
           textSpans.set(p.id, {
             deltas: [],
             providerMetadata: p.providerMetadata,
+            slotIndex: reserveSlot(),
           });
         } else {
           // Update providerMetadata if this start has it
@@ -93,9 +114,10 @@ export function buildMessagesFromChunks({
       case 'text-delta': {
         const p = chunk.payload as TextDeltaPayload;
         let span = textSpans.get(p.id);
-        // Auto-create span if delta arrives without a matching text-start
+        // Auto-create span if delta arrives without a matching text-start.
+        // Reserve a slot at the position the delta first appeared.
         if (!span) {
-          span = { deltas: [], providerMetadata: p.providerMetadata };
+          span = { deltas: [], providerMetadata: p.providerMetadata, slotIndex: reserveSlot() };
           textSpans.set(p.id, span);
         }
         span.deltas.push(p.text);
@@ -114,13 +136,14 @@ export function buildMessagesFromChunks({
             span.providerMetadata = pEnd.providerMetadata;
           }
           const text = span.deltas.join('');
-          // Only emit a part if there's actual content — skip empty text spans
+          // Only emit a part if there's actual content — skip empty text spans.
+          // Empty spans leave their reserved slot as null, which is filtered out below.
           if (text.length > 0) {
-            parts.push({
+            parts[span.slotIndex] = {
               type: 'text' as const,
               text,
               ...(span.providerMetadata ? { providerMetadata: span.providerMetadata } : {}),
-            } as MastraMessagePart);
+            } as MastraMessagePart;
           }
           textSpans.delete(pEnd.id);
         }
@@ -134,10 +157,14 @@ export function buildMessagesFromChunks({
         const isRedacted = Object.values(p.providerMetadata || {}).some((v: any) => v?.redactedData);
 
         if (!reasoningSpans.has(p.id)) {
+          // Reserve the part slot in stream order; we'll fill it on reasoning-end.
+          // This preserves order when tool-call chunks arrive between reasoning-start
+          // and reasoning-end (e.g. Qwen thinking models, see #16007).
           reasoningSpans.set(p.id, {
             deltas: [],
             providerMetadata: p.providerMetadata,
             redacted: isRedacted,
+            slotIndex: reserveSlot(),
           });
         } else {
           // Update providerMetadata if this start has it
@@ -154,9 +181,14 @@ export function buildMessagesFromChunks({
       case 'reasoning-delta': {
         const p = chunk.payload as ReasoningDeltaPayload;
         let span = reasoningSpans.get(p.id);
-        // Auto-create span if delta arrives without a matching reasoning-start
+        // Auto-create span if delta arrives without a matching reasoning-start.
         if (!span) {
-          span = { deltas: [], providerMetadata: p.providerMetadata, redacted: false };
+          span = {
+            deltas: [],
+            providerMetadata: p.providerMetadata,
+            redacted: false,
+            slotIndex: reserveSlot(),
+          };
           reasoningSpans.set(p.id, span);
         }
         span.deltas.push(p.text);
@@ -176,21 +208,21 @@ export function buildMessagesFromChunks({
           }
 
           if (span.redacted) {
-            parts.push({
+            parts[span.slotIndex] = {
               type: 'reasoning' as const,
               reasoning: '',
               details: [{ type: 'redacted', data: '' }],
               providerMetadata: span.providerMetadata,
-            } as MastraMessagePart);
+            } as MastraMessagePart;
           } else {
             // Always emit reasoning parts, even if empty — OpenAI requires item_reference
             // for tool calls that follow reasoning. See: https://github.com/mastra-ai/mastra/issues/9005
-            parts.push({
+            parts[span.slotIndex] = {
               type: 'reasoning' as const,
               reasoning: '',
               details: [{ type: 'text', text: span.deltas.join('') }],
               providerMetadata: span.providerMetadata,
-            } as MastraMessagePart);
+            } as MastraMessagePart;
           }
 
           reasoningSpans.delete(p.id);
@@ -287,43 +319,47 @@ export function buildMessagesFromChunks({
   }
 
   // Flush any unclosed reasoning spans (stream ended without reasoning-end)
+  // by filling their reserved slots so order is preserved.
   for (const [_id, span] of reasoningSpans) {
     if (span.redacted) {
-      parts.push({
+      parts[span.slotIndex] = {
         type: 'reasoning' as const,
         reasoning: '',
         details: [{ type: 'redacted', data: '' }],
         providerMetadata: span.providerMetadata,
-      } as MastraMessagePart);
+      } as MastraMessagePart;
     } else {
       const text = span.deltas.join('');
-      parts.push({
+      parts[span.slotIndex] = {
         type: 'reasoning' as const,
         reasoning: '',
         details: [{ type: 'text', text }],
         providerMetadata: span.providerMetadata,
-      } as MastraMessagePart);
+      } as MastraMessagePart;
     }
   }
 
   // Flush any unclosed text spans (stream ended without text-end)
+  // by filling their reserved slots so order is preserved.
   for (const [, span] of textSpans) {
     const text = span.deltas.join('');
     if (text.length > 0) {
-      parts.push({
+      parts[span.slotIndex] = {
         type: 'text' as const,
         text,
         ...(span.providerMetadata ? { providerMetadata: span.providerMetadata } : {}),
-      } as MastraMessagePart);
+      } as MastraMessagePart;
     }
   }
 
   // Insert step-start markers between tool-invocation and subsequent text parts.
   // This matches the convention used by MessageMerger.pushNewPart when merging messages,
   // and is required so that AI SDK convertToModelMessages splits them into separate steps.
+  // Null entries are unfilled placeholders (e.g. empty text spans) — skip them.
   const finalParts: MastraMessagePart[] = [];
   for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!;
+    const part = parts[i];
+    if (part == null) continue;
     if (
       part.type === 'text' &&
       finalParts.length > 0 &&
