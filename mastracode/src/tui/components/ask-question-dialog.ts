@@ -133,6 +133,9 @@ export class AskQuestionDialogComponent extends Box implements Focusable {
     const hint = new Text(theme.fg('dim', hintText), 0, 0);
     this.addChild(hint);
     this.modeChildren.push(hint);
+
+    // Carry focus over so switchToCustomInput() yields a focused input.
+    this.input.focused = this._focused;
   }
 
   private switchToCustomInput(): void {
@@ -142,7 +145,6 @@ export class AskQuestionDialogComponent extends Box implements Focusable {
     }
     this.selectList = undefined;
     this.buildInputMode();
-    if (this.input) this.input.focused = this._focused;
   }
 
   handleInput(data: string): void {

@@ -422,9 +422,6 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
     this.selectList = undefined;
     this.buildInputMode();
 
-    // Reapply focus to the new input
-    if (this.input) this.input.focused = this._focused;
-
     // Clear items so the answered state renders as free-text, not select
     this.borderedBox.items = [];
     this.borderedBox.setInteractive(
@@ -460,6 +457,10 @@ export class AskQuestionInlineComponent extends Container implements Focusable {
       };
       (this.input as any).keybindings = getEditorKeybindings();
     }
+
+    // Carry focus over so callers (constructor, activate, switchToCustomInput)
+    // don't have to reapply it manually after rebuilding the input.
+    this.input.focused = this._focused;
   }
 
   private handleAnswer(answer: string): void {
