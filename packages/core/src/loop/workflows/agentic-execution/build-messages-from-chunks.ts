@@ -177,13 +177,13 @@ export function buildMessagesFromChunks({
           // No deltas arrived — emit empty reasoning part.
           // OpenAI requires item_reference for tool calls that follow reasoning.
           // See: https://github.com/mastra-ai/mastra/issues/9005
-          const part = {
+          const part: MastraMessagePart = {
             type: 'reasoning' as const,
             reasoning: '',
             details: [{ type: 'text', text: '' }],
             providerMetadata: p.providerMetadata ?? reasoningMeta.get(p.id),
           };
-          parts.push(part as unknown as MastraMessagePart);
+          parts.push(part);
         }
         reasoningMeta.delete(p.id);
         reasoningRefs.delete(p.id);
@@ -282,12 +282,13 @@ export function buildMessagesFromChunks({
   // Unclosed reasoning spans with NO deltas need to be emitted for #9005.
   for (const [id] of reasoningMeta) {
     if (!reasoningRefs.has(id)) {
-      parts.push({
+      const part: MastraMessagePart = {
         type: 'reasoning' as const,
         reasoning: '',
         details: [{ type: 'text', text: '' }],
         providerMetadata: reasoningMeta.get(id),
-      } as unknown as MastraMessagePart);
+      };
+      parts.push(part);
     }
   }
 
@@ -299,11 +300,9 @@ export function buildMessagesFromChunks({
     }
   }
 
-  // Remove text parts that ended up empty (e.g. spans where every delta was ''),
-  // but keep them if they carry providerMetadata (same rationale as #9005 for reasoning).
-  const nonEmptyParts = parts.filter(
-    p => !(p.type === 'text' && (p as any).text === '' && !(p as any).providerMetadata),
-  );
+  // Remove text parts that ended up empty (e.g. spans where every delta was '').
+  // Empty reasoning parts are kept intentionally (#9005) and are not filtered here.
+  const nonEmptyParts = parts.filter(p => !(p.type === 'text' && (p as any).text === ''));
 
   // Insert step-start markers between tool-invocation and subsequent text parts.
   // This matches the convention used by MessageMerger.pushNewPart when merging messages,
