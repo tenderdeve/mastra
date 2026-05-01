@@ -25,6 +25,7 @@ import { handleAgentEnd } from '../handlers/agent-lifecycle.js';
 import type { EventHandlerContext } from '../handlers/types.js';
 import { MastraTUI, consumePendingImages } from '../mastra-tui.js';
 import { setupKeyboardShortcuts } from '../setup.js';
+import { getMastraCodeUsername } from '../username.js';
 import type { TUIState } from '../state.js';
 
 function createQueueState(overrides: Partial<TUIState> = {}): TUIState {
@@ -298,6 +299,66 @@ describe('MastraTUI queueing', () => {
     expect(state.pendingFollowUpMessages).toEqual([]);
     expect(state.pendingSlashCommands).toEqual([]);
     expect(ctx.updateStatusLine).toHaveBeenCalledTimes(6);
+  });
+
+  it('reads signal usernames from MC_USER, USER, then USERNAME', () => {
+    const previousMcUser = process.env.MC_USER;
+    const previousUser = process.env.USER;
+    const previousUsername = process.env.USERNAME;
+    process.env.MC_USER = 'Alice';
+    process.env.USER = 'tyler';
+    process.env.USERNAME = 'tylerbarnes';
+
+    expect(getMastraCodeUsername()).toBe('Alice');
+
+    delete process.env.MC_USER;
+    expect(getMastraCodeUsername()).toBe('tyler');
+
+    delete process.env.USER;
+    expect(getMastraCodeUsername()).toBe('tylerbarnes');
+
+    if (previousMcUser === undefined) {
+      delete process.env.MC_USER;
+    } else {
+      process.env.MC_USER = previousMcUser;
+    }
+    if (previousUser === undefined) {
+      delete process.env.USER;
+    } else {
+      process.env.USER = previousUser;
+    }
+    if (previousUsername === undefined) {
+      delete process.env.USERNAME;
+    } else {
+      process.env.USERNAME = previousUsername;
+    }
+  });
+
+  it('ignores blank signal username env values', () => {
+    const previousMcUser = process.env.MC_USER;
+    const previousUser = process.env.USER;
+    const previousUsername = process.env.USERNAME;
+    process.env.MC_USER = ' ';
+    process.env.USER = ' ';
+    process.env.USERNAME = ' ';
+
+    expect(getMastraCodeUsername()).toBeUndefined();
+
+    if (previousMcUser === undefined) {
+      delete process.env.MC_USER;
+    } else {
+      process.env.MC_USER = previousMcUser;
+    }
+    if (previousUser === undefined) {
+      delete process.env.USER;
+    } else {
+      process.env.USER = previousUser;
+    }
+    if (previousUsername === undefined) {
+      delete process.env.USERNAME;
+    } else {
+      process.env.USERNAME = previousUsername;
+    }
   });
 
   it('waits for harness-level follow-ups to finish before draining the local queue', () => {

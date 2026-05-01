@@ -949,6 +949,11 @@ export interface HarnessMessage {
   createdAt: Date;
   stopReason?: 'complete' | 'tool_use' | 'aborted' | 'error';
   errorMessage?: string;
+  metadata?: {
+    source?: 'durable-signal' | string;
+    username?: string;
+    [key: string]: unknown;
+  };
 }
 
 export type HarnessMessageContent =

@@ -62,7 +62,7 @@ describe('DurableAgent signals', () => {
       inputSchema: z.object({}),
       execute: async () => {
         durableAgent.sendSignal(
-          { type: 'user-message', contents: 'first signal' },
+          { type: 'user-message', contents: 'first signal', username: 'Tyler' },
           { resourceId: 'user-1', threadId: 'thread-1' },
         );
         durableAgent.sendSignal(
@@ -90,6 +90,7 @@ describe('DurableAgent signals', () => {
     expect(prompts).toHaveLength(2);
     const secondPrompt = JSON.stringify(prompts[1]);
     expect(secondPrompt.indexOf('first signal')).toBeLessThan(secondPrompt.indexOf('second signal'));
+    expect(secondPrompt).toContain('<user name=\\"Tyler\\">');
     expect(secondPrompt).toContain('system-reminder');
     expect(secondPrompt).toContain('agent-signal');
   });
@@ -171,7 +172,7 @@ describe('DurableAgent signals', () => {
 
     await firstTextStarted;
     durableAgent.sendSignal(
-      { type: 'user-message', contents: 'interrupt during final text' },
+      { type: 'user-message', contents: 'interrupt during final text', username: 'Follower' },
       { resourceId: 'user-1', threadId: 'thread-1' },
     );
     releaseFirstStream();
@@ -180,6 +181,23 @@ describe('DurableAgent signals', () => {
 
     expect(prompts).toHaveLength(2);
     expect(JSON.stringify(prompts[1])).toContain('interrupt during final text');
+    const firstTextEndIndex = streamChunks.findIndex(chunk => chunk.type === 'text-end');
+    const signalMessageIndex = streamChunks.findIndex(chunk => chunk.type === 'data-user-message');
+    const secondTextStartIndex = streamChunks.findIndex(
+      (chunk, index) => index > signalMessageIndex && chunk.type === 'text-start',
+    );
+    expect(signalMessageIndex).toBeGreaterThan(firstTextEndIndex);
+    expect(signalMessageIndex).toBeLessThan(secondTextStartIndex);
+    expect(streamChunks[signalMessageIndex]).toMatchObject({
+      type: 'data-user-message',
+      data: {
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'interrupt during final text' }],
+          metadata: { username: 'Follower' },
+        },
+      },
+    });
   });
 
   it('rejects run-id-only signals when no active run exists', () => {

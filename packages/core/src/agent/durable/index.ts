@@ -114,6 +114,17 @@ export { AGENT_STREAM_TOPIC, AgentStreamEventTypes, DurableAgentDefaults, Durabl
 
 // Types
 export type {
+  // Signal and run coordination types
+  DurableAgentSignalType,
+  DurableAgentSignal,
+  DurableAgentUserMessageSignal,
+  DurableAgentSystemReminderSignal,
+  DurableAgentCustomSignal,
+  SendDurableAgentSignalOptions,
+  DurableAgentRunStatus,
+  DurableAgentActiveRun,
+  DurableAgentClaimThreadOptions,
+  DurableAgentClaimThreadResult,
   // Serializable types for workflow state
   SerializableToolMetadata,
   SerializableModelConfig,
@@ -134,9 +145,6 @@ export type {
   AgentFinishEventData,
   AgentErrorEventData,
   AgentSuspendedEventData,
-  DurableAgentSignal,
-  DurableAgentSignalType,
-  SendDurableAgentSignalOptions,
   // Registry types
   RunRegistryEntry,
   DurableStepContext,

@@ -64,6 +64,7 @@ import { handleShellPassthrough } from './shell.js';
 import type { MastraTUIOptions, TUIState } from './state.js';
 import { createTUIState } from './state.js';
 import { updateStatusLine } from './status-line.js';
+import { getMastraCodeUsername } from './username.js';
 
 // =============================================================================
 // Types
@@ -244,14 +245,15 @@ export class MastraTUI {
 
         const sendWhileRunning = this.state.harness.isRunning() && (this.state.harness as any).canSendWhileRunning?.();
         const messageId = sendWhileRunning ? undefined : `user-${Date.now()}`;
+        const username = getMastraCodeUsername();
         if (messageId) {
           // Add user message to chat immediately. When sending into an active durable stream,
           // the stream's data-user-message event is the source of truth for display.
-          addUserMessage(this.state, {
+          const userMessage = {
             id: messageId,
-            role: 'user',
+            role: 'user' as const,
             content: [
-              { type: 'text', text: content },
+              { type: 'text' as const, text: content },
               ...(images?.map(img => ({
                 type: 'image' as const,
                 data: img.data,
@@ -259,7 +261,9 @@ export class MastraTUI {
               })) ?? []),
             ],
             createdAt: new Date(),
-          });
+            ...(username ? { metadata: { username } } : {}),
+          };
+          addUserMessage(this.state, userMessage);
           this.state.ui.requestRender();
         }
 
@@ -285,7 +289,7 @@ export class MastraTUI {
         }
 
         // Normal send — fire and forget; events handle the rest
-        this.fireMessage(content, images);
+        this.fireMessage(content, images, undefined, username);
       } catch (error) {
         showError(this.state, error instanceof Error ? error.message : 'Unknown error');
       }
@@ -296,9 +300,20 @@ export class MastraTUI {
    * Fire off a message without blocking the main loop.
    * Errors are handled via harness events.
    */
-  private fireMessage(content: string, images?: Array<{ data: string; mimeType: string }>): void {
+  private fireMessage(
+    content: string,
+    images?: Array<{ data: string; mimeType: string }>,
+    messageId?: string,
+    username?: string,
+  ): void {
     const files = images?.map(img => ({ data: img.data, mediaType: img.mimeType }));
-    this.state.harness.sendMessage({ content, files }).catch(error => {
+    const message: Parameters<TUIState['harness']['sendMessage']>[0] & { messageId?: string; username?: string } = {
+      content,
+      files,
+      messageId,
+      username,
+    };
+    this.state.harness.sendMessage(message).catch(error => {
       showError(this.state, error instanceof Error ? error.message : 'Unknown error');
     });
   }
