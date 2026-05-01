@@ -67,6 +67,7 @@ export * from './ds/components/FormFields';
 export * from './ds/components/JSONSchemaForm';
 export * from './ds/components/KeyValueList';
 export * from './ds/components/MainSidebar';
+export * from './ds/components/MobileBottomNav/mobile-bottom-nav';
 export * from './ds/components/PageHeader';
 export * from './ds/components/Section';
 export * from './ds/components/SelectElement';
@@ -85,6 +86,7 @@ export * from './ds/components/Chip';
 export * from './ds/components/Tree';
 export * from './ds/components/DataFilter';
 export * from './ds/components/DataList';
+export * from './ds/components/EntityCard/entity-card';
 export * from './ds/components/EntityList';
 export * from './ds/components/LogsDataList';
 export * from './ds/components/EntityListPageLayout';
@@ -120,6 +122,7 @@ export * from './ds/primitives/transitions';
 export * from './hooks/use-copy-to-clipboard';
 export * from './hooks/use-in-view';
 export * from './hooks/use-autoscroll';
+export * from './hooks/use-is-mobile';
 
 // Pure lib utilities
 export { cn } from './lib/utils';

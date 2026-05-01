@@ -1,5 +1,7 @@
 import type { GetAgentResponse } from '@mastra/client-js';
 import {
+  EntityCard,
+  EntityCardSkeleton,
   EntityList,
   EntityListSkeleton,
   TextAndIcon,
@@ -7,6 +9,7 @@ import {
   AgentIcon,
   ToolsIcon,
   truncateString,
+  useIsMobile,
 } from '@mastra/playground-ui';
 import { useMemo } from 'react';
 import { extractPrompt } from '../../utils/extractPrompt';
@@ -21,6 +24,7 @@ export interface AgentsListProps {
 
 export function AgentsList({ agents, isLoading, search = '' }: AgentsListProps) {
   const { paths, Link } = useLinkComponent();
+  const isMobile = useIsMobile();
 
   const agentData = useMemo(() => Object.values(agents ?? {}), [agents]);
 
@@ -33,7 +37,45 @@ export function AgentsList({ agents, isLoading, search = '' }: AgentsListProps) 
   }, [agentData, search]);
 
   if (isLoading) {
-    return <EntityListSkeleton columns="auto 1fr auto auto auto auto" />;
+    return isMobile ? <EntityCardSkeleton /> : <EntityListSkeleton columns="auto 1fr auto auto auto auto" />;
+  }
+
+  if (filteredData.length === 0 && search) {
+    return isMobile ? (
+      <p className="text-ui-sm text-neutral3 text-center py-8">No Agents match your search</p>
+    ) : (
+      <EntityList columns={'auto 1fr auto auto auto auto'}>
+        <EntityList.NoMatch message="No Agents match your search" />
+      </EntityList>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <EntityCard>
+        {filteredData.map(agent => {
+          const name = truncateString(agent.name, 50);
+          const instructions = truncateString(extractPrompt(agent.instructions), 100);
+          const toolsCount = Object.keys(agent.tools ?? {}).length;
+
+          return (
+            <EntityCard.Link key={agent.id} to={paths.agentLink(agent.id)} LinkComponent={Link}>
+              <div className="flex items-center justify-between gap-2">
+                <EntityCard.Title>{name}</EntityCard.Title>
+                <EntityCard.Meta>
+                  {agent.provider && <ProviderLogo providerId={agent.provider} className="dark:invert" />}
+                  <span className="truncate text-ui-xs">{agent.modelId || 'N/A'}</span>
+                </EntityCard.Meta>
+              </div>
+              {instructions && <EntityCard.Description>{instructions}</EntityCard.Description>}
+              <EntityCard.Meta>
+                {toolsCount > 0 && <EntityCard.MetaItem icon={<ToolsIcon />}>{toolsCount}</EntityCard.MetaItem>}
+              </EntityCard.Meta>
+            </EntityCard.Link>
+          );
+        })}
+      </EntityCard>
+    );
   }
 
   return (
@@ -61,8 +103,6 @@ export function AgentsList({ agents, isLoading, search = '' }: AgentsListProps) 
           className="text-center"
         />
       </EntityList.Top>
-
-      {filteredData.length === 0 && search ? <EntityList.NoMatch message="No Agents match your search" /> : null}
 
       {filteredData.map(agent => {
         const name = truncateString(agent.name, 50);

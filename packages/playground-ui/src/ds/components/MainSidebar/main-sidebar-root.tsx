@@ -12,7 +12,7 @@ export function MainSidebarRoot({ children, className }: MainSidebarRootProps) {
   return (
     <div
       className={cn(
-        'flex flex-col h-full px-4 relative overflow-y-auto',
+        'hidden md:flex flex-col h-full px-4 relative overflow-y-auto',
         // Smooth width transition for collapse/expand
         'transition-all duration-slow ease-out-custom',
         {

@@ -1,5 +1,6 @@
 import { ErrorBoundary, MainSidebarProvider, ThemeProvider, Toaster, TooltipProvider } from '@mastra/playground-ui';
 import { useLocation } from 'react-router';
+import { AppMobileBottomNav } from './ui/app-mobile-bottom-nav';
 import { AppSidebar } from './ui/app-sidebar';
 import { AuthRequired } from '@/domains/auth/components/auth-required';
 import { useAuthCapabilities } from '@/domains/auth/hooks/use-auth-capabilities';
@@ -19,11 +20,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <>
       <NavigationCommand />
-      <div className={shouldShowSidebar ? 'grid h-full grid-cols-[auto_1fr]' : 'h-full'}>
+      <div className={shouldShowSidebar ? 'grid h-full grid-cols-1 md:grid-cols-[auto_1fr]' : 'h-full'}>
         {shouldShowSidebar && <AppSidebar />}
         <div
           className={cn('bg-transparent overflow-y-auto', {
             'h-[calc(100%-1.5rem)]': shouldHideSidebar,
+            'pb-14 md:pb-0': shouldShowSidebar,
           })}
         >
           <AuthRequired>
@@ -31,6 +33,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
           </AuthRequired>
         </div>
       </div>
+      {shouldShowSidebar && <AppMobileBottomNav />}
     </>
   );
 }

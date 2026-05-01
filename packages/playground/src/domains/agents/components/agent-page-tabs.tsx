@@ -53,7 +53,7 @@ function TabLink({
         <TooltipTrigger asChild>
           <span className="flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 border-transparent text-neutral2 cursor-not-allowed opacity-50">
             <Icon size="sm">{icon}</Icon>
-            <Txt variant="ui-sm" className="text-inherit">
+            <Txt variant="ui-sm" className="text-inherit hidden sm:inline">
               {label}
             </Txt>
           </span>
@@ -75,7 +75,7 @@ function TabLink({
       )}
     >
       <Icon size="sm">{icon}</Icon>
-      <Txt variant="ui-sm" className="text-inherit">
+      <Txt variant="ui-sm" className="text-inherit hidden sm:inline">
         {label}
       </Txt>
       {badge !== undefined && badge > 0 && (
@@ -109,7 +109,7 @@ export function AgentPageTabs({
   ) : undefined;
 
   return (
-    <div className="flex items-center border-b border-border1 px-4 bg-surface2">
+    <div className="flex items-center border-b border-border1 px-4 bg-surface2 overflow-x-auto">
       <TabLink
         href={`/agents/${agentId}/chat/new`}
         active={activeTab === 'chat'}

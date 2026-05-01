@@ -33,8 +33,8 @@ export const HeaderTitle = ({ children }: HeaderProps) => {
   );
 };
 
-export const HeaderAction = ({ children }: HeaderProps) => {
-  return <div className="ml-auto flex items-center gap-3">{children}</div>;
+export const HeaderAction = ({ children, className }: HeaderProps) => {
+  return <div className={cn('ml-auto flex items-center gap-3', className)}>{children}</div>;
 };
 
 export const HeaderGroup = ({ children }: HeaderProps) => {

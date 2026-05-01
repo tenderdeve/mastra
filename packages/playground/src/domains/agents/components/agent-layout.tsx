@@ -1,4 +1,4 @@
-import { getMainContentContentClassName, CollapsiblePanel, PanelSeparator } from '@mastra/playground-ui';
+import { getMainContentContentClassName, CollapsiblePanel, PanelSeparator, useIsMobile } from '@mastra/playground-ui';
 import { Panel, useDefaultLayout, Group } from 'react-resizable-panels';
 
 export interface AgentLayoutProps {
@@ -10,6 +10,7 @@ export interface AgentLayoutProps {
 }
 
 export const AgentLayout = ({ agentId, children, leftSlot, rightSlot, browserOverlay }: AgentLayoutProps) => {
+  const isMobile = useIsMobile();
   const { defaultLayout, onLayoutChange } = useDefaultLayout({
     id: `agent-layout-v2-${agentId}`,
     storage: localStorage,
@@ -20,6 +21,15 @@ export const AgentLayout = ({ agentId, children, leftSlot, rightSlot, browserOve
     isDivided: true,
     hasLeftServiceColumn: Boolean(leftSlot),
   });
+
+  if (isMobile) {
+    return (
+      <div className="relative h-full w-full overflow-hidden">
+        <div className="grid h-full overflow-y-auto relative bg-surface1 py-4">{children}</div>
+        {browserOverlay}
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -60,7 +70,6 @@ export const AgentLayout = ({ agentId, children, leftSlot, rightSlot, browserOve
           </>
         )}
       </Group>
-      {/* Browser modal overlay - center view mode */}
       {browserOverlay}
     </div>
   );
