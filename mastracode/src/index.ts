@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 
 import { Agent } from '@mastra/core/agent';
@@ -55,6 +57,7 @@ import { getToolCategory } from './permissions.js';
 import { setAuthStorage } from './providers/claude-max.js';
 import { setAuthStorage as setOpenAIAuthStorage } from './providers/openai-codex.js';
 
+import { UnixSocketDurableThreadCoordinator } from './durable-streams/index.js';
 import { stateSchema } from './schema.js';
 
 import { mastra } from './tui/theme.js';
@@ -73,6 +76,14 @@ const PROVIDER_TO_OAUTH_ID: Record<string, string> = {
   anthropic: 'anthropic',
   openai: 'openai-codex',
 };
+
+function getDurableStreamsSocketPath(resourceId: string, rootPath: string): string {
+  const hash = createHash('sha256')
+    .update(`${resourceId}:${rootPath}:durable-streams-v2`)
+    .digest('hex')
+    .slice(0, 16);
+  return path.join(os.tmpdir(), `mastracode-${hash}.sock`);
+}
 
 export interface MastraCodeConfig {
   /** Working directory for project detection. Default: process.cwd() */
@@ -503,6 +514,12 @@ export async function createMastraCode(config?: MastraCodeConfig) {
       globalInitialState[`subagentModelId_${key}`] = modelId;
     }
   }
+  const durableStreamsSocketPath = getDurableStreamsSocketPath(project.resourceId, project.rootPath);
+  const durableStreamsCoordinator = new UnixSocketDurableThreadCoordinator({
+    socketPath: durableStreamsSocketPath,
+    autoStartCoordinator: true,
+  });
+
   const harness = new Harness({
     id: 'mastra-code',
     resourceId: project.resourceId,
@@ -589,22 +606,28 @@ export async function createMastraCode(config?: MastraCodeConfig) {
       }
       return customModels;
     },
+    durableStreams: {
+      coordinator: durableStreamsCoordinator,
+      attachToActiveThread: true,
+    },
     threadLock: {
       acquire: acquireThreadLock,
       release: releaseThreadLock,
     },
   });
 
-  // Sync hookManager session ID on thread changes
-  if (hookManager) {
-    harness.subscribe(event => {
-      if (event.type === 'thread_changed') {
-        hookManager.setSessionId(event.threadId);
-      } else if (event.type === 'thread_created') {
-        hookManager.setSessionId(event.thread.id);
-      }
-    });
-  }
+  harness.subscribe(event => {
+    if (event.type === 'thread_changed' || event.type === 'thread_created') {
+      void harness.followActiveThreadRun();
+    }
+
+    if (!hookManager) return;
+    if (event.type === 'thread_changed') {
+      hookManager.setSessionId(event.threadId);
+    } else if (event.type === 'thread_created') {
+      hookManager.setSessionId(event.thread.id);
+    }
+  });
 
   return {
     harness,
