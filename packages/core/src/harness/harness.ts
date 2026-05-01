@@ -81,6 +81,48 @@ function isSignalingAgent(agent: Agent): agent is SignalingAgent {
   return 'sendSignal' in agent && typeof agent.sendSignal === 'function';
 }
 
+function decodeXmlEntities(value: string): string {
+  return value.replaceAll('&quot;', '"').replaceAll('&gt;', '>').replaceAll('&lt;', '<').replaceAll('&amp;', '&');
+}
+
+function parseNamedUserMessage(text: string): { username: string; contents: string } | undefined {
+  const match = text.match(/^<user\s+name="([^"]*)">\n?([\s\S]*?)\n?<\/user>$/);
+  if (!match) return undefined;
+  return { username: decodeXmlEntities(match[1] ?? ''), contents: decodeXmlEntities(match[2] ?? '') };
+}
+
+function createDurableSignal({
+  id,
+  type,
+  contents,
+  username,
+  files,
+}: {
+  id?: string;
+  type: string;
+  contents: string;
+  username?: string;
+  files?: Array<{ data: string; mediaType: string; filename?: string }>;
+}): DurableAgentSignal {
+  const metadata = files?.length ? { files } : undefined;
+  if (type === 'user-message') {
+    return {
+      id,
+      type,
+      contents,
+      ...(username ? { username } : {}),
+      ...(metadata ? { metadata } : {}),
+    };
+  }
+
+  return {
+    id,
+    type,
+    contents,
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
 /**
  * The Harness orchestrates multiple agent modes, shared state, memory, and storage.
  * It's the core abstraction that a TUI (or other UI) controls.
@@ -1377,12 +1419,16 @@ export class Harness<TState = {}> {
     tracingContext,
     tracingOptions,
     requestContext: requestContextInput,
+    messageId,
+    username,
   }: {
     content: string;
     files?: Array<{ data: string; mediaType: string; filename?: string }>;
     tracingContext?: TracingContext;
     tracingOptions?: TracingOptions;
     requestContext?: RequestContext;
+    messageId?: string;
+    username?: string;
   }): Promise<void> {
     if (!this.currentThreadId) {
       const thread = await this.createThread();
@@ -1392,11 +1438,7 @@ export class Harness<TState = {}> {
     const agent = this.getCurrentAgent();
 
     if (this.isRunning()) {
-      const signal: DurableAgentSignal = {
-        type: 'user-message',
-        contents: content,
-        metadata: files?.length ? { files } : undefined,
-      };
+      const signal = createDurableSignal({ id: messageId, type: 'user-message', contents: content, username, files });
       if (this.currentRunId && isSignalingAgent(agent)) {
         const result = agent.sendSignal(signal, { runId: this.currentRunId });
         this.emit({ type: 'signal_sent', threadId, runId: result.runId, signalType: signal.type });
@@ -1610,6 +1652,7 @@ export class Harness<TState = {}> {
     };
   }): HarnessMessage {
     const content: HarnessMessageContent[] = [];
+    const metadata: HarnessMessage['metadata'] = {};
     const systemReminder =
       typeof msg.content.metadata?.systemReminder === 'object' && msg.content.metadata.systemReminder !== null
         ? msg.content.metadata.systemReminder
@@ -1649,7 +1692,13 @@ export class Harness<TState = {}> {
       switch (part.type) {
         case 'text':
           if (part.text) {
-            content.push({ type: 'text', text: part.text });
+            const namedUserMessage = msg.role === 'user' ? parseNamedUserMessage(part.text) : undefined;
+            if (namedUserMessage) {
+              metadata.username = namedUserMessage.username;
+              content.push({ type: 'text', text: namedUserMessage.contents });
+            } else {
+              content.push({ type: 'text', text: part.text });
+            }
           }
           break;
         case 'reasoning':
@@ -1786,7 +1835,13 @@ export class Harness<TState = {}> {
       }
     }
 
-    return { id: msg.id, role: msg.role, content, createdAt: msg.createdAt };
+    return {
+      id: msg.id,
+      role: msg.role,
+      content,
+      createdAt: msg.createdAt,
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+    };
   }
 
   /**

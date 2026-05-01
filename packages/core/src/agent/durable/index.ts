@@ -138,6 +138,9 @@ export type {
   AgentSuspendedEventData,
   DurableAgentSignal,
   DurableAgentSignalType,
+  DurableAgentUserMessageSignal,
+  DurableAgentSystemReminderSignal,
+  DurableAgentCustomSignal,
   SendDurableAgentSignalOptions,
   // Registry types
   RunRegistryEntry,
