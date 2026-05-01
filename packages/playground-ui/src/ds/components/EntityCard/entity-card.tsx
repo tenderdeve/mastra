@@ -48,11 +48,7 @@ export type EntityCardDescriptionProps = {
 };
 
 export function EntityCardDescription({ children, className }: EntityCardDescriptionProps) {
-  return (
-    <span className={cn('text-ui-sm text-neutral2 line-clamp-2', className)}>
-      {children}
-    </span>
-  );
+  return <span className={cn('text-ui-sm text-neutral2 line-clamp-2', className)}>{children}</span>;
 }
 
 export type EntityCardMetaProps = {
