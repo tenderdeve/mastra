@@ -230,9 +230,9 @@ describe('StagehandBrowser', () => {
   });
 
   describe('getTools', () => {
-    it('should return 6 tools', () => {
+    it('should return 7 tools', () => {
       const tools = browser.getTools();
-      expect(Object.keys(tools)).toHaveLength(6);
+      expect(Object.keys(tools)).toHaveLength(7);
     });
 
     it('should include all expected tools', () => {
@@ -727,14 +727,14 @@ describe('createStagehandTools', () => {
     const browser = new StagehandBrowser();
     const tools = createStagehandTools(browser);
 
-    // Screenshot tool is currently disabled (see COR-761)
-    expect(Object.keys(tools)).toHaveLength(6);
+    expect(Object.keys(tools)).toHaveLength(7);
     expect(tools[STAGEHAND_TOOLS.ACT].id).toBe('stagehand_act');
     expect(tools[STAGEHAND_TOOLS.EXTRACT].id).toBe('stagehand_extract');
     expect(tools[STAGEHAND_TOOLS.OBSERVE].id).toBe('stagehand_observe');
     expect(tools[STAGEHAND_TOOLS.NAVIGATE].id).toBe('stagehand_navigate');
     expect(tools[STAGEHAND_TOOLS.TABS].id).toBe('stagehand_tabs');
     expect(tools[STAGEHAND_TOOLS.CLOSE].id).toBe('stagehand_close');
+    expect(tools[STAGEHAND_TOOLS.SCREENSHOT].id).toBe('stagehand_screenshot');
   });
 });
 
@@ -744,8 +744,7 @@ describe('STAGEHAND_TOOLS', () => {
     expect(STAGEHAND_TOOLS.EXTRACT).toBe('stagehand_extract');
     expect(STAGEHAND_TOOLS.OBSERVE).toBe('stagehand_observe');
     expect(STAGEHAND_TOOLS.NAVIGATE).toBe('stagehand_navigate');
-    // Screenshot tool is currently disabled (see COR-761)
-    // expect(STAGEHAND_TOOLS.SCREENSHOT).toBe('stagehand_screenshot');
+    expect(STAGEHAND_TOOLS.SCREENSHOT).toBe('stagehand_screenshot');
     expect(STAGEHAND_TOOLS.CLOSE).toBe('stagehand_close');
   });
 });
