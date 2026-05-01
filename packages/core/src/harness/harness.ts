@@ -46,6 +46,48 @@ function isSignalingAgent(agent: Agent): agent is SignalingAgent {
   return 'sendSignal' in agent && typeof agent.sendSignal === 'function';
 }
 
+function decodeXmlEntities(value: string): string {
+  return value.replaceAll('&quot;', '"').replaceAll('&gt;', '>').replaceAll('&lt;', '<').replaceAll('&amp;', '&');
+}
+
+function parseNamedUserMessage(text: string): { username: string; contents: string } | undefined {
+  const match = text.match(/^<user\s+name="([^"]*)">\n?([\s\S]*?)\n?<\/user>$/);
+  if (!match) return undefined;
+  return { username: decodeXmlEntities(match[1] ?? ''), contents: decodeXmlEntities(match[2] ?? '') };
+}
+
+function createDurableSignal({
+  id,
+  type,
+  contents,
+  username,
+  files,
+}: {
+  id?: string;
+  type: string;
+  contents: string;
+  username?: string;
+  files?: Array<{ data: string; mediaType: string; filename?: string }>;
+}): DurableAgentSignal {
+  const metadata = files?.length ? { files } : undefined;
+  if (type === 'user-message') {
+    return {
+      id,
+      type,
+      contents,
+      ...(username ? { username } : {}),
+      ...(metadata ? { metadata } : {}),
+    };
+  }
+
+  return {
+    id,
+    type,
+    contents,
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
 /**
  * The Harness orchestrates multiple agent modes, shared state, memory, and storage.
  * It's the core abstraction that a TUI (or other UI) controls.
@@ -1356,6 +1398,7 @@ export class Harness<TState = {}> {
     content: string,
     files?: Array<{ data: string; mediaType: string; filename?: string }>,
     id = `user-${Date.now()}`,
+    username?: string,
   ): HarnessMessage {
     const messageContent: HarnessMessageContent[] = [{ type: 'text', text: content }];
     for (const file of files ?? []) {
@@ -1365,7 +1408,13 @@ export class Harness<TState = {}> {
         messageContent.push({ type: 'file', data: file.data, mediaType: file.mediaType, filename: file.filename });
       }
     }
-    return { id, role: 'user', content: messageContent, createdAt: new Date(), metadata: { source: 'durable-signal' } };
+    return {
+      id,
+      role: 'user',
+      content: messageContent,
+      createdAt: new Date(),
+      metadata: { source: 'durable-signal', ...(username ? { username } : {}) },
+    };
   }
 
   async watchActiveThreadRuns(): Promise<void> {
@@ -1470,6 +1519,7 @@ export class Harness<TState = {}> {
     tracingOptions,
     requestContext: requestContextInput,
     messageId,
+    username,
   }: {
     content: string;
     files?: Array<{ data: string; mediaType: string; filename?: string }>;
@@ -1477,6 +1527,7 @@ export class Harness<TState = {}> {
     tracingOptions?: TracingOptions;
     requestContext?: RequestContext;
     messageId?: string;
+    username?: string;
   }): Promise<void> {
     if (!this.currentThreadId) {
       const thread = await this.createThread();
@@ -1513,7 +1564,7 @@ export class Harness<TState = {}> {
       durableRuntime
     ) {
       const result = await durableRuntime.sendSignalAndObserve({
-        signal: { id: messageId, type: signalType, contents: content, metadata: files?.length ? { files } : undefined },
+        signal: createDurableSignal({ id: messageId, type: signalType, contents: content, username, files }),
       });
       this.emit({ type: 'signal_sent', threadId, runId: result.runId, signalType });
       return;
@@ -1548,16 +1599,11 @@ export class Harness<TState = {}> {
       if (durableRuntime && canUseDurableSignalPath) {
         streamOptions.toolsets = await this.buildToolsets(requestContext);
         const result = await durableRuntime.sendSignalAndObserve({
-          signal: {
-            id: messageId,
-            type: signalType,
-            contents: content,
-            metadata: files?.length ? { files } : undefined,
-          },
+          signal: createDurableSignal({ id: messageId, type: signalType, contents: content, username, files }),
           streamOptions,
           renderSignalEvent: {
             type: 'data-user-message',
-            data: { message: this.createUserStreamMessage(content, files, messageId) },
+            data: { message: this.createUserStreamMessage(content, files, messageId, username) },
           },
           abortSignal: this.abortController.signal,
           onAbort: () => this.abort(),
@@ -1778,6 +1824,7 @@ export class Harness<TState = {}> {
     };
   }): HarnessMessage {
     const content: HarnessMessageContent[] = [];
+    const metadata: HarnessMessage['metadata'] = {};
     const systemReminder =
       typeof msg.content.metadata?.systemReminder === 'object' && msg.content.metadata.systemReminder !== null
         ? msg.content.metadata.systemReminder
@@ -1817,7 +1864,13 @@ export class Harness<TState = {}> {
       switch (part.type) {
         case 'text':
           if (part.text) {
-            content.push({ type: 'text', text: part.text });
+            const namedUserMessage = msg.role === 'user' ? parseNamedUserMessage(part.text) : undefined;
+            if (namedUserMessage) {
+              metadata.username = namedUserMessage.username;
+              content.push({ type: 'text', text: namedUserMessage.contents });
+            } else {
+              content.push({ type: 'text', text: part.text });
+            }
           }
           break;
         case 'reasoning':
@@ -1954,7 +2007,13 @@ export class Harness<TState = {}> {
       }
     }
 
-    return { id: msg.id, role: msg.role, content, createdAt: msg.createdAt };
+    return {
+      id: msg.id,
+      role: msg.role,
+      content,
+      createdAt: msg.createdAt,
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+    };
   }
 
   /**

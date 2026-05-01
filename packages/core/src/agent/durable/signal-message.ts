@@ -9,6 +9,10 @@ function escapeXmlAttribute(value: string): string {
   return escapeXml(value).replaceAll('"', '&quot;');
 }
 
+function signalUsername(signal: DurableAgentSignal): string | undefined {
+  return signal.type === 'user-message' && typeof signal.username === 'string' ? signal.username : undefined;
+}
+
 function signalFiles(signal: DurableAgentSignal): Array<{ data: string; mediaType: string; filename?: string }> {
   const files = signal.metadata?.files;
   if (!Array.isArray(files)) return [];
@@ -24,6 +28,7 @@ function signalFiles(signal: DurableAgentSignal): Array<{ data: string; mediaTyp
 
 export function signalToUserMessageStreamChunk(signal: DurableAgentSignal): unknown | undefined {
   if (signal.type !== 'user-message') return undefined;
+  const username = signalUsername(signal);
   const content: Array<Record<string, unknown>> = [{ type: 'text', text: signal.contents }];
   for (const file of signalFiles(signal)) {
     if (file.mediaType.startsWith('image/')) {
@@ -40,13 +45,14 @@ export function signalToUserMessageStreamChunk(signal: DurableAgentSignal): unkn
         role: 'user',
         content,
         createdAt: signal.createdAt ? new Date(signal.createdAt) : new Date(),
-        metadata: { source: 'durable-signal' },
+        metadata: { source: 'durable-signal', ...(username ? { username } : {}) },
       },
     },
   };
 }
 
 export function signalToMessage(signal: DurableAgentSignal): MastraDBMessage {
+  const username = signalUsername(signal);
   const contentMetadata =
     signal.type === 'system-reminder'
       ? { systemReminder: { type: 'agent-signal', signalType: signal.type, ...signal.metadata } }
@@ -58,7 +64,9 @@ export function signalToMessage(signal: DurableAgentSignal): MastraDBMessage {
     signal.type === 'system-reminder'
       ? `<system-reminder type="agent-signal">${escapeXml(signal.contents)}</system-reminder>`
       : signal.type === 'user-message'
-        ? signal.contents
+        ? username
+          ? `<user name="${escapeXmlAttribute(username)}">\n${escapeXml(signal.contents)}\n</user>`
+          : signal.contents
         : `<agent-signal type="${escapeXmlAttribute(signal.type)}">${escapeXml(signal.contents)}</agent-signal>`;
 
   return {

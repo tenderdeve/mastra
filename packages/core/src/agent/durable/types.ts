@@ -26,13 +26,34 @@ import type { SaveQueueManager } from '../save-queue';
 
 export type DurableAgentSignalType = 'user-message' | 'system-reminder' | string;
 
-export interface DurableAgentSignal {
+interface DurableAgentBaseSignal {
   id?: string;
-  type: DurableAgentSignalType;
   contents: string;
   createdAt?: Date | string;
+}
+
+export interface DurableAgentUserMessageSignal extends DurableAgentBaseSignal {
+  type: 'user-message';
+  username?: string;
   metadata?: Record<string, unknown>;
 }
+
+export interface DurableAgentSystemReminderSignal extends DurableAgentBaseSignal {
+  type: 'system-reminder';
+  username?: never;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DurableAgentCustomSignal extends DurableAgentBaseSignal {
+  type: string;
+  username?: never;
+  metadata?: Record<string, unknown>;
+}
+
+export type DurableAgentSignal =
+  | DurableAgentUserMessageSignal
+  | DurableAgentSystemReminderSignal
+  | DurableAgentCustomSignal;
 
 export type SendDurableAgentSignalOptions =
   | { runId: string; resourceId?: string; threadId?: string; streamOptions?: Record<string, unknown> }

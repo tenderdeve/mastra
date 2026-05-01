@@ -911,6 +911,7 @@ export interface HarnessMessage {
   errorMessage?: string;
   metadata?: {
     source?: 'durable-signal' | string;
+    username?: string;
     [key: string]: unknown;
   };
 }

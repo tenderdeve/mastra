@@ -19,9 +19,16 @@ function stripAnsi(s: string): string {
  */
 class BorderedBox {
   private child: { render(width: number): string[]; invalidate?(): void };
+  private username?: string;
+  private currentUsername?: string;
 
-  constructor(child: { render(width: number): string[]; invalidate?(): void }) {
+  constructor(
+    child: { render(width: number): string[]; invalidate?(): void },
+    options: { username?: string; currentUsername?: string } = {},
+  ) {
     this.child = child;
+    this.username = options.username;
+    this.currentUsername = options.currentUsername;
   }
 
   invalidate() {
@@ -29,7 +36,10 @@ class BorderedBox {
   }
 
   render(width: number): string[] {
-    const borderColor = (s: string) => chalk.hex(tintHex(mastra.green, 1))(s);
+    const isOtherUser = !!this.username && this.username !== this.currentUsername;
+    const borderHex = isOtherUser ? mastra.purple : mastra.green;
+    const borderColor = (s: string) => chalk.hex(tintHex(borderHex, 1))(s);
+    const label = this.username ? ` ${this.username} ` : undefined;
 
     // Border uses 4 chars: "│ " (2) on left + " │" (2) on right
     // Plus 2 for the "› " prompt prefix on the first line
@@ -63,8 +73,15 @@ class BorderedBox {
     const promptPrefix = chalk.hex(tintHex(mastra.green, 1))('»') + ' ';
     const promptWidth = 2;
 
-    // Top border: ╭──...──╮
-    lines.push(borderColor(`╭${'─'.repeat(boxWidth - 2)}╮`));
+    // Top border: ╭──...──╮, optionally with username embedded.
+    if (label) {
+      const availableLabelWidth = Math.max(0, boxWidth - 2);
+      const safeLabel = visibleWidth(label) > availableLabelWidth ? `${label.slice(0, Math.max(0, availableLabelWidth - 2))}… ` : label;
+      const rightFill = Math.max(0, boxWidth - 2 - visibleWidth(safeLabel));
+      lines.push(borderColor(`╭${safeLabel}${'─'.repeat(rightFill)}╮`));
+    } else {
+      lines.push(borderColor(`╭${'─'.repeat(boxWidth - 2)}╮`));
+    }
 
     // Content lines with side borders, first line gets "> " prefix
     for (let i = 0; i < trimmedLines.length; i++) {
@@ -87,7 +104,11 @@ class BorderedBox {
 }
 
 export class UserMessageComponent extends Container {
-  constructor(text: string, markdownTheme: MarkdownTheme = getMarkdownTheme()) {
+  constructor(
+    text: string,
+    markdownTheme: MarkdownTheme = getMarkdownTheme(),
+    options: { username?: string; currentUsername?: string } = {},
+  ) {
     super();
 
     const md = new Markdown(text, 0, 0, markdownTheme, {
@@ -95,7 +116,7 @@ export class UserMessageComponent extends Container {
       italic: false,
     });
 
-    this.addChild(new BorderedBox(md));
+    this.addChild(new BorderedBox(md, options));
     this.addChild(new Spacer(1));
   }
 }

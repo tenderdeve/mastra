@@ -134,6 +134,9 @@ export type {
   // Signal and run coordination types
   DurableAgentSignalType,
   DurableAgentSignal,
+  DurableAgentUserMessageSignal,
+  DurableAgentSystemReminderSignal,
+  DurableAgentCustomSignal,
   SendDurableAgentSignalOptions,
   DurableAgentRunStatus,
   DurableAgentActiveRun,

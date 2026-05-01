@@ -23,6 +23,7 @@ import { UserMessageComponent } from './components/user-message.js';
 import { formatToolResult } from './handlers/tool.js';
 import type { TUIState } from './state.js';
 import { BOX_INDENT, getMarkdownTheme, theme, mastra } from './theme.js';
+import { getMastraCodeUsername } from './username.js';
 
 // Re-export so existing consumers can still import from here
 export { formatToolResult };
@@ -254,7 +255,9 @@ export function addUserMessage(state: TUIState, message: HarnessMessage): void {
 
   const prefix = imageCount > 0 ? `[${imageCount} image${imageCount > 1 ? 's' : ''}] ` : '';
   if (displayText || prefix) {
-    const userComponent = new UserMessageComponent(prefix + displayText);
+    const username = typeof message.metadata?.username === 'string' ? message.metadata.username : undefined;
+    const currentUsername = getMastraCodeUsername();
+    const userComponent = new UserMessageComponent(prefix + displayText, undefined, { username, currentUsername });
     const confirmedPendingSignal = removePendingSignalMessage(state, message.id);
 
     state.messageComponentsById.set(message.id, userComponent);

@@ -66,6 +66,7 @@ import { handleShellPassthrough } from './shell.js';
 import type { MastraTUIOptions, TUIState } from './state.js';
 import { createTUIState } from './state.js';
 import { updateStatusLine } from './status-line.js';
+import { getMastraCodeUsername } from './username.js';
 
 // =============================================================================
 // Types
@@ -222,6 +223,7 @@ export class MastraTUI {
 
         const messageId = shouldRenderUserMessageOptimistically(this.state.harness) ? `user-${Date.now()}` : undefined;
         const pendingSignalMessageId = shouldRenderPendingSignalMessage(this.state.harness) ? `user-${Date.now()}` : undefined;
+        const username = getMastraCodeUsername();
         if (messageId) {
           // Add user message to chat immediately. In durable signal mode, the stream's
           // data-user-message event is the source of truth for display.
@@ -237,6 +239,7 @@ export class MastraTUI {
               })) ?? []),
             ],
             createdAt: new Date(),
+            metadata: username ? { username } : undefined,
           });
           this.state.ui.requestRender();
         }
@@ -267,7 +270,7 @@ export class MastraTUI {
         }
 
         // Normal send — fire and forget; events handle the rest
-        this.fireMessage(content, images, pendingSignalMessageId);
+        this.fireMessage(content, images, pendingSignalMessageId, username);
       } catch (error) {
         showError(this.state, error instanceof Error ? error.message : 'Unknown error');
       }
@@ -278,12 +281,18 @@ export class MastraTUI {
    * Fire off a message without blocking the main loop.
    * Errors are handled via harness events.
    */
-  private fireMessage(content: string, images?: Array<{ data: string; mimeType: string }>, messageId?: string): void {
+  private fireMessage(
+    content: string,
+    images?: Array<{ data: string; mimeType: string }>,
+    messageId?: string,
+    username?: string,
+  ): void {
     const files = images?.map(img => ({ data: img.data, mediaType: img.mimeType }));
-    const message: Parameters<TUIState['harness']['sendMessage']>[0] & { messageId?: string } = {
+    const message: Parameters<TUIState['harness']['sendMessage']>[0] & { messageId?: string; username?: string } = {
       content,
       files,
       messageId,
+      username,
     };
     this.state.harness.sendMessage(message).catch(error => {
       if (messageId) {
