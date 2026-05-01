@@ -80,7 +80,8 @@ describe('buildMessagesFromChunks', () => {
       { type: 'text-end', payload: { id: 't1' } },
     ]);
     expect(result).toHaveLength(2);
-    // Parts are emitted in text-start order (stream start order), not text-end order
+    // Parts are emitted in first-delta order (content arrival order), not text-end order.
+    // t1's first delta arrives before t2's first delta, so t1 appears first.
     expect(result[0]).toMatchObject({ type: 'text', text: 'Hello, world!' });
     expect(result[1]).toMatchObject({ type: 'text', text: 'Goodbye' });
   });
@@ -366,6 +367,41 @@ describe('buildMessagesFromChunks', () => {
 
     const types = result.map((p: any) => p.type);
     expect(types).toEqual(['reasoning', 'text', 'tool-invocation']);
+  });
+
+  it('should produce reasoning → text → tool-calls when reasoning-end arrives after text-end (#15914)', () => {
+    // Regression for #15914: stream order from Ollama qwen3 has text-start before
+    // reasoning-start, reasoning-delta before text-delta, and reasoning-end after text-end.
+    // Parts should follow first-content-arrival order (reasoning before text).
+    const result = parts([
+      { type: 'response-metadata', payload: { id: 'rm1', modelId: 'test-model' } },
+      { type: 'text-start', payload: { id: 't1' } },
+      { type: 'reasoning-start', payload: { id: 'r1' } },
+      { type: 'reasoning-delta', payload: { id: 'r1', text: 'Thinking...' } },
+      { type: 'text-delta', payload: { id: 't1', text: 'Hello' } },
+      { type: 'tool-call-input-streaming-start', payload: { toolCallId: 'tc1', toolName: 'myTool', args: {} } },
+      { type: 'tool-call-delta', payload: { toolCallId: 'tc1', argsTextDelta: "{'q':'first'}" } },
+      { type: 'tool-call-input-streaming-end', payload: { toolCallId: 'tc1' } },
+      { type: 'tool-call', payload: { toolCallId: 'tc1', toolName: 'myTool', args: { q: 'first' } } },
+      { type: 'tool-call-input-streaming-start', payload: { toolCallId: 'tc2', toolName: 'myTool', args: {} } },
+      { type: 'tool-call-delta', payload: { toolCallId: 'tc2', argsTextDelta: "{'q':'second'}" } },
+      { type: 'tool-call-input-streaming-end', payload: { toolCallId: 'tc2' } },
+      { type: 'tool-call', payload: { toolCallId: 'tc2', toolName: 'myTool', args: { q: 'second' } } },
+      { type: 'text-end', payload: { id: 't1' } },
+      { type: 'reasoning-end', payload: { id: 'r1' } },
+      { type: 'finish', payload: { finishReason: 'stop', usage: {} } },
+    ]);
+
+    expect(result).toHaveLength(4);
+    expect(result.map((p: any) => p.type)).toEqual(['reasoning', 'text', 'tool-invocation', 'tool-invocation']);
+    expect(result[0]).toMatchObject({ type: 'reasoning', details: [{ type: 'text', text: 'Thinking...' }] });
+    expect(result[1]).toMatchObject({ type: 'text', text: 'Hello' });
+    expect(result[2]).toMatchObject({
+      toolInvocation: { state: 'call', toolCallId: 'tc1', toolName: 'myTool', args: { q: 'first' } },
+    });
+    expect(result[3]).toMatchObject({
+      toolInvocation: { state: 'call', toolCallId: 'tc2', toolName: 'myTool', args: { q: 'second' } },
+    });
   });
 
   // ── Empty stream / no parts ─────────────────────────────────

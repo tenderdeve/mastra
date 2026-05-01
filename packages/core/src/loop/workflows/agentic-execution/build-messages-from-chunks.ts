@@ -66,14 +66,21 @@ export function buildMessagesFromChunks({
     }
   }
 
-  // Live references to text parts in the parts array, keyed by text ID.
-  // Used to append deltas and update providerMetadata in place.
-  const textRefs = new Map<string, { type: 'text'; text: string; providerMetadata?: Record<string, any> }>();
+  // Live references to text parts, keyed by text ID.
+  // `pushed` tracks whether the part has been added to the parts array yet.
+  // Parts are pushed on first delta (not on text-start) so position reflects
+  // when content actually started arriving, not protocol handshake order (#15914).
+  const textRefs = new Map<
+    string,
+    { type: 'text'; text: string; providerMetadata?: Record<string, any>; pushed: boolean }
+  >();
 
-  // Live references to reasoning parts in the parts array, keyed by reasoning ID.
+  // Live references to reasoning parts, keyed by reasoning ID.
+  // Like text, non-redacted reasoning is pushed on first delta.
+  // Redacted reasoning is pushed on reasoning-start since it never receives deltas.
   const reasoningRefs = new Map<
     string,
-    { type: 'reasoning'; reasoning: string; details: any[]; providerMetadata?: Record<string, any> }
+    { type: 'reasoning'; reasoning: string; details: any[]; providerMetadata?: Record<string, any>; pushed: boolean }
   >();
 
   for (const chunk of chunks) {
@@ -82,9 +89,10 @@ export function buildMessagesFromChunks({
       case 'text-start': {
         const p = chunk.payload as TextStartPayload;
         if (!textRefs.has(p.id)) {
-          // Push a real part now so it appears at the stream-start position
-          const part = { type: 'text' as const, text: '', providerMetadata: p.providerMetadata };
-          parts.push(part as MastraMessagePart);
+          // Don't push to parts yet — wait for first delta so position
+          // reflects when content actually started arriving (#15914).
+          // Store a detached ref that text-delta will push on first content.
+          const part = { type: 'text' as const, text: '', providerMetadata: p.providerMetadata, pushed: false };
           textRefs.set(p.id, part);
         } else if (p.providerMetadata) {
           textRefs.get(p.id)!.providerMetadata = p.providerMetadata;
@@ -96,9 +104,13 @@ export function buildMessagesFromChunks({
         let ref = textRefs.get(p.id);
         // Auto-create part if delta arrives without a matching text-start
         if (!ref) {
-          ref = { type: 'text' as const, text: '', providerMetadata: p.providerMetadata };
-          parts.push(ref as MastraMessagePart);
+          ref = { type: 'text' as const, text: '', providerMetadata: p.providerMetadata, pushed: false };
           textRefs.set(p.id, ref);
+        }
+        // Push to parts on first delta — this is where the part's position is determined
+        if (!ref.pushed) {
+          parts.push(ref as unknown as MastraMessagePart);
+          ref.pushed = true;
         }
         ref.text += p.text;
         if (p.providerMetadata) {
@@ -133,8 +145,13 @@ export function buildMessagesFromChunks({
             reasoning: '',
             details: isRedacted ? [{ type: 'redacted', data: '' }] : [{ type: 'text', text: '' }],
             providerMetadata: p.providerMetadata,
+            // Redacted reasoning never receives deltas, so push immediately.
+            // Non-redacted waits for first delta to determine position.
+            pushed: isRedacted,
           };
-          parts.push(part as MastraMessagePart);
+          if (isRedacted) {
+            parts.push(part as unknown as MastraMessagePart);
+          }
           reasoningRefs.set(p.id, part);
         } else {
           const existing = reasoningRefs.get(p.id)!;
@@ -157,9 +174,14 @@ export function buildMessagesFromChunks({
             reasoning: '',
             details: [{ type: 'text', text: '' }],
             providerMetadata: p.providerMetadata,
+            pushed: false,
           };
-          parts.push(ref as MastraMessagePart);
           reasoningRefs.set(p.id, ref);
+        }
+        // Push to parts on first delta — position reflects content arrival order
+        if (!ref.pushed) {
+          parts.push(ref as unknown as MastraMessagePart);
+          ref.pushed = true;
         }
         // Append to the text detail
         const detail = ref.details[0];
@@ -177,6 +199,13 @@ export function buildMessagesFromChunks({
         if (ref) {
           if (p.providerMetadata) {
             ref.providerMetadata = p.providerMetadata;
+          }
+          // If no delta arrived (empty reasoning, not redacted), push now.
+          // Always emit reasoning parts, even if empty — OpenAI requires item_reference
+          // for tool calls that follow reasoning. See: https://github.com/mastra-ai/mastra/issues/9005
+          if (!ref.pushed) {
+            parts.push(ref as unknown as MastraMessagePart);
+            ref.pushed = true;
           }
           reasoningRefs.delete(p.id);
         }
@@ -271,15 +300,28 @@ export function buildMessagesFromChunks({
     }
   }
 
+  // Finalize any unclosed reasoning spans (stream ended without reasoning-end)
+  for (const [, ref] of reasoningRefs) {
+    // If no delta arrived, push now (always emit reasoning, even if empty — #9005)
+    if (!ref.pushed) {
+      parts.push(ref as unknown as MastraMessagePart);
+    }
+  }
+
   // Finalize any unclosed text spans (stream ended without text-end)
   for (const [, ref] of textRefs) {
     if (!ref.providerMetadata) {
       delete ref.providerMetadata;
     }
+    // Spans that never received a delta were never pushed — nothing to do
   }
 
-  // Filter out empty text parts (spans that received no deltas)
+  // Filter out empty text parts (spans that received deltas but ended up empty)
+  // and clean the `pushed` flag from all parts before output
   const filteredParts = parts.filter(p => !(p.type === 'text' && (p as any).text === ''));
+  for (const p of filteredParts) {
+    delete (p as any).pushed;
+  }
 
   // Insert step-start markers between tool-invocation and subsequent text parts.
   // This matches the convention used by MessageMerger.pushNewPart when merging messages,
