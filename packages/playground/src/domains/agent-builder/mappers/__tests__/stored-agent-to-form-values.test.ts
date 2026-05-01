@@ -15,8 +15,10 @@ describe('storedAgentToFormValues', () => {
       workflows: {},
       skills: {},
       workspaceId: undefined,
-      visibility: 'private',
+      visibility: undefined,
       avatarUrl: undefined,
+      browserEnabled: false,
+      model: undefined,
     };
 
     expect(fromNull).toEqual(expected);
@@ -44,8 +46,10 @@ describe('storedAgentToFormValues', () => {
       workflows: { 'wf-1': true },
       skills: {},
       workspaceId: 'ws-1',
-      visibility: 'private',
+      visibility: undefined,
       avatarUrl: undefined,
+      browserEnabled: false,
+      model: undefined,
     });
   });
 

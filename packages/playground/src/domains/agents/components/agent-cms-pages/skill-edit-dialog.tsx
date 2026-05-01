@@ -1,12 +1,16 @@
 import type { StoredSkillResponse } from '@mastra/client-js';
 import {
   Button,
+  Icon,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   SideDialog,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@mastra/playground-ui';
 import { AlertTriangle, ChevronDown, ChevronRight, Globe, LockIcon, Pencil, Settings2 } from 'lucide-react';
 import { nanoid } from 'nanoid';
@@ -24,8 +28,9 @@ import {
 } from './skill-file-tree';
 import { SkillFolder } from './skill-folder';
 import { SkillSimpleForm } from './skill-simple-form';
+import { useAuthCapabilities } from '@/domains/auth/hooks/use-auth-capabilities';
+import { useDefaultVisibility } from '@/domains/auth/hooks/use-default-visibility';
 import { useBuilderSettings } from '@/domains/builder/hooks/use-builder-settings';
-import { VisibilityBadge } from '@/domains/shared/components/visibility-badge';
 import { useWorkspaceInfo } from '@/domains/workspace/hooks';
 import { useStoredWorkspaces } from '@/domains/workspace/hooks/use-stored-workspaces';
 
@@ -69,6 +74,9 @@ export function SkillEditDialog({
   const updateSkill = useUpdateSkill();
   const { data: workspacesData } = useStoredWorkspaces();
   const { data: builderSettings } = useBuilderSettings();
+  const { data: authCapabilities } = useAuthCapabilities();
+  const authEnabled = !!authCapabilities?.enabled;
+  const defaultVisibility = useDefaultVisibility();
   const workspaceOptions = useMemo(
     () =>
       (workspacesData?.workspaces ?? [])
@@ -88,7 +96,7 @@ export function SkillEditDialog({
   }, [builderSettings]);
 
   const isExistingSkill = !!skill;
-  const isOwner = !skill || (!!currentUserId && skill.authorId === currentUserId);
+  const isOwner = !skill || !currentUserId || skill.authorId === currentUserId;
   const isViewMode = isExistingSkill && !isEditing;
   const isReadOnly = isViewMode || !isOwner;
   const hasFields = !!(name.trim() || description.trim() || instructions.trim());
@@ -100,7 +108,7 @@ export function SkillEditDialog({
         // View/edit mode for existing skill
         setName(skill.name ?? '');
         setDescription(skill.description ?? '');
-        setVisibility(skill.visibility ?? 'private');
+        setVisibility(skill.visibility ?? defaultVisibility);
         setInstructions(skill.instructions ?? '');
         setIsEditing(false);
         setMode('simple');
@@ -116,7 +124,7 @@ export function SkillEditDialog({
         // Create mode — start chat-first
         setName('');
         setDescription('');
-        setVisibility('private');
+        setVisibility(defaultVisibility);
         setInstructions('');
         setWorkspaceId(builderDefaultWorkspaceId ?? (workspaceOptions.length === 1 ? workspaceOptions[0].value : ''));
         setFiles([]);
@@ -127,7 +135,7 @@ export function SkillEditDialog({
       prevNameRef.current = '';
       setChatSessionKey(nanoid());
     }
-  }, [isOpen, skill, workspaceOptions, builderDefaultWorkspaceId]);
+  }, [isOpen, skill, workspaceOptions, builderDefaultWorkspaceId, defaultVisibility]);
 
   const handleNameChange = useCallback((newName: string) => {
     setName(newName);
@@ -236,7 +244,18 @@ export function SkillEditDialog({
       <SideDialog.Top>
         <span className="flex-1 flex items-center gap-2">
           {dialogTitle}
-          {isViewMode && skill && <VisibilityBadge visibility={skill.visibility} authorId={skill.authorId} size="sm" />}
+          {isViewMode && skill?.visibility === 'private' && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-neutral3 shrink-0" aria-label="Private skill">
+                  <Icon size="sm">
+                    <LockIcon />
+                  </Icon>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Only visible to you</TooltipContent>
+            </Tooltip>
+          )}
         </span>
         <div className="flex items-center gap-2 mr-6">
           {isViewMode && isOwner && (
@@ -246,25 +265,27 @@ export function SkillEditDialog({
           )}
           {!isReadOnly && (
             <>
-              <Select value={visibility} onValueChange={next => setVisibility(next as 'private' | 'public')}>
-                <SelectTrigger size="sm" aria-label="Visibility" className="w-fit gap-1.5">
-                  <SelectValue placeholder="Visibility" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="private">
-                    <span className="flex items-center gap-2">
-                      <LockIcon className="h-3.5 w-3.5" />
-                      Private
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="public">
-                    <span className="flex items-center gap-2">
-                      <Globe className="h-3.5 w-3.5" />
-                      Public
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              {authEnabled && (
+                <Select value={visibility} onValueChange={next => setVisibility(next as 'private' | 'public')}>
+                  <SelectTrigger size="sm" aria-label="Visibility" className="w-fit gap-1.5">
+                    <SelectValue placeholder="Visibility" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">
+                      <span className="flex items-center gap-2">
+                        <LockIcon className="h-3.5 w-3.5" />
+                        Private
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="public">
+                      <span className="flex items-center gap-2">
+                        <Globe className="h-3.5 w-3.5" />
+                        Public
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
               <Button variant="primary" size="sm" onClick={handleSave} disabled={!name.trim() || isPending}>
                 {isPending ? 'Saving...' : isExistingSkill ? 'Save' : 'Create'}
               </Button>
@@ -387,17 +408,15 @@ export function SkillEditDialog({
                 )}
               </div>
             ) : (
-              hasFields && (
-                <div className="border-t border-border1 pt-3">
-                  <button
-                    onClick={() => setShowForm(true)}
-                    className="flex items-center gap-1.5 text-xs text-neutral3 hover:text-neutral5 transition-colors"
-                  >
-                    <ChevronRight className="h-3 w-3" />
-                    Show skill details
-                  </button>
-                </div>
-              )
+              <div className="border-t border-border1 pt-3">
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="flex items-center gap-1.5 text-xs text-neutral3 hover:text-neutral5 transition-colors"
+                >
+                  <ChevronRight className="h-3 w-3" />
+                  {hasFields ? 'Show skill details' : 'or fill in manually'}
+                </button>
+              </div>
             )}
           </div>
         )}
