@@ -7,6 +7,7 @@ import {
 } from '../../hooks/use-channels';
 import type { ChannelPlatformInfo } from '../../hooks/use-channels';
 import { PlatformIcon } from './platform-icons';
+import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 
 export interface AgentChannelsProps {
   agentId: string;
@@ -47,6 +48,8 @@ function PlatformSection({ platform, agentId }: PlatformSectionProps) {
   const { data: installations, isLoading } = useChannelInstallations(platform.id, agentId);
   const { mutate: connect, isPending: isConnecting } = useConnectChannel(platform.id);
   const { mutate: disconnect, isPending: isDisconnecting } = useDisconnectChannel(platform.id);
+  const { hasPermission } = usePermissions();
+  const canWriteChannels = hasPermission('channels:write');
 
   const activeInstallation = installations?.find(i => i.status === 'active');
 
@@ -106,14 +109,16 @@ function PlatformSection({ platform, agentId }: PlatformSectionProps) {
               {activeInstallation.displayName || 'Workspace'}
             </Txt>
           </div>
-          <button
-            type="button"
-            onClick={handleDisconnect}
-            disabled={isDisconnecting}
-            className="shrink-0 text-[11px] text-neutral5 hover:text-accent2 transition-colors disabled:opacity-50"
-          >
-            {isDisconnecting ? 'Removing...' : 'Remove'}
-          </button>
+          {canWriteChannels && (
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              disabled={isDisconnecting}
+              className="shrink-0 text-[11px] text-neutral5 hover:text-accent2 transition-colors disabled:opacity-50"
+            >
+              {isDisconnecting ? 'Removing...' : 'Remove'}
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-2.5">
@@ -125,11 +130,11 @@ function PlatformSection({ platform, agentId }: PlatformSectionProps) {
             <StatusBadge variant="warning" size="sm">
               Not configured
             </StatusBadge>
-          ) : (
+          ) : canWriteChannels ? (
             <Button size="sm" variant="default" onClick={handleConnect} disabled={isConnecting}>
               {isConnecting ? 'Connecting...' : 'Connect'}
             </Button>
-          )}
+          ) : null}
         </div>
       )}
     </section>

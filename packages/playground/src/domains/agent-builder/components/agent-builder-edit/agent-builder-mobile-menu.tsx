@@ -8,14 +8,23 @@ import {
   DialogHeader,
   DialogTitle,
   DropdownMenu,
+  toast,
 } from '@mastra/playground-ui';
 import { Globe, LockIcon, MoreVerticalIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
+import { useParams } from 'react-router';
 import type { AgentBuilderEditFormValues } from '../../schemas';
 import { SlackIcon } from './slack-icon';
 import type { Visibility } from './visibility-select';
+import {
+  useConnectChannel,
+  useDisconnectChannel,
+  useChannelInstallations,
+  useChannelPlatforms,
+} from '@/domains/agents/hooks/use-channels';
+import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 
 export interface AgentBuilderMobileMenuProps {
   /** When true, includes the "Set visibility" item + dialog. Edit page only. */
@@ -31,14 +40,66 @@ export function AgentBuilderMobileMenu({
   showPublishToSlack = true,
   disabled = false,
 }: AgentBuilderMobileMenuProps) {
+  const { id } = useParams<{ id: string }>();
   const formMethods = useFormContext<AgentBuilderEditFormValues>();
   const visibility = (useWatch({ control: formMethods.control, name: 'visibility' }) ?? 'private') as Visibility;
+  const name = useWatch({ control: formMethods.control, name: 'name' });
+  const description = useWatch({ control: formMethods.control, name: 'description' });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { mutate: connectSlack, isPending: isConnectingSlack } = useConnectChannel('slack');
+  const { mutate: disconnectSlack, isPending: isDisconnectingSlack } = useDisconnectChannel('slack');
+  const { data: platforms } = useChannelPlatforms();
+  const { data: installations } = useChannelInstallations('slack', id ?? '');
+  const isSlackConnected = installations?.some(i => i.status === 'active') ?? false;
+  const { hasPermission } = usePermissions();
+  const slackAvailable = (platforms?.some(p => p.id === 'slack') ?? false) && hasPermission('channels:write');
+  const effectiveShowSlack = showPublishToSlack && slackAvailable;
 
-  if (!showSetVisibility && !showPublishToSlack) return null;
+  if (!showSetVisibility && !effectiveShowSlack) return null;
 
   const setVisibility = (next: Visibility) => {
     formMethods.setValue('visibility', next, { shouldDirty: true });
+  };
+
+  const handlePublishToSlack = () => {
+    if (!id) {
+      toast.error('Save the agent first before publishing to Slack');
+      return;
+    }
+    connectSlack(
+      { agentId: id, options: { name, description } },
+      {
+        onSuccess: result => {
+          switch (result.type) {
+            case 'oauth':
+              window.location.href = result.authorizationUrl;
+              break;
+            case 'deep_link': {
+              const popup = window.open(result.url, '_blank', 'noopener,noreferrer');
+              if (!popup) {
+                toast.error('Popup blocked — please allow popups and try again');
+              }
+              break;
+            }
+            case 'immediate':
+              toast.success('Published to Slack');
+              break;
+          }
+        },
+        onError: (err: Error & { body?: { error?: string } }) => {
+          toast.error(err.body?.error || err.message || 'Failed to publish to Slack');
+        },
+      },
+    );
+  };
+
+  const handleRemoveFromSlack = () => {
+    if (!id) return;
+    disconnectSlack(id, {
+      onError: (err: Error & { body?: { error?: string } }) => {
+        toast.error(err.body?.error || err.message || 'Failed to remove from Slack');
+      },
+    });
   };
 
   return (
@@ -63,18 +124,26 @@ export function AgentBuilderMobileMenu({
               <span>Set visibility</span>
             </DropdownMenu.Item>
           )}
-          {showPublishToSlack && (
-            <DropdownMenu.Item
-              data-testid="agent-builder-mobile-menu-publish-slack"
-              disabled={disabled}
-              onSelect={() => {
-                /* same no-op as PublishToSlackButton today */
-              }}
-            >
-              <SlackIcon className="h-4 w-4" />
-              <span>Publish to Slack</span>
-            </DropdownMenu.Item>
-          )}
+          {effectiveShowSlack &&
+            (isSlackConnected ? (
+              <DropdownMenu.Item
+                data-testid="agent-builder-mobile-menu-publish-slack"
+                disabled={disabled || isDisconnectingSlack}
+                onSelect={handleRemoveFromSlack}
+              >
+                <SlackIcon className="h-4 w-4" />
+                <span>{isDisconnectingSlack ? 'Removing…' : 'Remove from Slack'}</span>
+              </DropdownMenu.Item>
+            ) : (
+              <DropdownMenu.Item
+                data-testid="agent-builder-mobile-menu-publish-slack"
+                disabled={disabled || isConnectingSlack}
+                onSelect={handlePublishToSlack}
+              >
+                <SlackIcon className="h-4 w-4" />
+                <span>{isConnectingSlack ? 'Publishing…' : 'Publish to Slack'}</span>
+              </DropdownMenu.Item>
+            ))}
         </DropdownMenu.Content>
       </DropdownMenu>
 

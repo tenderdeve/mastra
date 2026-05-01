@@ -32,6 +32,7 @@ export async function initWorkOS(): Promise<AuthResult> {
         'tools:read',
         'workflows:read',
         'memory:read',
+        'channels:*',
       ],
       // Can only view and run agents
       operator: ['agents:read', 'agents:execute', 'tools:read', 'workflows:read'],

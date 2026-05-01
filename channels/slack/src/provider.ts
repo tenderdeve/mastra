@@ -825,9 +825,8 @@ export class SlackProvider implements ChannelProvider {
     }
 
     const agent = this.#resolveAgent(agentId);
-    if (!agent) {
-      throw new Error(`Agent "${agentId}" not found`);
-    }
+    // Agent may not be in the runtime registry (e.g. stored/builder agents).
+    // We can still proceed as long as options provide name/description fallbacks.
 
     // If there's already a pending installation, return its authorization URL
     // instead of creating a duplicate Slack app
@@ -867,8 +866,8 @@ export class SlackProvider implements ChannelProvider {
     const webhookId = crypto.randomUUID();
 
     // Build manifest using the manifest builder (includes proper default scopes)
-    const appName = config.name ?? agent.name ?? agentId;
-    const appDescription = config.description || agent.getDescription() || 'AI assistant powered by Mastra';
+    const appName = config.name ?? agent?.name ?? agentId;
+    const appDescription = config.description || agent?.getDescription() || 'AI assistant powered by Mastra';
     const normalizedCommands = this.#normalizeCommands(config.slashCommands);
     let manifest = buildManifest({
       name: appName,

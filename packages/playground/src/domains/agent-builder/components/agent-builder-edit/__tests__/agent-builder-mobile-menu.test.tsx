@@ -1,12 +1,39 @@
 // @vitest-environment jsdom
 import { TooltipProvider } from '@mastra/playground-ui';
+import { MastraReactProvider } from '@mastra/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { MemoryRouter } from 'react-router';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AgentBuilderEditFormValues } from '../../../schemas';
 import { AgentBuilderMobileMenu } from '../agent-builder-mobile-menu';
+
+vi.mock('@/domains/agents/hooks/use-channels', async importOriginal => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    useChannelPlatforms: () => ({ data: [{ id: 'slack', name: 'Slack', isConfigured: true }], isLoading: false }),
+  };
+});
+
+vi.mock('@/domains/auth/hooks/use-permissions', () => ({
+  usePermissions: () => ({
+    hasPermission: () => true,
+    hasAllPermissions: () => true,
+    hasAnyPermission: () => true,
+    hasRole: () => true,
+    canEdit: () => true,
+    canDelete: () => true,
+    canExecute: () => true,
+    roles: [],
+    permissions: ['*'],
+    isLoading: false,
+    isAuthenticated: true,
+    rbacEnabled: false,
+  }),
+}));
 
 interface FormHarnessProps {
   defaultVisibility?: AgentBuilderEditFormValues['visibility'];
@@ -15,6 +42,7 @@ interface FormHarnessProps {
 }
 
 const FormHarness = ({ defaultVisibility = 'private', onDirtyChange, children }: FormHarnessProps) => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const methods = useForm<AgentBuilderEditFormValues>({
     defaultValues: { name: '', instructions: '', visibility: defaultVisibility },
   });
@@ -22,15 +50,19 @@ const FormHarness = ({ defaultVisibility = 'private', onDirtyChange, children }:
   const isDirty = methods.formState.isDirty;
   onDirtyChange?.(isDirty);
   return (
-    <MemoryRouter>
-      <TooltipProvider>
-        <FormProvider {...methods}>
-          {children}
-          <span data-testid="form-visibility">{value}</span>
-          <span data-testid="form-dirty">{isDirty ? 'true' : 'false'}</span>
-        </FormProvider>
-      </TooltipProvider>
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <MastraReactProvider baseUrl="http://localhost:4111">
+        <MemoryRouter>
+          <TooltipProvider>
+            <FormProvider {...methods}>
+              {children}
+              <span data-testid="form-visibility">{value}</span>
+              <span data-testid="form-dirty">{isDirty ? 'true' : 'false'}</span>
+            </FormProvider>
+          </TooltipProvider>
+        </MemoryRouter>
+      </MastraReactProvider>
+    </QueryClientProvider>
   );
 };
 
