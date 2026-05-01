@@ -11,7 +11,7 @@ import type { AgentExecutionOptions } from '../agent.types';
 import type { MessageListInput } from '../message-list';
 import type { ToolsInput } from '../types';
 
-import { AGENT_STREAM_TOPIC } from './constants';
+import { AGENT_STREAM_TOPIC, AGENT_THREAD_STREAM_TOPIC } from './constants';
 import { runDurableStreamUntilIdle } from './durable-stream-until-idle';
 import { prepareForDurableExecution } from './preparation';
 import { ExtendedRunRegistry, globalRunRegistry } from './run-registry';
@@ -93,6 +93,45 @@ export interface DurableAgentStreamResult<OUTPUT = undefined> {
   /** Cleanup function to call when done (unsubscribes from pubsub) */
   cleanup: () => void;
 }
+
+/**
+ * Options for subscribing to durable streams for a memory thread.
+ */
+export interface DurableAgentSubscribeToThreadOptions<OUTPUT = undefined> {
+  /** Resource ID for the memory thread */
+  resourceId?: string;
+  /** Thread ID for the memory thread */
+  threadId: string;
+  /** Start replay from this event offset for each run stream */
+  offset?: number;
+  /** Callback when chunk is received */
+  onChunk?: (chunk: ChunkType<OUTPUT>) => void | Promise<void>;
+  /** Callback when step finishes */
+  onStepFinish?: (result: AgentStepFinishEventData) => void | Promise<void>;
+  /** Callback when execution finishes */
+  onFinish?: (result: AgentFinishEventData) => void | Promise<void>;
+  /** Callback on error */
+  onError?: (error: Error) => void | Promise<void>;
+  /** Callback when workflow suspends (e.g., for tool approval) */
+  onSuspended?: (data: AgentSuspendedEventData) => void | Promise<void>;
+}
+
+export interface DurableAgentThreadSubscription<OUTPUT = undefined> {
+  /** Streams for active runs on this thread, including future run IDs. */
+  runs: AsyncIterable<DurableAgentStreamResult<OUTPUT>>;
+  /** Stop watching the thread and cleanup any attached run streams. */
+  cleanup: () => void;
+}
+
+type DurableAgentThreadRunStartedEvent = {
+  type: 'run-started';
+  runId: string;
+  data: {
+    runId: string;
+    threadId: string;
+    resourceId?: string;
+  };
+};
 
 /**
  * Configuration for DurableAgent - wraps an existing Agent with durable execution
@@ -424,6 +463,130 @@ export class DurableAgent<
   // Public API
   // ===========================================================================
 
+  #attachToRunStream(
+    runId: string,
+    options: DurableAgentSubscribeToThreadOptions<TOutput>,
+  ): Promise<DurableAgentStreamResult<TOutput> | undefined> {
+    const entry = this.#runRegistry.get(runId);
+    if (!entry) return Promise.resolve(undefined);
+
+    const {
+      output,
+      cleanup,
+      ready,
+    } = createDurableAgentStream<TOutput>({
+      pubsub: this.pubsub,
+      runId,
+      messageId: runId,
+      model: {
+        modelId: entry.model.modelId,
+        provider: entry.model.provider,
+        version: 'v3',
+      },
+      threadId: options.threadId,
+      resourceId: options.resourceId,
+      offset: options.offset,
+      onChunk: options.onChunk,
+      onStepFinish: options.onStepFinish,
+      onFinish: options.onFinish,
+      onError: options.onError,
+      onSuspended: options.onSuspended,
+    });
+
+    return ready.then(() => ({
+      output,
+      get fullStream() {
+        return output.fullStream as ReadableStream<any>;
+      },
+      runId,
+      threadId: options.threadId,
+      resourceId: options.resourceId,
+      cleanup,
+    }));
+  }
+
+  /**
+   * Subscribe to durable streams for a memory thread, including future run IDs.
+   */
+  async subscribeToThread(
+    options: DurableAgentSubscribeToThreadOptions<TOutput>,
+  ): Promise<DurableAgentThreadSubscription<TOutput>> {
+    const topic = AGENT_THREAD_STREAM_TOPIC(options.resourceId, options.threadId);
+    const seenRunIds = new Set<string>();
+    const pendingRuns: DurableAgentStreamResult<TOutput>[] = [];
+    const runCleanups: Array<() => void> = [];
+    const waiters: Array<() => void> = [];
+    let done = false;
+
+    const wake = () => {
+      while (waiters.length) waiters.shift()?.();
+    };
+
+    const enqueueRun = async (runId: string) => {
+      if (done || seenRunIds.has(runId)) return;
+      seenRunIds.add(runId);
+      const runStream = await this.#attachToRunStream(runId, options);
+      if (!runStream || done) {
+        runStream?.cleanup();
+        return;
+      }
+      runCleanups.push(runStream.cleanup);
+      pendingRuns.push(runStream);
+      wake();
+    };
+
+    const handleThreadEvent = (event: unknown) => {
+      const threadEvent = event as DurableAgentThreadRunStartedEvent;
+      const runId = threadEvent.data?.runId ?? threadEvent.runId;
+      if (threadEvent.type === 'run-started' && runId) {
+        void enqueueRun(runId);
+      }
+    };
+
+    await this.pubsub.subscribeWithReplay(topic, handleThreadEvent);
+
+    const activeRunId = this.#runRegistry.getRunIdByThread({ resourceId: options.resourceId, threadId: options.threadId });
+    if (activeRunId) {
+      void enqueueRun(activeRunId);
+    }
+
+    const cleanup = () => {
+      if (done) return;
+      done = true;
+      void this.pubsub.unsubscribe(topic, handleThreadEvent);
+      for (const runCleanup of runCleanups.splice(0)) {
+        runCleanup();
+      }
+      wake();
+    };
+
+    return {
+      cleanup,
+      runs: (async function* () {
+        try {
+          while (!done || pendingRuns.length > 0) {
+            if (pendingRuns.length === 0) {
+              await new Promise<void>(resolve => waiters.push(resolve));
+              continue;
+            }
+            yield pendingRuns.shift()!;
+          }
+        } finally {
+          cleanup();
+        }
+      })(),
+    };
+  }
+
+  async #publishThreadRunStarted(runId: string, threadId?: string, resourceId?: string): Promise<void> {
+    if (!threadId) return;
+    await this.pubsub.publish(AGENT_THREAD_STREAM_TOPIC(resourceId, threadId), {
+      type: 'run-started',
+      runId,
+      data: { runId, threadId, resourceId },
+    });
+  }
+
   /**
    * Stream a response from the agent using durable execution.
    */
@@ -497,7 +660,10 @@ export class DurableAgent<
     // 4. Wait for subscription to be ready, then execute workflow
     // This prevents race conditions where events are published before subscription
     ready
-      .then(() => this.executeWorkflow(runId, workflowInput))
+      .then(async () => {
+        await this.#publishThreadRunStarted(runId, threadId, resourceId);
+        await this.executeWorkflow(runId, workflowInput);
+      })
       .catch(error => {
         void this.emitError(runId, error);
       });

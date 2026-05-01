@@ -210,6 +210,19 @@ export class ExtendedRunRegistry extends RunRegistry {
   }
 
   /**
+   * Find the active run for a memory thread.
+   */
+  getRunIdByThread({ resourceId, threadId }: { resourceId?: string; threadId: string }): string | undefined {
+    for (const [runId, memoryInfo] of Array.from(this.#memoryInfo.entries()).reverse()) {
+      if (memoryInfo.threadId === threadId && memoryInfo.resourceId === resourceId) {
+        return runId;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * Override cleanup to also remove MessageList and memory info
    */
   override cleanup(runId: string): void {

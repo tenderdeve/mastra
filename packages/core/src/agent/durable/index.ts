@@ -77,8 +77,10 @@ export {
 export {
   DurableAgent,
   type DurableAgentConfig,
+  type DurableAgentSubscribeToThreadOptions,
   type DurableAgentStreamOptions,
   type DurableAgentStreamResult,
+  type DurableAgentThreadSubscription,
 } from './durable-agent';
 
 // EventedAgent class (extends DurableAgent with fire-and-forget execution)

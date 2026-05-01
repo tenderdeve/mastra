@@ -463,6 +463,141 @@ describe('DurableAgent memory integration', () => {
     cleanup();
   });
 
+  it('should subscribe to an active stream by thread id', async () => {
+    const mockModel = createTextStreamModel('Hello from thread');
+
+    const baseAgent = new Agent({
+      id: 'thread-subscription-agent',
+      name: 'Thread Subscription Agent',
+      instructions: 'Test',
+      model: mockModel as LanguageModelV2,
+    });
+
+    const durableAgent = createDurableAgent({ agent: baseAgent, pubsub });
+
+    const stream = await durableAgent.stream('Test', {
+      memory: {
+        thread: 'thread-to-subscribe',
+        resource: 'user-to-subscribe',
+      },
+    });
+
+    const subscription = await durableAgent.subscribeToThread({
+      threadId: 'thread-to-subscribe',
+      resourceId: 'user-to-subscribe',
+    });
+    const iterator = subscription.runs[Symbol.asyncIterator]();
+    const subscribedRun = await iterator.next();
+
+    expect(subscribedRun.value.runId).toBe(stream.runId);
+    await expect(subscribedRun.value.output.text).resolves.toBe('Hello from thread');
+
+    subscription.cleanup();
+    stream.cleanup();
+  });
+
+  it('should replay an active thread stream after events have already emitted', async () => {
+    const mockModel = createTextStreamModel('Hello from replay');
+
+    const baseAgent = new Agent({
+      id: 'thread-replay-subscription-agent',
+      name: 'Thread Replay Subscription Agent',
+      instructions: 'Test',
+      model: mockModel as LanguageModelV2,
+    });
+
+    const durableAgent = createDurableAgent({ agent: baseAgent, pubsub });
+
+    const stream = await durableAgent.stream('Test', {
+      memory: {
+        thread: 'thread-to-replay',
+        resource: 'user-to-replay',
+      },
+    });
+
+    await expect(stream.output.text).resolves.toBe('Hello from replay');
+
+    const subscription = await durableAgent.subscribeToThread({
+      threadId: 'thread-to-replay',
+      resourceId: 'user-to-replay',
+    });
+    const subscribedRun = await subscription.runs[Symbol.asyncIterator]().next();
+
+    expect(subscribedRun.value.runId).toBe(stream.runId);
+    await expect(subscribedRun.value.output.text).resolves.toBe('Hello from replay');
+
+    subscription.cleanup();
+    stream.cleanup();
+  });
+
+  it('should notify a thread subscriber when a future run starts', async () => {
+    const mockModel = createTextStreamModel('Hello from future run');
+
+    const baseAgent = new Agent({
+      id: 'future-thread-subscription-agent',
+      name: 'Future Thread Subscription Agent',
+      instructions: 'Test',
+      model: mockModel as LanguageModelV2,
+    });
+
+    const durableAgent = createDurableAgent({ agent: baseAgent, pubsub });
+    const subscription = await durableAgent.subscribeToThread({
+      threadId: 'future-thread',
+      resourceId: 'future-user',
+    });
+    const nextRun = subscription.runs[Symbol.asyncIterator]().next();
+
+    const stream = await durableAgent.stream('Test', {
+      memory: {
+        thread: 'future-thread',
+        resource: 'future-user',
+      },
+    });
+
+    const subscribedRun = await nextRun;
+    expect(subscribedRun.value.runId).toBe(stream.runId);
+    await expect(subscribedRun.value.output.text).resolves.toBe('Hello from future run');
+
+    subscription.cleanup();
+    stream.cleanup();
+  });
+
+  it('should notify a thread subscriber across multiple run ids', async () => {
+    const mockModel = createTextStreamModel('Hello from another run');
+
+    const baseAgent = new Agent({
+      id: 'multi-run-thread-subscription-agent',
+      name: 'Multi Run Thread Subscription Agent',
+      instructions: 'Test',
+      model: mockModel as LanguageModelV2,
+    });
+
+    const durableAgent = createDurableAgent({ agent: baseAgent, pubsub });
+    const subscription = await durableAgent.subscribeToThread({
+      threadId: 'multi-run-thread',
+      resourceId: 'multi-run-user',
+    });
+    const iterator = subscription.runs[Symbol.asyncIterator]();
+
+    const firstStream = await durableAgent.stream('First', {
+      memory: { thread: 'multi-run-thread', resource: 'multi-run-user' },
+    });
+    const firstRun = await iterator.next();
+    expect(firstRun.value.runId).toBe(firstStream.runId);
+
+    firstStream.cleanup();
+
+    const secondStream = await durableAgent.stream('Second', {
+      memory: { thread: 'multi-run-thread', resource: 'multi-run-user' },
+    });
+    const secondRun = await iterator.next();
+    expect(secondRun.value.runId).toBe(secondStream.runId);
+    expect(secondRun.value.runId).not.toBe(firstRun.value.runId);
+
+    subscription.cleanup();
+    secondStream.cleanup();
+  });
+
   it('should handle streaming without memory options', async () => {
     const mockModel = createTextStreamModel('Hello');
 

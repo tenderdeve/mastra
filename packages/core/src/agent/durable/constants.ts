@@ -16,6 +16,15 @@ export const RUN_REGISTRY_SYMBOL = Symbol('run_registry');
 export const AGENT_STREAM_TOPIC = (runId: string): string => `agent.stream.${runId}`;
 
 /**
+ * Generate the pubsub topic name for thread-level durable stream updates.
+ * @param resourceId - The resource identifier for memory scoping
+ * @param threadId - The thread identifier
+ * @returns The topic name for active run updates on a thread
+ */
+export const AGENT_THREAD_STREAM_TOPIC = (resourceId: string | undefined, threadId: string): string =>
+  `agent.thread-stream.${resourceId ?? ''}.${threadId}`;
+
+/**
  * Event type constants for agent stream events
  */
 export const AgentStreamEventTypes = {
