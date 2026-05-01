@@ -728,7 +728,7 @@ export class MastraTUI {
         }
         this.state.editor.setText('');
 
-        if (this.state.harness.isRunning()) {
+        if (this.state.harness.isRunning() && !(this.state.harness as any).canSendWhileRunning?.()) {
           this.queueFollowUpMessage(text);
           return;
         }
