@@ -1,4 +1,5 @@
 import type { Agent } from '../agent';
+import type { DurableAgentSignal, SendDurableAgentSignalOptions } from '../agent/durable/types';
 import type { ToolsInput, ToolsetsInput } from '../agent/types';
 import type { MastraBrowser } from '../browser/browser';
 import { Mastra } from '../mastra';
@@ -71,6 +72,14 @@ function addOptionalUsageField(
   if (value !== undefined) {
     usage[key] = (usage[key] ?? 0) + value;
   }
+}
+
+type SignalingAgent = Agent & {
+  sendSignal(signal: DurableAgentSignal, target: SendDurableAgentSignalOptions): { accepted: true; runId: string };
+};
+
+function isSignalingAgent(agent: Agent): agent is SignalingAgent {
+  return 'sendSignal' in agent && typeof agent.sendSignal === 'function';
 }
 
 /**
@@ -1452,11 +1461,31 @@ export class Harness<TState = {}> {
       const thread = await this.createThread();
       this.currentThreadId = thread.id;
     }
+    const threadId = this.currentThreadId;
+    const agent = this.getCurrentAgent();
+
+    if (this.isRunning()) {
+      const signal = { type: 'user-message', contents: content, metadata: files?.length ? { files } : undefined };
+      if (this.followingDurableRunId && this.config.durableStreams?.coordinator.sendSignal) {
+        const result = await this.config.durableStreams.coordinator.sendSignal({
+          resourceId: this.resourceId,
+          threadId,
+          runId: this.followingDurableRunId,
+          signal,
+        });
+        this.emit({ type: 'signal_sent', threadId, runId: result.runId, signalType: signal.type });
+        return;
+      }
+      if (this.currentRunId && isSignalingAgent(agent)) {
+        const result = agent.sendSignal(signal, { runId: this.currentRunId });
+        this.emit({ type: 'signal_sent', threadId, runId: result.runId, signalType: signal.type });
+        return;
+      }
+    }
 
     const operationId = ++this.currentOperationId;
     this.abortController = new AbortController();
     this.currentTraceId = null;
-    const agent = this.getCurrentAgent();
     this.emit({ type: 'agent_start' });
 
     try {
@@ -2410,6 +2439,13 @@ export class Harness<TState = {}> {
 
   isRunning(): boolean {
     return this.abortController !== null;
+  }
+
+  canSendWhileRunning(): boolean {
+    if (!this.abortController || !this.currentThreadId) return false;
+    const agent = this.getCurrentAgent();
+    if (isSignalingAgent(agent) && this.currentRunId) return true;
+    return Boolean(this.config.durableStreams?.coordinator.sendSignal && this.followingDurableRunId);
   }
 
   getCurrentRunId(): string | null {

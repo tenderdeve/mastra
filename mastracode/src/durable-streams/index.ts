@@ -80,4 +80,15 @@ export class UnixSocketDurableThreadCoordinator implements HarnessDurableThreadC
     return createRunEventStream({ client: this.client, runId: activeRun.runId, abortSignal: input.abortSignal });
   }
 
+  async sendSignal(input: {
+    resourceId: string;
+    threadId: string;
+    runId?: string;
+    signal: { type: string; contents: string; id?: string; metadata?: Record<string, unknown> };
+  }): Promise<{ accepted: true; runId: string }> {
+    await this.client.connect();
+    const runId = input.runId ?? (await this.client.getActiveRun({ resourceId: input.resourceId, threadId: input.threadId }))?.runId;
+    if (!runId) throw new Error('No active durable run found for signal target');
+    return this.client.sendSignal(input.signal, { runId });
+  }
 }

@@ -134,6 +134,9 @@ export type {
   AgentFinishEventData,
   AgentErrorEventData,
   AgentSuspendedEventData,
+  DurableAgentSignal,
+  DurableAgentSignalType,
+  SendDurableAgentSignalOptions,
   // Registry types
   RunRegistryEntry,
   DurableStepContext,

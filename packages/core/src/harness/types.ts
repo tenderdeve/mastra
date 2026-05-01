@@ -158,6 +158,12 @@ export interface HarnessDurableThreadCoordinator {
     threadId: string;
     abortSignal?: AbortSignal;
   }): Promise<HarnessDurableThreadObservation | undefined>;
+  sendSignal?(input: {
+    resourceId: string;
+    threadId: string;
+    runId?: string;
+    signal: { type: string; contents: string; id?: string; metadata?: Record<string, unknown> };
+  }): Promise<{ accepted: true; runId: string }> | { accepted: true; runId: string };
   abortThread?(input: { resourceId: string; threadId: string; runId?: string }): Promise<void> | void;
 }
 
@@ -733,6 +739,7 @@ export type HarnessEvent =
   | { type: 'state_changed'; state: Record<string, unknown>; changedKeys: string[] }
   | { type: 'agent_start' }
   | { type: 'agent_end'; reason?: 'complete' | 'aborted' | 'error' | 'suspended' }
+  | { type: 'signal_sent'; threadId: string; runId: string; signalType: string }
   | { type: 'message_start'; message: HarnessMessage }
   | { type: 'message_update'; message: HarnessMessage }
   | { type: 'message_end'; message: HarnessMessage }
