@@ -43,9 +43,10 @@ export function buildMessagesFromChunks({
   responseModelMetadata?: { metadata: Record<string, unknown> };
   tools?: ToolSet;
 }): MastraDBMessage[] {
-  // Parts are pushed in stream-start order. Text and reasoning spans push a real
-  // part on first encounter (text-start or first text-delta) and mutate it in place
-  // as deltas arrive. This preserves stream-start ordering without needing slots/nulls.
+  // Parts are pushed in first-delta order. Text and reasoning spans push a part
+  // on the first delta and mutate it in place as subsequent deltas arrive.
+  // *-start only stashes providerMetadata. This preserves content arrival
+  // ordering without needing slots, nulls, or separate push tracking (#15914).
   const parts: MastraMessagePart[] = [];
 
   // Collect tool results so we can match them to tool calls
