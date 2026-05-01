@@ -1216,7 +1216,7 @@ export function MastraRuntimeProvider({
             role: 'assistant',
             id: `error-${Date.now()}`,
             parts: [{ type: 'text', text: `${error}` }],
-            metadata: { status: 'error' },
+            metadata: { status: 'error', mode: 'stream' },
           } as MastraUIMessage,
         ]);
       } else {
