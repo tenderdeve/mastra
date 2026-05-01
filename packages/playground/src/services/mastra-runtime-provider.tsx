@@ -702,6 +702,12 @@ export function MastraRuntimeProvider({
       requestContextInstance.set('agentVersionId', agentVersionId);
     }
 
+    const effectiveMode: 'network' | 'generate' | 'stream' = chatWithNetwork
+      ? 'network'
+      : chatWithGenerate
+        ? 'generate'
+        : 'stream';
+
     try {
       if (isSupportedModel) {
         if (chatWithNetwork) {
@@ -1216,7 +1222,7 @@ export function MastraRuntimeProvider({
             role: 'assistant',
             id: `error-${Date.now()}`,
             parts: [{ type: 'text', text: `${error}` }],
-            metadata: { status: 'error', mode: 'stream' },
+            metadata: { status: 'error', mode: effectiveMode },
           } as MastraUIMessage,
         ]);
       } else {

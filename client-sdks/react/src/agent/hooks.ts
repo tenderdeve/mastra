@@ -79,7 +79,18 @@ export const useChat = ({
 
   useEffect(() => {
     const formattedMessages = resolveInitialMessages(initialMessages || []);
-    setMessages(formattedMessages);
+    setMessages(prev => {
+      // When the server refetches thread messages after a new thread is created,
+      // client-side error messages (not stored on the server) would be lost.
+      // Preserve them by appending any error messages whose IDs aren't in the
+      // incoming server data.  On a full thread switch the IDs won't overlap,
+      // but formattedMessages will contain the new thread's history so the old
+      // error messages are harmlessly absent from `prev` after the first reset.
+      const errorMessages = prev.filter(
+        m => m.metadata?.status === 'error' && !formattedMessages.some(fm => fm.id === m.id),
+      );
+      return errorMessages.length > 0 ? [...formattedMessages, ...errorMessages] : formattedMessages;
+    });
     _currentRunId.current = extractRunIdFromMessages(formattedMessages);
   }, [initialMessages]);
 
