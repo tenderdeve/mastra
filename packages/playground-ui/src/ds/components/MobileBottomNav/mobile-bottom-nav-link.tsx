@@ -20,6 +20,7 @@ export function MobileBottomNavLink({ link, isActive, LinkComponent: Link }: Mob
   return (
     <Link
       href={link.url}
+      aria-current={isActive ? 'page' : undefined}
       {...linkParams}
       className={cn(
         'flex flex-col items-center justify-center gap-0.5 px-1 py-1.5 min-w-0 flex-1',

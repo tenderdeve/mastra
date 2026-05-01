@@ -51,7 +51,10 @@ function TabLink({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 border-transparent text-neutral2 cursor-not-allowed opacity-50">
+          <span
+            aria-label={label}
+            className="flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 border-transparent text-neutral2 cursor-not-allowed opacity-50"
+          >
             <Icon size="sm">{icon}</Icon>
             <Txt variant="ui-sm" className="text-inherit hidden sm:inline">
               {label}
@@ -66,6 +69,7 @@ function TabLink({
   return (
     <button
       type="button"
+      aria-label={label}
       onClick={() => navigate(href)}
       className={cn(
         'flex items-center gap-1.5 px-3 py-2.5 text-sm transition-colors border-b-2',

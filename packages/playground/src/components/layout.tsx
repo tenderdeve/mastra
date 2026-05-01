@@ -25,7 +25,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         <div
           className={cn('bg-transparent overflow-y-auto', {
             'h-[calc(100%-1.5rem)]': shouldHideSidebar,
-            'pb-14 md:pb-0': shouldShowSidebar,
+            'pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0': shouldShowSidebar,
           })}
         >
           <AuthRequired>
