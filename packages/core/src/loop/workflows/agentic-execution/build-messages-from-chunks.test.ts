@@ -268,11 +268,6 @@ describe('buildMessagesFromChunks', () => {
   // ── step-start insertion ────────────────────────────────────
 
   it('should insert step-start between tool-invocation and text', () => {
-    // A single streaming request ends with a tool-call invocation.
-    // The agentic loop executes the tool separately.
-    // The next text span comes from a subsequent request.
-    // buildMessagesFromChunks processes chunks from one request at a time,
-    // but step-start insertion applies to the assembled parts array.
     const result = parts([
       { type: 'text-start', payload: { id: 't1' } },
       { type: 'text-delta', payload: { id: 't1', text: 'Before tool' } },
@@ -280,6 +275,10 @@ describe('buildMessagesFromChunks', () => {
       {
         type: 'tool-call',
         payload: { toolCallId: 'tc1', toolName: 'myTool', args: {} },
+      },
+      {
+        type: 'tool-result',
+        payload: { toolCallId: 'tc1', toolName: 'myTool', args: {}, result: 'ok' },
       },
       { type: 'text-start', payload: { id: 't2' } },
       { type: 'text-delta', payload: { id: 't2', text: 'After tool' } },
