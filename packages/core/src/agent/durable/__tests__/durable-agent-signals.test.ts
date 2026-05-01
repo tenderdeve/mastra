@@ -165,8 +165,10 @@ describe('DurableAgent signals', () => {
     const durableAgent = createDurableAgent({ agent, pubsub: new EventEmitterPubSub(), cleanupTimeoutMs: 0 });
 
     const result = await durableAgent.stream('start', { memory: { resource: 'user-1', thread: 'thread-1' } });
+    const streamChunks: any[] = [];
     const drainPromise = (async () => {
-      for await (const _chunk of result.fullStream as AsyncIterable<any>) {
+      for await (const chunk of result.fullStream as AsyncIterable<any>) {
+        streamChunks.push(chunk);
       }
     })();
 

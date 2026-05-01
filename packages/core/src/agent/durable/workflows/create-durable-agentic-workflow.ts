@@ -10,8 +10,8 @@ import { PUBSUB_SYMBOL } from '../../../workflows/constants';
 import { MessageList } from '../../message-list';
 import { DurableStepIds, DurableAgentDefaults } from '../constants';
 import { globalRunRegistry } from '../run-registry';
-import { signalToMessage } from '../signal-message';
-import { emitFinishEvent } from '../stream-adapter';
+import { signalToMessage, signalToUserMessageStreamChunk } from '../signal-message';
+import { emitChunkEvent, emitFinishEvent } from '../stream-adapter';
 import type {
   DurableToolCallInput,
   DurableAgenticWorkflowInput,
@@ -189,6 +189,15 @@ export function createDurableAgenticWorkflow(options?: DurableAgenticWorkflowOpt
         }
 
         if (pendingSignals.length > 0) {
+          if (registryEntry?.pubsub) {
+            for (const signal of pendingSignals) {
+              const chunk = signalToUserMessageStreamChunk(signal);
+              if (chunk) {
+                await emitChunkEvent(registryEntry.pubsub, initData.runId, chunk as any);
+              }
+            }
+          }
+
           const messageList = new MessageList();
           messageList.deserialize(baseUpdate.messageListState);
           messageList.add(pendingSignals.map(signalToMessage), 'input');

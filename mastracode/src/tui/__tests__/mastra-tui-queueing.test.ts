@@ -25,8 +25,8 @@ import { handleAgentEnd } from '../handlers/agent-lifecycle.js';
 import type { EventHandlerContext } from '../handlers/types.js';
 import { MastraTUI, consumePendingImages } from '../mastra-tui.js';
 import { setupKeyboardShortcuts } from '../setup.js';
-import { getMastraCodeUsername } from '../username.js';
 import type { TUIState } from '../state.js';
+import { getMastraCodeUsername } from '../username.js';
 
 function createQueueState(overrides: Partial<TUIState> = {}): TUIState {
   return {
