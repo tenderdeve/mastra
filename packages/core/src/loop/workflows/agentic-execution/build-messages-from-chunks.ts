@@ -66,22 +66,18 @@ export function buildMessagesFromChunks({
     }
   }
 
-  // Live references to text parts, keyed by text ID.
-  // `pushed` tracks whether the part has been added to the parts array yet.
-  // Parts are pushed on first delta (not on text-start) so position reflects
+  // Live references to text/reasoning parts, keyed by span ID.
+  // Parts are pushed on first delta (not on *-start) so position reflects
   // when content actually started arriving, not protocol handshake order (#15914).
-  const textRefs = new Map<
-    string,
-    { type: 'text'; text: string; providerMetadata?: Record<string, any>; pushed: boolean }
-  >();
-
-  // Live references to reasoning parts, keyed by reasoning ID.
-  // Like text, non-redacted reasoning is pushed on first delta.
-  // Redacted reasoning is pushed on reasoning-start since it never receives deltas.
+  // Redacted reasoning is the exception — pushed on reasoning-start since it never receives deltas.
+  const textRefs = new Map<string, { type: 'text'; text: string; providerMetadata?: Record<string, any> }>();
   const reasoningRefs = new Map<
     string,
-    { type: 'reasoning'; reasoning: string; details: any[]; providerMetadata?: Record<string, any>; pushed: boolean }
+    { type: 'reasoning'; reasoning: string; details: any[]; providerMetadata?: Record<string, any> }
   >();
+
+  // Tracks which span IDs have been pushed to the parts array
+  const pushed = new Set<string>();
 
   for (const chunk of chunks) {
     switch (chunk.type) {
@@ -91,9 +87,7 @@ export function buildMessagesFromChunks({
         if (!textRefs.has(p.id)) {
           // Don't push to parts yet — wait for first delta so position
           // reflects when content actually started arriving (#15914).
-          // Store a detached ref that text-delta will push on first content.
-          const part = { type: 'text' as const, text: '', providerMetadata: p.providerMetadata, pushed: false };
-          textRefs.set(p.id, part);
+          textRefs.set(p.id, { type: 'text' as const, text: '', providerMetadata: p.providerMetadata });
         } else if (p.providerMetadata) {
           textRefs.get(p.id)!.providerMetadata = p.providerMetadata;
         }
@@ -104,13 +98,13 @@ export function buildMessagesFromChunks({
         let ref = textRefs.get(p.id);
         // Auto-create part if delta arrives without a matching text-start
         if (!ref) {
-          ref = { type: 'text' as const, text: '', providerMetadata: p.providerMetadata, pushed: false };
+          ref = { type: 'text' as const, text: '', providerMetadata: p.providerMetadata };
           textRefs.set(p.id, ref);
         }
         // Push to parts on first delta — this is where the part's position is determined
-        if (!ref.pushed) {
+        if (!pushed.has(p.id)) {
           parts.push(ref as unknown as MastraMessagePart);
-          ref.pushed = true;
+          pushed.add(p.id);
         }
         ref.text += p.text;
         if (p.providerMetadata) {
@@ -145,12 +139,12 @@ export function buildMessagesFromChunks({
             reasoning: '',
             details: isRedacted ? [{ type: 'redacted', data: '' }] : [{ type: 'text', text: '' }],
             providerMetadata: p.providerMetadata,
-            // Redacted reasoning never receives deltas, so push immediately.
-            // Non-redacted waits for first delta to determine position.
-            pushed: isRedacted,
           };
+          // Redacted reasoning never receives deltas, so push immediately.
+          // Non-redacted waits for first delta to determine position.
           if (isRedacted) {
             parts.push(part as unknown as MastraMessagePart);
+            pushed.add(p.id);
           }
           reasoningRefs.set(p.id, part);
         } else {
@@ -174,14 +168,13 @@ export function buildMessagesFromChunks({
             reasoning: '',
             details: [{ type: 'text', text: '' }],
             providerMetadata: p.providerMetadata,
-            pushed: false,
           };
           reasoningRefs.set(p.id, ref);
         }
         // Push to parts on first delta — position reflects content arrival order
-        if (!ref.pushed) {
+        if (!pushed.has(p.id)) {
           parts.push(ref as unknown as MastraMessagePart);
-          ref.pushed = true;
+          pushed.add(p.id);
         }
         // Append to the text detail
         const detail = ref.details[0];
@@ -203,9 +196,9 @@ export function buildMessagesFromChunks({
           // If no delta arrived (empty reasoning, not redacted), push now.
           // Always emit reasoning parts, even if empty — OpenAI requires item_reference
           // for tool calls that follow reasoning. See: https://github.com/mastra-ai/mastra/issues/9005
-          if (!ref.pushed) {
+          if (!pushed.has(p.id)) {
             parts.push(ref as unknown as MastraMessagePart);
-            ref.pushed = true;
+            pushed.add(p.id);
           }
           reasoningRefs.delete(p.id);
         }
@@ -301,9 +294,9 @@ export function buildMessagesFromChunks({
   }
 
   // Finalize any unclosed reasoning spans (stream ended without reasoning-end)
-  for (const [, ref] of reasoningRefs) {
+  for (const [id, ref] of reasoningRefs) {
     // If no delta arrived, push now (always emit reasoning, even if empty — #9005)
-    if (!ref.pushed) {
+    if (!pushed.has(id)) {
       parts.push(ref as unknown as MastraMessagePart);
     }
   }
@@ -317,11 +310,7 @@ export function buildMessagesFromChunks({
   }
 
   // Filter out empty text parts (spans that received deltas but ended up empty)
-  // and clean the `pushed` flag from all parts before output
   const filteredParts = parts.filter(p => !(p.type === 'text' && (p as any).text === ''));
-  for (const p of filteredParts) {
-    delete (p as any).pushed;
-  }
 
   // Insert step-start markers between tool-invocation and subsequent text parts.
   // This matches the convention used by MessageMerger.pushNewPart when merging messages,
