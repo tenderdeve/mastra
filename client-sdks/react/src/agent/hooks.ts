@@ -265,8 +265,11 @@ export const useChat = ({
     _onChunk.current = onChunk;
     _currentRunId.current = runId;
 
+    let receivedContent = false;
+
     await response.processDataStream({
       onChunk: async (chunk: ChunkType) => {
+        receivedContent = true;
         // Without this, React might batch intermediate chunks which would break the message reconstruction over time
 
         setMessages(prev => toUIMessage({ chunk, conversation: prev, metadata: { mode: 'stream' } }));
@@ -274,6 +277,51 @@ export const useChat = ({
         void onChunk?.(chunk);
       },
     });
+
+    // When a server-side error occurs (e.g. missing API key), the error may be
+    // swallowed by the transport layer — the SSE connection closes before the
+    // error chunk is written.  Detect this by checking for an empty stream or
+    // an empty assistant placeholder left behind by a 'start' chunk.
+    if (!receivedContent) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          role: 'assistant' as const,
+          content: 'An error occurred while processing your request. Please check the server logs for details.',
+          parts: [
+            {
+              type: 'text' as const,
+              text: 'An error occurred while processing your request. Please check the server logs for details.',
+            },
+          ],
+          metadata: { status: 'error' as const, mode: 'stream' as const },
+          createdAt: new Date(),
+        },
+      ]);
+    } else {
+      // If content was received but the last assistant message is still empty
+      // (start chunk arrived, then stream ended before any text/error), fill it
+      // with a fallback error.
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === 'assistant' && last.parts.length === 0) {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...last,
+            parts: [
+              {
+                type: 'text' as const,
+                text: 'An error occurred while processing your request. Please check the server logs for details.',
+              },
+            ],
+            metadata: { ...(last.metadata ?? { mode: 'stream' as const }), status: 'error' as const },
+          };
+          return updated;
+        }
+        return prev;
+      });
+    }
 
     // Only clear the ref if we're still the active stream — a later stream()
     // call may have already taken over and aborted us.
