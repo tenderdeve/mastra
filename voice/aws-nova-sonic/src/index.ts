@@ -244,50 +244,88 @@ export class NovaSonicVoice extends MastraVoice<
     this.streamRestartAttempted = false;
 
     try {
-      this.log('Getting AWS credentials...');
-      // Get AWS credentials
-      const credentials = await getAwsCredentials(this.credentials, this.debug);
-      
-      if (!credentials) {
-        throw new NovaSonicError(
-          ErrorCode.CREDENTIALS_MISSING,
-          'AWS credentials are required. Please configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables or provide credentials in the config.',
-        );
+      await this.createBedrockClient();
+      const asyncIterable = this.createEventQueue();
+      this.enqueueInitialSessionEvents();
+      await this.sendInitialConnectCommand(asyncIterable);
+
+      // Start processing the stream (fire and forget)
+      this.processStream().catch((error) => {
+        this.log('Error in stream processing:', error);
+        this.emit('error', {
+          message: error instanceof Error ? error.message : 'Stream processing error',
+          code: 'STREAM_PROCESSING_ERROR',
+          details: error,
+        });
+      });
+
+      this.log('Connected to AWS Bedrock Nova 2 Sonic');
+    } catch (error) {
+      this.state = 'disconnected';
+      if (this.client) {
+        if (typeof this.client.destroy === 'function') {
+          this.client.destroy();
+        }
+        this.client = undefined;
       }
+      this.log('Connection error:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error during connection';
+      throw new NovaSonicError(
+        ErrorCode.CONNECTION_FAILED,
+        `Failed to connect to AWS Bedrock: ${errorMessage}`,
+        error,
+      );
+    }
+  }
 
-      // Log credentials info (masked for security)
-      this.log('Credentials retrieved:', {
-        hasAccessKeyId: !!credentials.accessKeyId,
-        hasSecretAccessKey: !!credentials.secretAccessKey,
-        hasSessionToken: !!credentials.sessionToken,
-        accessKeyIdPrefix: credentials.accessKeyId ? `${credentials.accessKeyId.substring(0, 6)}...` : 'missing',
-        expiration: credentials.expiration ? credentials.expiration.toISOString() : 'no expiration',
-      });
+  /**
+   * Resolve credentials and initialize the Bedrock Runtime client over HTTP/2.
+   */
+  private async createBedrockClient(): Promise<void> {
+    this.log('Getting AWS credentials...');
+    const credentials = await getAwsCredentials(this.credentials, this.debug);
 
-      this.log(`Initializing Bedrock Runtime client for region: ${this.region}, model: ${this.model}`);
-      this.log(`[DEBUG] Client config:`, {
-        region: this.region,
-        model: this.model,
-        hasCredentials: !!credentials,
-        hasRequestHandler: true,
-      });
-      
-      // Use NodeHttp2Handler for bidirectional streaming
-      const nodeHttp2Handler = new NodeHttp2Handler({
-        requestTimeout: 300000, // 5 minutes
-        sessionTimeout: 300000, // 5 minutes
-        disableConcurrentStreams: false,
-        maxConcurrentStreams: 20,
-      });
-      
-      // Initialize Bedrock Runtime client with HTTP/2 handler
-      this.client = new BedrockRuntimeClient({
-        region: this.region,
-        credentials,
-        requestHandler: nodeHttp2Handler,
-      });
+    if (!credentials) {
+      throw new NovaSonicError(
+        ErrorCode.CREDENTIALS_MISSING,
+        'AWS credentials are required. Please configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables or provide credentials in the config.',
+      );
+    }
 
-      this.log('Creating bidirectional stream command...');
+    // Log credentials info (masked for security)
+    this.log('Credentials retrieved:', {
+      hasAccessKeyId: !!credentials.accessKeyId,
+      hasSecretAccessKey: !!credentials.secretAccessKey,
+      hasSessionToken: !!credentials.sessionToken,
+      accessKeyIdPrefix: credentials.accessKeyId ? `${credentials.accessKeyId.substring(0, 6)}...` : 'missing',
+      expiration: credentials.expiration ? credentials.expiration.toISOString() : 'no expiration',
+    });
+
+    this.log(`Initializing Bedrock Runtime client for region: ${this.region}, model: ${this.model}`);
+
+    // Use NodeHttp2Handler for bidirectional streaming
+    const nodeHttp2Handler = new NodeHttp2Handler({
+      requestTimeout: 300000, // 5 minutes
+      sessionTimeout: 300000, // 5 minutes
+      disableConcurrentStreams: false,
+      maxConcurrentStreams: 20,
+    });
+
+    this.client = new BedrockRuntimeClient({
+      region: this.region,
+      credentials,
+      requestHandler: nodeHttp2Handler,
+    });
+  }
+
+  /**
+   * Build the async-iterable event queue used as the request body for the
+   * bidirectional stream. Returns the iterable and wires up internal queue
+   * helpers (_eventQueue, _signalQueue, _closeSignal) used by sendClientEvent.
+   */
+  private createEventQueue(): AsyncIterable<any> {
+    this.log('Creating bidirectional stream command...');
       
       // Use a queue to store events and a signal to wake up the iterator
       // The iterator waits on the signal when queue is empty, allowing SDK to establish connection
@@ -460,19 +498,39 @@ export class NovaSonicVoice extends MastraVoice<
         }
       };
       
-      // Store the queue and signal function for use in sendClientEvent
-      this._eventQueue = eventQueue;
-      this._signalQueue = signalQueue;
-      this._closeSignal = () => { closeSignal = true; signalQueue(); };
-      
-      // CRITICAL: Pre-populate queue with sessionStart and promptStart events BEFORE calling send()
-      // AWS requires both sessionStart and promptStart in the initial connection sequence
-      // setupSessionAndPromptStart queues both events
-      this.log('Pre-populating queue with sessionStart and promptStart events...');
-      
-      // Generate promptName for this session
-      const promptName = randomUUID();
-      this._promptName = promptName;
+    // Store the queue and signal function for use in sendClientEvent
+    this._eventQueue = eventQueue;
+    this._signalQueue = signalQueue;
+    this._closeSignal = () => { closeSignal = true; signalQueue(); };
+
+    // Reference streamError to keep it observable for future error propagation
+    void streamError;
+
+    return asyncIterable;
+  }
+
+  /**
+   * Pre-populate the event queue with the AWS Nova Sonic connection
+   * handshake events: sessionStart, promptStart, then a SYSTEM text content
+   * block carrying the configured instructions. AUDIO contentStart is NOT
+   * sent here; it is deferred to the first send() call.
+   */
+  private enqueueInitialSessionEvents(): void {
+    const eventQueue = this._eventQueue;
+    if (!eventQueue) {
+      throw new NovaSonicError(
+        ErrorCode.CONNECTION_FAILED,
+        'Event queue must be initialized before enqueueing session events',
+      );
+    }
+
+    // CRITICAL: Pre-populate queue with sessionStart and promptStart events BEFORE calling send()
+    // AWS requires both sessionStart and promptStart in the initial connection sequence
+    this.log('Pre-populating queue with sessionStart and promptStart events...');
+
+    // Generate promptName for this session
+    const promptName = randomUUID();
+    this._promptName = promptName;
       
       // 1. Session start event
       // Build sessionStart event with all available parameters from sessionConfig
@@ -661,109 +719,72 @@ export class NovaSonicVoice extends MastraVoice<
         },
       });
       
-      // 4. Do NOT send AUDIO contentStart during connection
-      // AUDIO contentStart should only be sent when audio streaming actually starts (via send() method)
-      // The audioContentName will be set when send() is first called
-      // This prevents AWS from waiting for audio bytes during connection
-      this.audioContentStarted = false;
-      
-      this.log(`Queue pre-populated with ${eventQueue.length} event(s)`);
-      
-      // According to AWS documentation, the chunk in the request body is OPTIONAL
-      // However, AWS SDK v3 requires a body parameter
-      // The async iterable above uses a queue-based approach that doesn't block
-      // on an empty stream, allowing the connection to establish
-      // According to AWS docs, body is optional for bidirectional streaming
-      // But SDK requires it - we provide an async iterable that yields when data is available
-      const command = new InvokeModelWithBidirectionalStreamCommand({
-        modelId: this.model,
-        body: asyncIterable as any, // Type assertion needed as SDK types may be strict
-      });
-      
-      try {
-        // The send() call should return immediately with the response stream
-        // If it hangs, it means the async iterable is blocking
-        const sendStartTime = Date.now();
+    // 4. Do NOT send AUDIO contentStart during connection
+    // AUDIO contentStart should only be sent when audio streaming actually starts (via send() method)
+    // The audioContentName will be set when send() is first called
+    // This prevents AWS from waiting for audio bytes during connection
+    this.audioContentStarted = false;
 
-        // Use AbortController to cancel the underlying SDK request on timeout,
-        // preventing leaked HTTP/2 connections if the send hangs.
-        const abortController = new AbortController();
-        const timeoutId = setTimeout(() => {
-          this.log('[DEBUG] client.send() timeout after 5 seconds - aborting request');
-          abortController.abort();
-        }, 5000);
+    this.log(`Queue pre-populated with ${eventQueue.length} event(s)`);
+  }
 
-        let response;
-        try {
-          response = await this.client.send(command, { abortSignal: abortController.signal });
-        } catch (error) {
-          const sendDuration = Date.now() - sendStartTime;
-          if (abortController.signal.aborted) {
-            this.log(`[DEBUG] client.send() aborted after ${sendDuration}ms`);
-            // Clean up: signal the async iterable to close and tear down client
-            closeSignal = true;
-            signalQueue();
-            this.client.destroy();
-            throw new Error('client.send() timeout');
-          }
-          this.log(`[DEBUG] client.send() error after ${sendDuration}ms:`, error);
-          throw error;
-        } finally {
-          clearTimeout(timeoutId);
-        }
-
-        const sendDuration = Date.now() - sendStartTime;
-        this.log(`[DEBUG] client.send() completed in ${sendDuration}ms`);
-        this.log('Received response from AWS Bedrock');
-
-        // The response contains the stream itself
-        this.stream = response.body;
-        this.log(`[DEBUG] Response stream type: ${typeof this.stream}`);
-        this.log(`[DEBUG] Response stream is async iterable: ${this.stream && typeof this.stream[Symbol.asyncIterator] === 'function'}`);
-        this.state = 'connected';
-        this.log(`[STATE] State set to 'connected' at line 566`);
-      } catch (error) {
-        this.log('Error during send():', error);
-        this.log(`[DEBUG] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
-        this.log(`[DEBUG] Error message: ${error instanceof Error ? error.message : String(error)}`);
-        if (error instanceof Error && error.stack) {
-          this.log(`[DEBUG] Error stack: ${error.stack}`);
-        }
-        throw error;
-      }
-
-      // Start processing the stream (fire and forget)
-      this.processStream().catch((error) => {
-        this.log('Error in stream processing:', error);
-        this.emit('error', {
-          message: error instanceof Error ? error.message : 'Stream processing error',
-          code: 'STREAM_PROCESSING_ERROR',
-          details: error,
-        });
-      });
-
-      // Note: All initial events (sessionStart, promptStart, systemPrompt, audioStart) 
-      // were already added to queue before send() was called
-      // This ensures the SDK can establish the connection immediately and AWS is ready
-      // for audio input right away, reducing initial latency
-      this.log('Connected to AWS Bedrock Nova 2 Sonic');
-    } catch (error) {
-      this.state = 'disconnected';
-      if (this.client) {
-        if (typeof this.client.destroy === 'function') {
-          this.client.destroy();
-        }
-        this.client = undefined;
-      }
-      this.log('Connection error:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error during connection';
+  /**
+   * Issue the InvokeModelWithBidirectionalStreamCommand to AWS Bedrock with
+   * a 5-second abort timeout that tears down the client on hang to avoid
+   * leaked HTTP/2 sessions. On success the response stream is stored and the
+   * voice transitions to 'connected'.
+   */
+  private async sendInitialConnectCommand(asyncIterable: AsyncIterable<any>): Promise<void> {
+    if (!this.client) {
       throw new NovaSonicError(
         ErrorCode.CONNECTION_FAILED,
-        `Failed to connect to AWS Bedrock: ${errorMessage}`,
-        error,
+        'Bedrock client must be created before sending the initial command',
       );
     }
+
+    // According to AWS docs, body is optional for bidirectional streaming, but
+    // the SDK requires it - we provide an async iterable that yields when data is available.
+    const command = new InvokeModelWithBidirectionalStreamCommand({
+      modelId: this.model,
+      body: asyncIterable as any, // Type assertion needed as SDK types may be strict
+    });
+
+    const sendStartTime = Date.now();
+
+    // Use AbortController to cancel the underlying SDK request on timeout,
+    // preventing leaked HTTP/2 connections if the send hangs.
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      this.log('[DEBUG] client.send() timeout after 5 seconds - aborting request');
+      abortController.abort();
+    }, 5000);
+
+    let response;
+    try {
+      response = await this.client.send(command, { abortSignal: abortController.signal });
+    } catch (error) {
+      const sendDuration = Date.now() - sendStartTime;
+      if (abortController.signal.aborted) {
+        this.log(`[DEBUG] client.send() aborted after ${sendDuration}ms`);
+        // Clean up: signal the async iterable to close and tear down client
+        this._closeSignal?.();
+        this.client.destroy();
+        throw new Error('client.send() timeout');
+      }
+      this.log(`[DEBUG] client.send() error after ${sendDuration}ms:`, error);
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    const sendDuration = Date.now() - sendStartTime;
+    this.log(`[DEBUG] client.send() completed in ${sendDuration}ms`);
+    this.log('Received response from AWS Bedrock');
+
+    this.stream = response.body;
+    this.log(`[DEBUG] Response stream is async iterable: ${this.stream && typeof this.stream[Symbol.asyncIterator] === 'function'}`);
+    this.state = 'connected';
+    this.log(`[STATE] State set to 'connected'`);
   }
 
   /**
@@ -1028,142 +1049,189 @@ export class NovaSonicVoice extends MastraVoice<
       this.log('Received event, keys:', Object.keys(event).join(', '));
     }
 
-    // Handle content start
-    // According to AWS docs: contentStart defines content type and format
-    // It appears before each content block (ASR, tool use, text, audio)
     if (event.contentStart) {
-      const role = event.contentStart.role?.toLowerCase() as 'assistant' | 'user' | undefined;
-      // Type may not be in the type definition but exists in actual AWS responses
-      const contentType = (event.contentStart as any).type;
-      
-      this.log(`[Event] contentStart: type=${contentType || 'unknown'}, role=${role}`);
-      
-      // Emit contentStart event for clients
-      this.emit('contentStart', event.contentStart);
-      
-      // Track generationStage for the current text content block.
-      // Nova Sonic sends SPECULATIVE (preview) then FINAL (actual transcript) for assistant text,
-      // and FINAL for user ASR. This stage is included in 'writing' events so the client can
-      // distinguish them and avoid showing duplicate bubbles.
-      if (contentType === 'TEXT' && event.contentStart.additionalModelFields) {
-        try {
-          const additionalFields = JSON.parse(event.contentStart.additionalModelFields);
-          this.currentTextGenerationStage = additionalFields.generationStage;
-          this.log(`[Event] Text content generationStage: ${this.currentTextGenerationStage}`);
-        } catch {
-          this.currentTextGenerationStage = undefined;
-        }
-      } else if (contentType === 'TEXT') {
+      this.handleContentStart(event.contentStart);
+    }
+
+    if (event.textOutput) {
+      this.handleTextOutput(event.textOutput);
+    }
+
+    if (event.audioOutput?.content) {
+      this.handleAudioOutput(event.audioOutput);
+    }
+
+    if (event.toolUse) {
+      this.handleToolUse(event.toolUse);
+    }
+
+    if (event.contentEnd) {
+      this.handleContentEnd(event.contentEnd);
+    }
+
+    if (event.completionEnd) {
+      this.handleCompletionEnd(event.completionEnd);
+    }
+
+    if (event.error) {
+      this.emit('error', {
+        message: event.error.message || 'Unknown error',
+        code: event.error.code || 'UNKNOWN_ERROR',
+        details: event.error,
+      });
+    }
+  }
+
+  /**
+   * Handle a contentStart event. Tracks generationStage for text content
+   * blocks so the corresponding 'writing' events can be tagged
+   * SPECULATIVE/FINAL for the client.
+   */
+  private handleContentStart(contentStart: NonNullable<NovaSonicServerEvent['contentStart']>): void {
+    const role = contentStart.role?.toLowerCase() as 'assistant' | 'user' | undefined;
+    // Type may not be in the type definition but exists in actual AWS responses
+    const contentType = (contentStart as any).type;
+
+    this.log(`[Event] contentStart: type=${contentType || 'unknown'}, role=${role}`);
+
+    this.emit('contentStart', contentStart);
+
+    // Track generationStage for the current text content block.
+    // Nova Sonic sends SPECULATIVE (preview) then FINAL (actual transcript) for assistant text,
+    // and FINAL for user ASR. This stage is included in 'writing' events so the client can
+    // distinguish them and avoid showing duplicate bubbles.
+    if (contentType === 'TEXT' && contentStart.additionalModelFields) {
+      try {
+        const additionalFields = JSON.parse(contentStart.additionalModelFields);
+        this.currentTextGenerationStage = additionalFields.generationStage;
+        this.log(`[Event] Text content generationStage: ${this.currentTextGenerationStage}`);
+      } catch {
         this.currentTextGenerationStage = undefined;
       }
+    } else if (contentType === 'TEXT') {
+      this.currentTextGenerationStage = undefined;
     }
+  }
 
-    // Handle text output
-    if (event.textOutput) {
-      this.log(`[Event] ========================================`);
-      this.log(`[Event] ✓✓✓ textOutput event received!`);
-      this.log(`[Event] textOutput object: ${JSON.stringify(event.textOutput).substring(0, 300)}`);
-      
-      const text = event.textOutput.content || '';
-      const role = (event.textOutput.role?.toLowerCase() as 'assistant' | 'user') || 'assistant';
+  /**
+   * Handle a textOutput event. Detects interruption (barge-in) markers in
+   * the payload, otherwise emits a 'writing' event with the text and
+   * current generationStage.
+   */
+  private handleTextOutput(textOutput: NonNullable<NovaSonicServerEvent['textOutput']>): void {
+    const text = textOutput.content || '';
+    const role = (textOutput.role?.toLowerCase() as 'assistant' | 'user') || 'assistant';
 
-      this.log(`[Event] Text output: role=${role}, text length=${text.length}`);
+    this.log(`[Event] textOutput received: role=${role}, text length=${text.length}`);
 
-      // Check for barge-in (interruption)
-      let isInterrupted = false;
-      try {
-        const parsed = JSON.parse(text);
-        if (parsed && parsed.interrupted === true) {
-          isInterrupted = true;
-        }
-      } catch {
-        // Not valid JSON — fall back to substring check
-        if (/interrupted/i.test(text)) {
-          isInterrupted = true;
-        }
+    // Check for barge-in (interruption)
+    let isInterrupted = false;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.interrupted === true) {
+        isInterrupted = true;
       }
-      if (isInterrupted) {
-        this.log(`[Event] Interrupt detected, emitting interrupt event`);
-        this.emit('interrupt', { type: 'user', timestamp: Date.now() });
-      } else {
-        // Emit immediately to reduce latency.
-        // Include generationStage so the client can handle SPECULATIVE vs FINAL:
-        // - SPECULATIVE = preview of planned speech (arrives first)
-        // - FINAL = transcript of what was actually spoken (arrives after audio)
-        const listenerCount = this.events['writing']?.length ?? 0;
-        const generationStage = this.currentTextGenerationStage;
-        this.log(`[Event] ✓✓✓ Emitting 'writing' event: role=${role}, generationStage=${generationStage}, text length=${text.length}, listeners=${listenerCount}`);
-        this.emit('writing', { text, role, generationStage });
-        this.log(`[Event] ✓✓✓ 'writing' event emitted, listeners count: ${this.events['writing']?.length ?? 0}`);
-        this.log(`[Event] ========================================`);
+    } catch {
+      // Not valid JSON — fall back to substring check
+      if (/interrupted/i.test(text)) {
+        isInterrupted = true;
       }
     }
 
-    // Handle audio output
-    if (event.audioOutput?.content) {
-      try {
-        const audioBytes = Buffer.from(event.audioOutput.content, 'base64');
-
-        this.log(`[Event] Audio output: ${audioBytes.length} bytes`);
-
-        // Mark that we're receiving assistant audio output
-        this.isReceivingAssistantAudio = true;
-
-        // Produce Int16Array view matching the declared type (LPCM 16-bit samples)
-        const audioData = new Int16Array(audioBytes.buffer, audioBytes.byteOffset, audioBytes.byteLength / 2);
-
-        // Emit immediately to reduce latency
-        this.emit('speaking', {
-          audio: event.audioOutput.content, // Base64 string (for SSE/JSON)
-          audioData, // Int16Array view of decoded audio
-          response_id: this.currentResponseId
-        });
-
-        // Also emit to speaker stream
-        if (this.currentResponseId) {
-          const stream = this.speakerStreams.get(this.currentResponseId);
-          if (stream) {
-            stream.write(audioBytes);
-          }
-        }
-      } catch (error) {
-        this.log('[Event] Error decoding audio:', error);
-        this.emit('error', {
-          message: 'Failed to decode audio',
-          code: 'AUDIO_DECODE_ERROR',
-          details: error,
-        });
-      }
+    if (isInterrupted) {
+      this.log(`[Event] Interrupt detected, emitting interrupt event`);
+      this.emit('interrupt', { type: 'user', timestamp: Date.now() });
+      return;
     }
 
-    // Handle tool use
-    if (event.toolUse) {
-      const toolUseId = event.toolUse.toolUseId || '';
-      const toolName = event.toolUse.toolName || '';
-      const toolInput = event.toolUse.input || {};
+    // Emit immediately to reduce latency.
+    // Include generationStage so the client can handle SPECULATIVE vs FINAL:
+    // - SPECULATIVE = preview of planned speech (arrives first)
+    // - FINAL = transcript of what was actually spoken (arrives after audio)
+    const generationStage = this.currentTextGenerationStage;
+    this.log(`[Event] Emitting 'writing': role=${role}, generationStage=${generationStage}, length=${text.length}`);
+    this.emit('writing', { text, role, generationStage });
+  }
 
-      this.emit('toolCall', {
-        name: toolName,
-        args: toolInput,
-        id: toolUseId,
+  /**
+   * Handle an audioOutput event. Decodes the base64 LPCM payload, emits
+   * 'speaking' with both the base64 string and an Int16Array view, and
+   * forwards bytes to any active speaker stream.
+   */
+  private handleAudioOutput(audioOutput: NonNullable<NovaSonicServerEvent['audioOutput']>): void {
+    try {
+      const content = audioOutput.content as string;
+      const audioBytes = Buffer.from(content, 'base64');
+
+      this.log(`[Event] Audio output: ${audioBytes.length} bytes`);
+
+      // Mark that we're receiving assistant audio output
+      this.isReceivingAssistantAudio = true;
+
+      // Produce Int16Array view matching the declared type (LPCM 16-bit samples)
+      const audioData = new Int16Array(audioBytes.buffer, audioBytes.byteOffset, audioBytes.byteLength / 2);
+
+      this.emit('speaking', {
+        audio: content,
+        audioData,
+        response_id: this.currentResponseId,
       });
 
-      // Execute tool if available
-      if (this.tools && toolName in this.tools) {
-        this.handleToolCall(toolName, toolInput, toolUseId);
+      // Also emit to speaker stream
+      if (this.currentResponseId) {
+        const stream = this.speakerStreams.get(this.currentResponseId);
+        if (stream) {
+          stream.write(audioBytes);
+        }
       }
+    } catch (error) {
+      this.log('[Event] Error decoding audio:', error);
+      this.emit('error', {
+        message: 'Failed to decode audio',
+        code: 'AUDIO_DECODE_ERROR',
+        details: error,
+      });
     }
+  }
 
-    // Handle content end
-    // Following AWS sample: forward contentEnd events directly to clients
-    if (event.contentEnd) {
-      this.log(`[Event] contentEnd received: type=${event.contentEnd.type}, stopReason=${event.contentEnd.stopReason}`);
-      
-      // Emit contentEnd event (AWS sample forwards this directly to clients)
-      this.emit('contentEnd', event.contentEnd);
-      
+  /**
+   * Handle a toolUse event. Emits 'toolCall' and dispatches to the
+   * configured tool's execute() function via handleToolCall().
+   */
+  private handleToolUse(toolUse: NonNullable<NovaSonicServerEvent['toolUse']>): void {
+    const toolUseId = toolUse.toolUseId || '';
+    const toolName = toolUse.toolName || '';
+    const toolInput = toolUse.input || {};
+
+    this.emit('toolCall', {
+      name: toolName,
+      args: toolInput,
+      id: toolUseId,
+    });
+
+    if (this.tools && toolName in this.tools) {
+      this.handleToolCall(toolName, toolInput, toolUseId);
+    }
+  }
+
+  /**
+   * Handle a contentEnd event. Forwards it to clients, then routes by
+   * stopReason / type:
+   *   - INTERRUPTED: emit 'interrupt' and tear down the active speaker stream
+   *   - TOOL: end the active speaker stream
+   *   - AUDIO with END_TURN: signal turnComplete (assistant audio finished)
+   *   - AUDIO with PARTIAL_TURN while receiving assistant audio: schedule
+   *     fallback turnComplete in case completionEnd never arrives
+   *   - AUDIO otherwise: user input ended, reset turn flags
+   */
+  private handleContentEnd(contentEnd: NonNullable<NovaSonicServerEvent['contentEnd']>): void {
+    this.log(`[Event] contentEnd received: type=${contentEnd.type}, stopReason=${contentEnd.stopReason}`);
+
+    // Emit contentEnd event (AWS sample forwards this directly to clients)
+    this.emit('contentEnd', contentEnd);
+
       // Check for interruption (barge-in) - stopReason can be in contentEnd
-      if (event.contentEnd.stopReason === 'INTERRUPTED') {
+      if (contentEnd.stopReason === 'INTERRUPTED') {
         this.log('[Event] Content interrupted by user (barge-in)');
         this.emit('interrupt', { type: 'user', timestamp: Date.now() });
         
@@ -1181,13 +1249,13 @@ export class NovaSonicVoice extends MastraVoice<
         // and reuse the same audioContentName. We just continue with audioInput chunks.
         this.log('[Event] After interruption, keeping audioContentStarted=true for continued streaming');
         // DO NOT reset audioContentName - it persists for the entire session
-      } else if (event.contentEnd.type === 'TOOL' && this.currentResponseId) {
+      } else if (contentEnd.type === 'TOOL' && this.currentResponseId) {
         // Tool execution completed
         const stream = this.speakerStreams.get(this.currentResponseId);
         if (stream) {
           stream.end();
         }
-      } else if (event.contentEnd.type === 'AUDIO') {
+      } else if (contentEnd.type === 'AUDIO') {
         // Audio content ended - this could be user input ending OR assistant output ending
         // According to AWS documentation:
         // - contentEnd (AUDIO) with stopReason "PARTIAL_TURN" or "END_TURN" marks end of audio content
@@ -1195,7 +1263,7 @@ export class NovaSonicVoice extends MastraVoice<
         // However, AWS may not always send completionEnd, so we need a fallback
         // If we receive contentEnd (AUDIO) with END_TURN for assistant output, we should signal turn complete
         // But we'll wait a bit to see if more audio chunks arrive
-        if (event.contentEnd.stopReason === 'END_TURN') {
+        if (contentEnd.stopReason === 'END_TURN') {
           // This is assistant audio output ending with END_TURN
           // According to AWS docs: contentEnd (AUDIO) with END_TURN marks end of audio content
           // completionEnd should follow, but if it doesn't, we should still signal turn completion
@@ -1244,7 +1312,7 @@ export class NovaSonicVoice extends MastraVoice<
           // If this is assistant audio output ending (we were receiving assistant audio), 
           // and stopReason is PARTIAL_TURN, we should wait for completionEnd
           // But if completionEnd doesn't arrive, we'll use a fallback timeout
-          if (this.isReceivingAssistantAudio && event.contentEnd.stopReason === 'PARTIAL_TURN') {
+          if (this.isReceivingAssistantAudio && contentEnd.stopReason === 'PARTIAL_TURN') {
             // This is assistant output ending - wait for completionEnd
             // Set a fallback timeout to emit turnComplete if completionEnd doesn't arrive
             this.isReceivingAssistantAudio = false; // Reset flag
@@ -1276,85 +1344,73 @@ export class NovaSonicVoice extends MastraVoice<
             // Also reset turnCompleted flag to allow new user input
             this.hasSentContentEnd = false;
             this.turnCompleted = false; // Reset for next turn
-            this.log(`[Event] contentEnd (AUDIO) - user input ended, stopReason: ${event.contentEnd.stopReason}. Keeping audioContentStarted=true for next turn. Reset hasSentContentEnd=false, turnCompleted=false.`);
+            this.log(`[Event] contentEnd (AUDIO) - user input ended, stopReason: ${contentEnd.stopReason}. Keeping audioContentStarted=true for next turn. Reset hasSentContentEnd=false, turnCompleted=false.`);
           }
         }
-      } else if (event.contentEnd.type === 'TEXT') {
+      } else if (contentEnd.type === 'TEXT') {
         // Text content ended — clear generationStage tracking
         this.currentTextGenerationStage = undefined;
         // IMPORTANT: Do NOT emit turnComplete here. Nova Sonic sends one contentEnd(TEXT) per
         // text content block, so emitting turnComplete here would fire multiple times per turn.
         // The definitive turn-completion signal comes from completionEnd (line ~1278) or
         // contentEnd(AUDIO, END_TURN) (line ~1171), both of which have proper guards.
-        this.log(`[Event] contentEnd (TEXT) received, stopReason: ${event.contentEnd.stopReason}. Turn completion handled by completionEnd/contentEnd(AUDIO).`);
-        if (event.contentEnd.stopReason === 'END_TURN') {
+        this.log(`[Event] contentEnd (TEXT) received, stopReason: ${contentEnd.stopReason}. Turn completion handled by completionEnd/contentEnd(AUDIO).`);
+        if (contentEnd.stopReason === 'END_TURN') {
           this.hasSentContentEnd = false;
         }
       }
+  }
+
+  /**
+   * Handle a completionEnd event. AWS uses this as the definitive signal
+   * that a turn (and all audio output) has finished. Tears down the active
+   * speaker stream, clears any fallback timer, emits 'turnComplete' once,
+   * and forwards token usage if reported.
+   */
+  private handleCompletionEnd(completionEnd: NonNullable<NovaSonicServerEvent['completionEnd']>): void {
+    this.log(`[Event] completionEnd received, stopReason: ${completionEnd.stopReason}`);
+
+    // Clear the fallback timeout if it was set
+    if (this.turnCompleteTimeout) {
+      clearTimeout(this.turnCompleteTimeout);
+      this.turnCompleteTimeout = undefined;
     }
 
-    // Handle completion end
-    // According to AWS documentation: completionEnd with stopReason "END_TURN" signals turn completion
-    // This is the definitive signal that a turn is complete, not contentEnd
-    if (event.completionEnd) {
-      this.log(`[Event] completionEnd received, stopReason: ${event.completionEnd.stopReason}`);
-      
-      // Clear the fallback timeout if it was set
-      if (this.turnCompleteTimeout) {
-        clearTimeout(this.turnCompleteTimeout);
-        this.turnCompleteTimeout = undefined;
+    // CRITICAL: End the audio stream BEFORE emitting turnComplete so all audio
+    // chunks have been received before we signal turn completion.
+    if (this.currentResponseId) {
+      const stream = this.speakerStreams.get(this.currentResponseId);
+      if (stream) {
+        stream.end();
       }
-      
-      // CRITICAL: End the audio stream BEFORE emitting turnComplete
-      // This ensures all audio chunks have been received before we signal turn completion
-      // completionEnd is the definitive signal that all audio has been sent
-      if (this.currentResponseId) {
-        const stream = this.speakerStreams.get(this.currentResponseId);
-        if (stream) {
-          stream.end();
-        }
-        this.speakerStreams.delete(this.currentResponseId);
-        this.currentResponseId = undefined;
-      }
-      
-      // Reset assistant audio flag
-      this.isReceivingAssistantAudio = false;
-      
-      // Emit turnComplete for ANY completionEnd (AWS should send END_TURN, but be lenient)
-      // This ensures the frontend resets even if AWS sends a different stopReason
-      // CRITICAL: Only emit once - check turnCompleted flag to prevent duplicate emissions
-      if (!this.turnCompleted) {
-        this.log(`[Event] completionEnd - signaling turn complete (stopReason: ${event.completionEnd.stopReason || 'undefined'})`);
-        this.turnCompleted = true; // Mark turn as completed
-        this.emit('turnComplete', { timestamp: Date.now() });
-        this.hasSentContentEnd = false;
-        this.log(`[Event] Turn complete (from completionEnd), ready for next turn. audioContentStarted: ${this.audioContentStarted}, audioContentName: ${this.audioContentName}, reset hasSentContentEnd=false`);
-      } else {
-        this.log(`[Event] completionEnd received but turn already completed - skipping duplicate turnComplete emission`);
-      }
-
-      // Emit usage if available
-      if (event.completionEnd.usage) {
-        this.emit('usage', {
-          inputTokens: event.completionEnd.usage.inputTokens || 0,
-          outputTokens: event.completionEnd.usage.outputTokens || 0,
-          totalTokens:
-            (event.completionEnd.usage.inputTokens || 0) +
-            (event.completionEnd.usage.outputTokens || 0),
-        });
-      }
+      this.speakerStreams.delete(this.currentResponseId);
+      this.currentResponseId = undefined;
     }
 
-    // Handle errors
-    if (event.error) {
-      this.emit('error', {
-        message: event.error.message || 'Unknown error',
-        code: event.error.code || 'UNKNOWN_ERROR',
-        details: event.error,
+    this.isReceivingAssistantAudio = false;
+
+    // Emit turnComplete for ANY completionEnd (AWS should send END_TURN, but be lenient).
+    // Only emit once - turnCompleted flag prevents duplicate emissions when contentEnd
+    // (AUDIO with END_TURN) already signaled turn completion.
+    if (!this.turnCompleted) {
+      this.log(`[Event] completionEnd - signaling turn complete (stopReason: ${completionEnd.stopReason || 'undefined'})`);
+      this.turnCompleted = true;
+      this.emit('turnComplete', { timestamp: Date.now() });
+      this.hasSentContentEnd = false;
+    } else {
+      this.log(`[Event] completionEnd received but turn already completed - skipping duplicate turnComplete emission`);
+    }
+
+    if (completionEnd.usage) {
+      this.emit('usage', {
+        inputTokens: completionEnd.usage.inputTokens || 0,
+        outputTokens: completionEnd.usage.outputTokens || 0,
+        totalTokens:
+          (completionEnd.usage.inputTokens || 0) +
+          (completionEnd.usage.outputTokens || 0),
       });
     }
   }
-  
 
   /**
    * Handle tool execution
