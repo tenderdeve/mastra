@@ -795,8 +795,15 @@ export const toUIMessage = ({ chunk, conversation, metadata }: ToUIMessageArgs):
     }
 
     case 'error': {
+      const rawError = chunk.payload.error;
       const errorText =
-        typeof chunk.payload.error === 'string' ? chunk.payload.error : JSON.stringify(chunk.payload.error);
+        typeof rawError === 'string'
+          ? rawError
+          : rawError instanceof Error
+            ? rawError.message
+            : typeof rawError === 'object' && rawError !== null && 'message' in rawError
+              ? String((rawError as { message?: unknown }).message ?? JSON.stringify(rawError))
+              : String(rawError);
       const errorPart = { type: 'text' as const, text: errorText };
       const errorMetadata = { ...metadata, status: 'error' as const };
 
