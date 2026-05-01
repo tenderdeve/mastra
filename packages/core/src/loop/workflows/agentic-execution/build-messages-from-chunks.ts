@@ -181,7 +181,7 @@ export function buildMessagesFromChunks({
             type: 'reasoning' as const,
             reasoning: '',
             details: [{ type: 'text', text: '' }],
-            providerMetadata: reasoningMeta.get(p.id) ?? p.providerMetadata,
+            providerMetadata: p.providerMetadata ?? reasoningMeta.get(p.id),
           };
           parts.push(part as unknown as MastraMessagePart);
         }
