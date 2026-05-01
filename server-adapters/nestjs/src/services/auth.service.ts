@@ -1,4 +1,5 @@
 import type { Mastra } from '@mastra/core/mastra';
+import type { MastraAuthConfig } from '@mastra/core/server';
 import {
   isProtectedPath,
   canAccessPublicly,
@@ -51,23 +52,29 @@ export class AuthService {
       return undefined;
     }
 
+    // `@mastra/server/auth` helpers are typed against the Hono-flavored
+    // MastraAuthConfig. AuthConfigBridge is the Express-flavored equivalent
+    // — runtime-compatible but not structurally assignable. Cast through
+    // unknown to bridge the typing without changing runtime behavior.
+    const helperAuthConfig = authConfig as unknown as MastraAuthConfig;
+
     const getHeader = (name: string): string | undefined => {
       const value = request.headers[name.toLowerCase()];
       return Array.isArray(value) ? value[0] : value;
     };
 
     // Check if this is a dev playground request (skip auth in dev mode)
-    if (isDevPlaygroundRequest(path, method, getHeader, authConfig, customRouteAuthConfig)) {
+    if (isDevPlaygroundRequest(path, method, getHeader, helperAuthConfig, customRouteAuthConfig)) {
       return undefined;
     }
 
     // Check if this path needs protection
-    if (!isProtectedPath(path, method, authConfig, customRouteAuthConfig)) {
+    if (!isProtectedPath(path, method, helperAuthConfig, customRouteAuthConfig)) {
       return undefined;
     }
 
     // Check if the route can be accessed publicly
-    if (canAccessPublicly(path, method, authConfig)) {
+    if (canAccessPublicly(path, method, helperAuthConfig)) {
       return undefined;
     }
 
@@ -152,7 +159,7 @@ export class AuthService {
 
     // Custom rule-based authorization
     if ('rules' in authConfig && authConfig.rules && authConfig.rules.length > 0) {
-      const isAuthorized = await checkRules(authConfig.rules, path, method, user);
+      const isAuthorized = await checkRules(authConfig.rules as MastraAuthConfig['rules'], path, method, user);
       if (!isAuthorized) {
         throw new ForbiddenException('Access denied');
       }

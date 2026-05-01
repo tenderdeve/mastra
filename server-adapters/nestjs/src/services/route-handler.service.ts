@@ -124,7 +124,7 @@ export class RouteHandlerService {
   /**
    * Get all routes (for dynamic controller generation).
    */
-  getAllRoutes(): ServerRoute[] {
+  getAllRoutes(): readonly ServerRoute[] {
     return SERVER_ROUTES;
   }
 
@@ -177,7 +177,7 @@ export class RouteHandlerService {
     let validatedPathParams = params.pathParams;
     if (route.pathParamSchema) {
       try {
-        validatedPathParams = await route.pathParamSchema.parseAsync(params.pathParams);
+        validatedPathParams = (await route.pathParamSchema.parseAsync(params.pathParams)) as Record<string, string>;
       } catch (error) {
         if (isZodErrorLike(error)) {
           throw new ValidationError('Invalid path parameters', error);
@@ -189,7 +189,7 @@ export class RouteHandlerService {
     let validatedQueryParams = params.queryParams;
     if (route.queryParamSchema) {
       try {
-        validatedQueryParams = await route.queryParamSchema.parseAsync(params.queryParams);
+        validatedQueryParams = (await route.queryParamSchema.parseAsync(params.queryParams)) as Record<string, unknown>;
       } catch (error) {
         if (isZodErrorLike(error)) {
           throw new ValidationError('Invalid query parameters', error);
