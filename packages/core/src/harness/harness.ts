@@ -27,6 +27,7 @@ import type {
   HarnessConfig,
   HarnessDisplayState,
   HarnessDisplayStateListener,
+  HarnessDurableThreadObservation,
   HarnessDisplayStateSubscriptionOptions,
   HarnessEvent,
   HarnessEventListener,
@@ -122,6 +123,8 @@ export class Harness<TState = {}> {
   private pendingApprovalToolName: string | null = null;
   private pendingSuspensionRunId: string | null = null;
   private pendingSuspensionToolCallId: string | null = null;
+  private followingDurableRunId: string | null = null;
+  private followingDurableCleanup: (() => void) | undefined = undefined;
   private pendingQuestions = new Map<string, (answer: HarnessQuestionAnswer) => void>();
   private pendingPlanApprovals = new Map<
     string,
@@ -1359,6 +1362,76 @@ export class Harness<TState = {}> {
   // ===========================================================================
 
   /**
+   * Follow an active durable stream for the current thread, when configured.
+   */
+  async followActiveThreadRun(options?: { requestContext?: RequestContext }): Promise<boolean> {
+    if (!this.currentThreadId || this.abortController || this.followingDurableRunId) return false;
+    const durableStreams = this.config.durableStreams;
+    if (!durableStreams?.attachToActiveThread) return false;
+
+    const operationId = ++this.currentOperationId;
+    this.abortController = new AbortController();
+    this.currentTraceId = null;
+
+    let observation: HarnessDurableThreadObservation | undefined;
+    try {
+      observation = await durableStreams.coordinator.observeThread({
+        resourceId: this.resourceId,
+        threadId: this.currentThreadId,
+        abortSignal: this.abortController.signal,
+      });
+    } catch (error) {
+      if (this.currentOperationId === operationId) {
+        this.abortController = null;
+        this.abortRequested = false;
+      }
+      throw error;
+    }
+
+    if (!observation) {
+      if (this.currentOperationId === operationId) {
+        this.abortController = null;
+        this.abortRequested = false;
+      }
+      return false;
+    }
+
+    this.followingDurableRunId = observation.runId;
+    this.followingDurableCleanup = observation.cleanup;
+    this.emit({ type: 'agent_start' });
+
+    void (async () => {
+      try {
+        const requestContext = await this.buildRequestContext(options?.requestContext);
+        const streamResult = await this.processStream({ fullStream: observation.fullStream }, requestContext);
+        if (this.currentOperationId === operationId) {
+          const reason = streamResult.suspended ? 'suspended' : this.abortRequested ? 'aborted' : 'complete';
+          this.emit({ type: 'agent_end', reason });
+        }
+      } catch (error) {
+        if (this.currentOperationId !== operationId) return;
+        if (error instanceof Error && error.name === 'AbortError') {
+          this.emit({ type: 'agent_end', reason: 'aborted' });
+        } else {
+          const err = error instanceof Error ? error : new Error(String(error));
+          this.emit({ type: 'error', error: err });
+          this.emit({ type: 'agent_end', reason: 'error' });
+        }
+      } finally {
+        observation.cleanup?.();
+        if (this.currentOperationId === operationId) {
+          this.abortController = null;
+          this.abortRequested = false;
+          this.followingDurableRunId = null;
+          this.followingDurableCleanup = undefined;
+        }
+      }
+    })();
+
+    return true;
+  }
+
+  /**
    * Send a message to the current agent.
    * Streams the response and emits events.
    */
@@ -2295,6 +2368,17 @@ export class Harness<TState = {}> {
       try {
         this.abortController.abort();
       } catch {}
+      if (this.followingDurableRunId) {
+        const runId = this.followingDurableRunId;
+        void this.config.durableStreams?.coordinator.abortThread?.({
+          resourceId: this.resourceId,
+          threadId: this.currentThreadId ?? '',
+          runId,
+        });
+        this.followingDurableCleanup?.();
+        this.followingDurableCleanup = undefined;
+        this.followingDurableRunId = null;
+      }
       this.abortController = null;
     }
   }

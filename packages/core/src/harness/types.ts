@@ -146,6 +146,26 @@ export type HarnessStateSchema<T> = T;
  */
 export type BuiltinToolId = 'ask_user' | 'submit_plan' | 'task_write' | 'task_check' | 'subagent';
 
+export interface HarnessDurableThreadObservation {
+  runId: string;
+  fullStream: AsyncIterable<any>;
+  cleanup?: () => void;
+}
+
+export interface HarnessDurableThreadCoordinator {
+  observeThread(input: {
+    resourceId: string;
+    threadId: string;
+    abortSignal?: AbortSignal;
+  }): Promise<HarnessDurableThreadObservation | undefined>;
+  abortThread?(input: { resourceId: string; threadId: string; runId?: string }): Promise<void> | void;
+}
+
+export interface HarnessDurableStreamsConfig {
+  coordinator: HarnessDurableThreadCoordinator;
+  attachToActiveThread?: boolean;
+}
+
 export interface HarnessConfig<TState = {}> {
   /** Unique identifier for this harness instance */
   id: string;
@@ -167,6 +187,9 @@ export interface HarnessConfig<TState = {}> {
 
   /** Memory configuration (shared across all modes) */
   memory?: DynamicArgument<MastraMemory>;
+
+  /** Opt-in durable stream observation for sharing active thread runs. */
+  durableStreams?: HarnessDurableStreamsConfig;
 
   /** Available agent modes */
   modes: HarnessMode<TState>[];
