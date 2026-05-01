@@ -299,15 +299,15 @@ export function buildMessagesFromChunks({
     }
   }
 
-  // Filter out empty text parts (spans that received deltas but ended up empty)
-  const filteredParts = parts.filter(p => !(p.type === 'text' && (p as any).text === ''));
+  // Remove text parts that ended up empty (e.g. spans where every delta was '')
+  const nonEmptyParts = parts.filter(p => !(p.type === 'text' && (p as any).text === ''));
 
   // Insert step-start markers between tool-invocation and subsequent text parts.
   // This matches the convention used by MessageMerger.pushNewPart when merging messages,
   // and is required so that AI SDK convertToModelMessages splits them into separate steps.
   const finalParts: MastraMessagePart[] = [];
-  for (let i = 0; i < filteredParts.length; i++) {
-    const part = filteredParts[i]!;
+  for (let i = 0; i < nonEmptyParts.length; i++) {
+    const part = nonEmptyParts[i]!;
     if (
       part.type === 'text' &&
       finalParts.length > 0 &&
