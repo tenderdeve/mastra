@@ -22,6 +22,10 @@ vi.mock('@mastra/core/agent', () => ({
   },
 }));
 
+vi.mock('@mastra/core/agent/durable', () => ({
+  createDurableAgent: vi.fn(({ agent }) => agent),
+}));
+
 const agentConstructorMock = vi.fn();
 
 const harnessConstructorMock = vi.fn();

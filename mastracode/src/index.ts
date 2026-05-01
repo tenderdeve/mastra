@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 
 import { Agent } from '@mastra/core/agent';
+import { createDurableAgent } from '@mastra/core/agent/durable';
 import type { MastraBrowser } from '@mastra/core/browser';
 import { Harness } from '@mastra/core/harness';
 import type {
@@ -35,6 +38,7 @@ import { createDynamicTools } from './agents/tools.js';
 
 import { getDynamicWorkspace } from './agents/workspace.js';
 import { AuthStorage } from './auth/storage.js';
+import { UnixSocketPubSub } from './durable-streams/index.js';
 import { createOutcomeScorer, createEfficiencyScorer } from './evals/scorers/index.js';
 import { HookManager } from './hooks/index.js';
 import { createMcpManager } from './mcp/index.js';
@@ -54,7 +58,6 @@ import {
 import { getToolCategory } from './permissions.js';
 import { setAuthStorage } from './providers/claude-max.js';
 import { setAuthStorage as setOpenAIAuthStorage } from './providers/openai-codex.js';
-
 import { stateSchema } from './schema.js';
 
 import { mastra } from './tui/theme.js';
@@ -73,6 +76,14 @@ const PROVIDER_TO_OAUTH_ID: Record<string, string> = {
   anthropic: 'anthropic',
   openai: 'openai-codex',
 };
+
+function getDurableStreamsSocketPath(resourceId: string, rootPath: string): string {
+  const hash = createHash('sha256')
+    .update(`${resourceId}:${rootPath}:durable-streams-v2`)
+    .digest('hex')
+    .slice(0, 16);
+  return path.join(os.tmpdir(), `mastracode-${hash}.sock`);
+}
 
 export interface MastraCodeConfig {
   /** Working directory for project detection. Default: process.cwd() */
@@ -360,6 +371,16 @@ export async function createMastraCode(config?: MastraCodeConfig) {
 
   const defaultSubagents = [exploreSubagent, planSubagent, executeSubagent];
 
+  const durableStreamsSocketPath = getDurableStreamsSocketPath(project.resourceId, project.rootPath);
+  const durableStreamsPubSub = new UnixSocketPubSub({
+    socketPath: durableStreamsSocketPath,
+    autoStartCoordinator: true,
+  });
+  const durableCodeAgent = createDurableAgent({
+    agent: codeAgent,
+    pubsub: durableStreamsPubSub,
+  }) as unknown as Agent;
+
   const defaultModes: HarnessMode<Record<string, unknown>>[] = [
     {
       id: 'build',
@@ -367,21 +388,21 @@ export async function createMastraCode(config?: MastraCodeConfig) {
       default: true,
       defaultModelId: 'anthropic/claude-opus-4-6',
       color: mastra.green,
-      agent: codeAgent,
+      agent: durableCodeAgent,
     },
     {
       id: 'plan',
       name: 'Plan',
       defaultModelId: 'openai/gpt-5.2-codex',
       color: mastra.purple,
-      agent: codeAgent,
+      agent: durableCodeAgent,
     },
     {
       id: 'fast',
       name: 'Fast',
       defaultModelId: 'cerebras/zai-glm-4.7',
       color: mastra.orange,
-      agent: codeAgent,
+      agent: durableCodeAgent,
     },
   ];
 
@@ -595,16 +616,14 @@ export async function createMastraCode(config?: MastraCodeConfig) {
     },
   });
 
-  // Sync hookManager session ID on thread changes
-  if (hookManager) {
-    harness.subscribe(event => {
-      if (event.type === 'thread_changed') {
-        hookManager.setSessionId(event.threadId);
-      } else if (event.type === 'thread_created') {
-        hookManager.setSessionId(event.thread.id);
-      }
-    });
-  }
+  harness.subscribe(event => {
+    if (!hookManager) return;
+    if (event.type === 'thread_changed') {
+      hookManager.setSessionId(event.threadId);
+    } else if (event.type === 'thread_created') {
+      hookManager.setSessionId(event.thread.id);
+    }
+  });
 
   return {
     harness,
