@@ -43,6 +43,8 @@ import { AgenticRunState } from '../run-state';
 import { llmIterationOutputSchema } from '../schema';
 import { buildMessagesFromChunks } from './build-messages-from-chunks';
 import type { CollectedChunk } from './build-messages-from-chunks';
+import { resolveConfiguredToolCallConcurrency, updateToolCallForeachConcurrency } from './tool-call-concurrency';
+import type { ToolCallForeachOptions } from './tool-call-concurrency';
 
 type ProcessOutputStreamOptions<OUTPUT = undefined> = {
   tools?: ToolSet;
@@ -65,10 +67,10 @@ type ProcessOutputStreamOptions<OUTPUT = undefined> = {
 
 function buildResponseModelMetadata(
   runState: AgenticRunState,
-  model?: { provider?: string },
+  model?: { provider?: string; modelId?: string },
 ): { metadata: Record<string, unknown> } | undefined {
   const metadata: Record<string, unknown> = {};
-  const modelId = runState.state.responseMetadata?.modelId;
+  const modelId = model?.modelId ?? runState.state.responseMetadata?.modelId;
 
   if (modelId) {
     metadata.modelId = modelId;
@@ -353,13 +355,17 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
   processorStates,
   requestContext,
   methodType,
+  requireToolApproval,
+  toolCallConcurrency,
+  toolCallForeachOptions,
   modelSpanTracker,
   autoResumeSuspendedTools,
   maxProcessorRetries,
   workspace,
   outputWriter,
-}: OuterLLMRun<TOOLS, OUTPUT>) {
+}: OuterLLMRun<TOOLS, OUTPUT> & { toolCallForeachOptions?: ToolCallForeachOptions }) {
   const initialSystemMessages = messageList.getAllSystemMessages();
+  const configuredToolCallConcurrency = resolveConfiguredToolCallConcurrency(toolCallConcurrency);
 
   let currentIteration = 0;
 
@@ -470,9 +476,15 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
               // Use MODEL_STEP context so step processor spans are children of MODEL_STEP
               const stepTracingContext = modelSpanTracker?.getTracingContext() ?? tracingContext;
 
-              // Create a ProcessorStreamWriter from outputWriter if available
+              // Create a ProcessorStreamWriter from outputWriter if available.
+              // Forward any processor-supplied options (e.g. a future `transient`
+              // flag) and override messageId so the step always owns the
+              // response id for persisted data-* chunks.
               const inputStepWriter: ProcessorStreamWriter | undefined = outputWriter
-                ? { custom: async (data: { type: string }) => outputWriter(data as ChunkType) }
+                ? {
+                    custom: async (data: { type: string }, options?: { messageId?: string }) =>
+                      outputWriter(data as ChunkType, { ...options, messageId: currentStep.messageId }),
+                  }
                 : undefined;
 
               const processInputStepResult = await processorRunner.runProcessInputStep({
@@ -563,6 +575,8 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
                         requestContext: requestContext || new RequestContext(),
                         outputWriter,
                         workspace: currentStep.workspace,
+                        requireApproval: (tool as any).requireApproval,
+                        backgroundConfig: (tool as any).background,
                       },
                       undefined,
                       autoResumeSuspendedTools,
@@ -630,6 +644,15 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
           // Store activeTools on _internal so toolCallStep can enforce them
           if (_internal) {
             _internal.stepActiveTools = currentStep.activeTools as string[] | undefined;
+          }
+
+          if (toolCallForeachOptions) {
+            updateToolCallForeachConcurrency(toolCallForeachOptions, {
+              requireToolApproval,
+              tools: currentStep.tools,
+              activeTools: currentStep.activeTools as string[] | undefined,
+              configuredConcurrency: configuredToolCallConcurrency,
+            });
           }
 
           const runState = new AgenticRunState({
@@ -876,6 +899,24 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
           } catch (error) {
             const provider = model?.provider;
             const modelIdStr = model?.modelId;
+
+            // Handle abort first — a client-disconnect mid-stream is the
+            // expected exit path, not an error. Logging it at error level
+            // pollutes monitoring (see #15844 for the production
+            // numbers). Bail out with a debug log before the upstream /
+            // generic error branches so we never emit an
+            // `error`-level entry for an AbortError.
+            if (isAbortError(error) && options?.abortSignal?.aborted) {
+              logger?.debug?.('LLM execution aborted', { runId });
+              await options?.onAbort?.({
+                steps: inputData?.output?.steps ?? [],
+              });
+
+              safeEnqueue(controller, { type: 'abort', runId, from: ChunkFrom.AGENT, payload: {} });
+
+              return { callBail: true, outputStream, runState, stepTools: currentStep.tools };
+            }
+
             const isUpstreamError = APICallError.isInstance(error);
 
             if (isUpstreamError) {
@@ -894,16 +935,6 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
                 ...(provider && { provider }),
                 ...(modelIdStr && { modelId: modelIdStr }),
               });
-            }
-
-            if (isAbortError(error) && options?.abortSignal?.aborted) {
-              await options?.onAbort?.({
-                steps: inputData?.output?.steps ?? [],
-              });
-
-              safeEnqueue(controller, { type: 'abort', runId, from: ChunkFrom.AGENT, payload: {} });
-
-              return { callBail: true, outputStream, runState, stepTools: currentStep.tools };
             }
 
             if (isLastModel) {
@@ -939,7 +970,10 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
               const canRetryError =
                 maxErrorProcessorRetries !== undefined && currentRetryCount < maxErrorProcessorRetries;
               const apiErrorWriter: ProcessorStreamWriter | undefined = outputWriter
-                ? { custom: async (data: { type: string }) => outputWriter(data as ChunkType) }
+                ? {
+                    custom: async (data: { type: string }, options?: { messageId?: string }) =>
+                      outputWriter(data as ChunkType, { ...options, messageId: currentMessageId }),
+                  }
                 : undefined;
 
               const errorResult = await processorRunner.runProcessAPIError({
@@ -955,6 +989,10 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
                 messageId: currentMessageId,
                 rotateResponseMessageId: () => {
                   currentMessageId = _internal?.generateId?.() ?? generateId();
+                  // Keep the active output stream in sync so bail/retry paths
+                  // below report the rotated id instead of the stale one, and so
+                  // any subsequent chunks the stream writes itself use the new id.
+                  outputStream.messageId = currentMessageId;
                   return currentMessageId;
                 },
               });
@@ -1069,7 +1107,10 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
         });
 
         const apiErrorWriter2: ProcessorStreamWriter | undefined = outputWriter
-          ? { custom: async (data: { type: string }) => outputWriter(data as ChunkType) }
+          ? {
+              custom: async (data: { type: string }, options?: { messageId?: string }) =>
+                outputWriter(data as ChunkType, { ...options, messageId: currentMessageId }),
+            }
           : undefined;
 
         const errorResult = await processorRunner.runProcessAPIError({
@@ -1085,6 +1126,9 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
           messageId: currentMessageId,
           rotateResponseMessageId: () => {
             currentMessageId = _internal?.generateId?.() ?? generateId();
+            // Keep the active output stream in sync so the retry payload and
+            // any downstream chunks use the rotated id.
+            outputStream.messageId = currentMessageId;
             return currentMessageId;
           },
         });
@@ -1109,9 +1153,9 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
         const messages = {
           all: messageList.get.all.aiV5.model(),
           user: messageList.get.input.aiV5.model(),
-          // Keep assistant messages out of the retry payload so agentic-execution/index.ts
-          // does not replay failed step output back into messageList. Error processors own
-          // any cleanup or replacement of assistant responses before the next attempt.
+          // Do not return failed assistant output as new response messages for this retry step.
+          // That output was already added to messageList while processing the failed stream;
+          // returning it in messages.nonUser would make agentic-execution/index.ts append it again.
           nonUser: [],
         };
 
@@ -1202,9 +1246,14 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
           // Use MODEL_STEP context so step processor spans are children of MODEL_STEP
           const outputStepTracingContext = modelSpanTracker?.getTracingContext() ?? tracingContext;
 
-          // Create a ProcessorStreamWriter from outputWriter if available
+          // Create a ProcessorStreamWriter from outputWriter if available.
+          // Forward any processor-supplied options and override messageId so
+          // the step always owns the response id for persisted data-* chunks.
           const processorWriter: ProcessorStreamWriter | undefined = outputWriter
-            ? { custom: async (data: { type: string }) => outputWriter(data as ChunkType) }
+            ? {
+                custom: async (data: { type: string }, options?: { messageId?: string }) =>
+                  outputWriter(data as ChunkType, { ...options, messageId: outputStream.messageId }),
+              }
             : undefined;
 
           await processorRunner.runProcessOutputStep({
@@ -1334,7 +1383,15 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
       // - OR finishReason indicates more work (e.g., tool-use)
       // Provider-executed tools (e.g. web_search) are handled server-side — the response already
       // contains both the tool execution and the text output, so no additional loop iteration is needed.
-      const hasPendingToolCalls = toolCalls && toolCalls.some(tc => !tc.providerExecuted);
+      //
+      // NOTE: hasPendingToolCalls must NOT override finishReason='length'.
+      // When the provider hits max_tokens mid-generation, it returns finishReason='length' and
+      // may also emit a partial/truncated tool call. Retrying with the same parameters produces
+      // the same truncation → infinite loop until maxSteps. PR #13861 / issue #13012 explicitly
+      // excluded 'length' from shouldContinue; this guard prevents hasPendingToolCalls from
+      // inadvertently re-enabling it.
+      // See: https://github.com/mastra-ai/mastra/issues/15717
+      const hasPendingToolCalls = toolCalls && toolCalls.some(tc => !tc.providerExecuted) && finishReason !== 'length';
       const shouldContinue =
         shouldRetry ||
         (!tripwireTriggered && (hasPendingToolCalls || !['stop', 'error', 'length'].includes(finishReason)));

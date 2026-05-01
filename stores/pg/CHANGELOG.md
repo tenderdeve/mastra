@@ -1,5 +1,43 @@
 # @mastra/pg
 
+## 1.9.4-alpha.1
+
+### Patch Changes
+
+- Added platform channels framework with ChannelProvider interface, ChannelsStorage domain, and ChannelConnectResult discriminated union supporting OAuth, deep link, and immediate connection flows. Channels can be registered on the Mastra instance and expose connect/disconnect/list APIs for platform integrations. ([#15876](https://github.com/mastra-ai/mastra/pull/15876))
+
+- Updated dependencies [[`b2deb29`](https://github.com/mastra-ai/mastra/commit/b2deb29412b300c868655b5840463614fbb7962d), [`66644be`](https://github.com/mastra-ai/mastra/commit/66644beac1aa560f0e417956ff007c89341dc382), [`310b953`](https://github.com/mastra-ai/mastra/commit/310b95345f302dcd5ba3ed862bdc96f059d44122), [`43f0e1d`](https://github.com/mastra-ai/mastra/commit/43f0e1d5d5a74ba6fc746f2ad89ebe0c64777a7d), [`da0b9e2`](https://github.com/mastra-ai/mastra/commit/da0b9e2ba7ecc560213b426d6c097fe63946086e)]:
+  - @mastra/core@1.31.0-alpha.3
+
+## 1.9.4-alpha.0
+
+### Patch Changes
+
+- Fixed workflow snapshot sanitization in `@mastra/pg` for strings containing escaped surrogate patterns like `[^\ud800-\udfff]`. This prevents invalid JSON escape sequences that caused PostgreSQL `jsonb` writes to fail with error `22P02`. ([#15923](https://github.com/mastra-ai/mastra/pull/15923))
+
+  Fixes #15920
+
+- Updated dependencies [[`e109607`](https://github.com/mastra-ai/mastra/commit/e10960749251e34d46b480a20648c490fd30381b)]:
+  - @mastra/core@1.31.0-alpha.1
+
+## 1.9.3
+
+### Patch Changes
+
+- Fixed auto-migration for the `mastra_observational_memory` table to include the `reflectedObservationLineCount` column. Previously, upgrading from older versions would crash on `Memory.cloneThread()` because this column was missing from the `ifNotExists` migration list. ([#15892](https://github.com/mastra-ai/mastra/pull/15892))
+
+- Updated dependencies [[`6db978c`](https://github.com/mastra-ai/mastra/commit/6db978c42e94e75540a504f7230086f0b5cd35f9), [`512a013`](https://github.com/mastra-ai/mastra/commit/512a013f285aa9c0aa8f08a35b2ce09f9938b017), [`e9becde`](https://github.com/mastra-ai/mastra/commit/e9becdeed9176b9f8392e557bde12b933f99cf7a), [`703a443`](https://github.com/mastra-ai/mastra/commit/703a44390c587d9c0b8ae94ec4edd8afb2a74044), [`808df1b`](https://github.com/mastra-ai/mastra/commit/808df1b39358b5f10b7317107e42b1fda7c87185)]:
+  - @mastra/core@1.29.1
+
+## 1.9.3-alpha.0
+
+### Patch Changes
+
+- Fixed auto-migration for the `mastra_observational_memory` table to include the `reflectedObservationLineCount` column. Previously, upgrading from older versions would crash on `Memory.cloneThread()` because this column was missing from the `ifNotExists` migration list. ([#15892](https://github.com/mastra-ai/mastra/pull/15892))
+
+- Updated dependencies [[`6db978c`](https://github.com/mastra-ai/mastra/commit/6db978c42e94e75540a504f7230086f0b5cd35f9)]:
+  - @mastra/core@1.29.1-alpha.0
+
 ## 1.9.2
 
 ### Patch Changes
