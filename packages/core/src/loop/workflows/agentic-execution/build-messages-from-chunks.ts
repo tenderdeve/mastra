@@ -299,8 +299,11 @@ export function buildMessagesFromChunks({
     }
   }
 
-  // Remove text parts that ended up empty (e.g. spans where every delta was '')
-  const nonEmptyParts = parts.filter(p => !(p.type === 'text' && (p as any).text === ''));
+  // Remove text parts that ended up empty (e.g. spans where every delta was ''),
+  // but keep them if they carry providerMetadata (same rationale as #9005 for reasoning).
+  const nonEmptyParts = parts.filter(
+    p => !(p.type === 'text' && (p as any).text === '' && !(p as any).providerMetadata),
+  );
 
   // Insert step-start markers between tool-invocation and subsequent text parts.
   // This matches the convention used by MessageMerger.pushNewPart when merging messages,
