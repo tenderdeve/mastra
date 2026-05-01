@@ -66,45 +66,35 @@ export function buildMessagesFromChunks({
     }
   }
 
-  // Live references to text/reasoning parts, keyed by span ID.
-  // Parts are pushed on first delta (not on *-start) so position reflects
-  // when content actually started arriving, not protocol handshake order (#15914).
-  // Redacted reasoning is the exception — pushed on reasoning-start since it never receives deltas.
+  // Metadata stashed by *-start events, applied when the ref is created on first delta.
+  const textMeta = new Map<string, Record<string, any> | undefined>();
+  const reasoningMeta = new Map<string, Record<string, any> | undefined>();
+
+  // Live references to parts already in the `parts` array, keyed by span ID.
+  // Created and pushed on first delta — position reflects content arrival order (#15914).
   const textRefs = new Map<string, { type: 'text'; text: string; providerMetadata?: Record<string, any> }>();
   const reasoningRefs = new Map<
     string,
     { type: 'reasoning'; reasoning: string; details: any[]; providerMetadata?: Record<string, any> }
   >();
 
-  // Tracks which span IDs have been pushed to the parts array
-  const pushed = new Set<string>();
-
   for (const chunk of chunks) {
     switch (chunk.type) {
       // ── Text span ──────────────────────────────────────────────
       case 'text-start': {
         const p = chunk.payload as TextStartPayload;
-        if (!textRefs.has(p.id)) {
-          // Don't push to parts yet — wait for first delta so position
-          // reflects when content actually started arriving (#15914).
-          textRefs.set(p.id, { type: 'text' as const, text: '', providerMetadata: p.providerMetadata });
-        } else if (p.providerMetadata) {
-          textRefs.get(p.id)!.providerMetadata = p.providerMetadata;
-        }
+        // Just stash metadata — part is created on first delta
+        textMeta.set(p.id, p.providerMetadata);
         break;
       }
       case 'text-delta': {
         const p = chunk.payload as TextDeltaPayload;
         let ref = textRefs.get(p.id);
-        // Auto-create part if delta arrives without a matching text-start
         if (!ref) {
-          ref = { type: 'text' as const, text: '', providerMetadata: p.providerMetadata };
+          // First delta for this span — create the part and push it now
+          ref = { type: 'text' as const, text: '', providerMetadata: textMeta.get(p.id) ?? p.providerMetadata };
           textRefs.set(p.id, ref);
-        }
-        // Push to parts on first delta — this is where the part's position is determined
-        if (!pushed.has(p.id)) {
           parts.push(ref as unknown as MastraMessagePart);
-          pushed.add(p.id);
         }
         ref.text += p.text;
         if (p.providerMetadata) {
@@ -123,8 +113,10 @@ export function buildMessagesFromChunks({
           if (!ref.providerMetadata) {
             delete ref.providerMetadata;
           }
-          textRefs.delete(pEnd.id);
         }
+        // text-end with no deltas means empty span — nothing to emit
+        textMeta.delete(pEnd.id);
+        textRefs.delete(pEnd.id);
         break;
       }
 
@@ -133,48 +125,35 @@ export function buildMessagesFromChunks({
         const p = chunk.payload as ReasoningStartPayload;
         const isRedacted = Object.values(p.providerMetadata || {}).some((v: any) => v?.redactedData);
 
-        if (!reasoningRefs.has(p.id)) {
+        // Redacted reasoning never receives deltas, so create and push immediately
+        if (isRedacted) {
           const part = {
             type: 'reasoning' as const,
             reasoning: '',
-            details: isRedacted ? [{ type: 'redacted', data: '' }] : [{ type: 'text', text: '' }],
+            details: [{ type: 'redacted', data: '' }],
             providerMetadata: p.providerMetadata,
           };
-          // Redacted reasoning never receives deltas, so push immediately.
-          // Non-redacted waits for first delta to determine position.
-          if (isRedacted) {
-            parts.push(part as unknown as MastraMessagePart);
-            pushed.add(p.id);
-          }
           reasoningRefs.set(p.id, part);
+          parts.push(part as unknown as MastraMessagePart);
         } else {
-          const existing = reasoningRefs.get(p.id)!;
-          if (p.providerMetadata) {
-            existing.providerMetadata = p.providerMetadata;
-          }
-          if (isRedacted && existing.details[0]?.type !== 'redacted') {
-            existing.details = [{ type: 'redacted', data: '' }];
-          }
+          // Non-redacted: just stash metadata, part is created on first delta
+          reasoningMeta.set(p.id, p.providerMetadata);
         }
         break;
       }
       case 'reasoning-delta': {
         const p = chunk.payload as ReasoningDeltaPayload;
         let ref = reasoningRefs.get(p.id);
-        // Auto-create part if delta arrives without a matching reasoning-start
         if (!ref) {
+          // First delta for this span — create the part and push it now
           ref = {
             type: 'reasoning' as const,
             reasoning: '',
             details: [{ type: 'text', text: '' }],
-            providerMetadata: p.providerMetadata,
+            providerMetadata: reasoningMeta.get(p.id) ?? p.providerMetadata,
           };
           reasoningRefs.set(p.id, ref);
-        }
-        // Push to parts on first delta — position reflects content arrival order
-        if (!pushed.has(p.id)) {
           parts.push(ref as unknown as MastraMessagePart);
-          pushed.add(p.id);
         }
         // Append to the text detail
         const detail = ref.details[0];
@@ -193,15 +172,20 @@ export function buildMessagesFromChunks({
           if (p.providerMetadata) {
             ref.providerMetadata = p.providerMetadata;
           }
-          // If no delta arrived (empty reasoning, not redacted), push now.
-          // Always emit reasoning parts, even if empty — OpenAI requires item_reference
-          // for tool calls that follow reasoning. See: https://github.com/mastra-ai/mastra/issues/9005
-          if (!pushed.has(p.id)) {
-            parts.push(ref as unknown as MastraMessagePart);
-            pushed.add(p.id);
-          }
-          reasoningRefs.delete(p.id);
+        } else {
+          // No deltas arrived — emit empty reasoning part.
+          // OpenAI requires item_reference for tool calls that follow reasoning.
+          // See: https://github.com/mastra-ai/mastra/issues/9005
+          const part = {
+            type: 'reasoning' as const,
+            reasoning: '',
+            details: [{ type: 'text', text: '' }],
+            providerMetadata: reasoningMeta.get(p.id) ?? p.providerMetadata,
+          };
+          parts.push(part as unknown as MastraMessagePart);
         }
+        reasoningMeta.delete(p.id);
+        reasoningRefs.delete(p.id);
         break;
       }
 
@@ -293,20 +277,25 @@ export function buildMessagesFromChunks({
     }
   }
 
-  // Finalize any unclosed reasoning spans (stream ended without reasoning-end)
-  for (const [id, ref] of reasoningRefs) {
-    // If no delta arrived, push now (always emit reasoning, even if empty — #9005)
-    if (!pushed.has(id)) {
-      parts.push(ref as unknown as MastraMessagePart);
+  // Unclosed reasoning spans that had deltas are already in `parts` (pushed on first delta).
+  // Unclosed reasoning spans with NO deltas need to be emitted for #9005.
+  for (const [id] of reasoningMeta) {
+    if (!reasoningRefs.has(id)) {
+      parts.push({
+        type: 'reasoning' as const,
+        reasoning: '',
+        details: [{ type: 'text', text: '' }],
+        providerMetadata: reasoningMeta.get(id),
+      } as unknown as MastraMessagePart);
     }
   }
 
-  // Finalize any unclosed text spans (stream ended without text-end)
+  // Unclosed text spans that had deltas are already in `parts`.
+  // Clean up undefined providerMetadata on any that are still open.
   for (const [, ref] of textRefs) {
     if (!ref.providerMetadata) {
       delete ref.providerMetadata;
     }
-    // Spans that never received a delta were never pushed — nothing to do
   }
 
   // Filter out empty text parts (spans that received deltas but ended up empty)
