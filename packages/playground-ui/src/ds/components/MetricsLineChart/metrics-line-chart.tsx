@@ -10,10 +10,7 @@ export type MetricsLineChartSeries = {
   aggregate?: (data: Record<string, unknown>[]) => { value: string; suffix?: string };
 };
 
-export type MetricsLineChartPointClickHandler = (
-  point: Record<string, unknown>,
-  seriesKey: string,
-) => void;
+export type MetricsLineChartPointClickHandler = (point: Record<string, unknown>, seriesKey: string) => void;
 
 export function MetricsLineChart({
   data,

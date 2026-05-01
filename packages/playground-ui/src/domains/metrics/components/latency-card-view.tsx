@@ -115,12 +115,7 @@ export function LatencyCardView({ data, isLoading, isError, onPointClick, action
           {!hasData ? (
             <MetricsCard.NoData message="No latency data yet" />
           ) : (
-            <Tabs
-              value={activeTab}
-              onValueChange={setActiveTab}
-              defaultTab={initialTab}
-              className="overflow-visible"
-            >
+            <Tabs value={activeTab} onValueChange={setActiveTab} defaultTab={initialTab} className="overflow-visible">
               <TabList>
                 <Tab value="agents">Agents</Tab>
                 <Tab value="workflows">Workflows</Tab>

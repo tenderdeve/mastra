@@ -14,13 +14,7 @@ export interface ModelUsageCostCardViewProps {
   actions?: ReactNode;
 }
 
-export function ModelUsageCostCardView({
-  rows,
-  isLoading,
-  isError,
-  getRowHref,
-  actions,
-}: ModelUsageCostCardViewProps) {
+export function ModelUsageCostCardView({ rows, isLoading, isError, getRowHref, actions }: ModelUsageCostCardViewProps) {
   const hasData = !!rows && rows.length > 0;
 
   return (
