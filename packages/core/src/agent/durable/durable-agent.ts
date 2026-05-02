@@ -4,8 +4,11 @@ import { CachingPubSub } from '../../events/caching-pubsub';
 import { EventEmitterPubSub } from '../../events/event-emitter';
 import type { PubSub } from '../../events/pubsub';
 import type { Mastra } from '../../mastra';
+import type { MastraMemory } from '../../memory/memory';
 import type { MastraModelOutput } from '../../stream/base/output';
 import type { ChunkType } from '../../stream/types';
+import type { DynamicArgument } from '../../types';
+import type { AnyWorkspace } from '../../workspace';
 import { Agent } from '../agent';
 import type { AgentExecutionOptions } from '../agent.types';
 import type { MessageListInput } from '../message-list';
@@ -15,14 +18,26 @@ import { AGENT_STREAM_TOPIC, AGENT_THREAD_STREAM_TOPIC } from './constants';
 import { runDurableStreamUntilIdle } from './durable-stream-until-idle';
 import { prepareForDurableExecution } from './preparation';
 import { ExtendedRunRegistry, globalRunRegistry } from './run-registry';
+import { signalToMessage } from './signal-message';
 import { createDurableAgentStream, emitErrorEvent } from './stream-adapter';
 import type {
   AgentFinishEventData,
   AgentStepFinishEventData,
   AgentSuspendedEventData,
+  DurableAgentActiveRun,
+  DurableAgentClaimThreadOptions,
+  DurableAgentClaimThreadResult,
   DurableAgenticWorkflowInput,
+  DurableAgentSignal,
+  SendDurableAgentSignalOptions,
 } from './types';
 import { createDurableAgenticWorkflow } from './workflows';
+
+function createAbortError(): Error {
+  const error = new Error('The operation was aborted.');
+  error.name = 'AbortError';
+  return error;
+}
 
 /**
  * Options for DurableAgent.stream()
@@ -38,6 +53,8 @@ export interface DurableAgentStreamOptions<OUTPUT = undefined> {
   runId?: string;
   /** Request Context containing dynamic configuration and state */
   requestContext?: AgentExecutionOptions<OUTPUT>['requestContext'];
+  /** Abort signal for canceling local durable execution */
+  abortSignal?: AbortSignal;
   /** Maximum number of steps to run */
   maxSteps?: number;
   /** Additional tool sets that can be used for this execution */
@@ -280,8 +297,8 @@ export class DurableAgent<
       name: agentName,
       // Delegate to wrapped agent's instructions
       instructions: ({ requestContext }) => agent.getInstructions({ requestContext }),
-      // We need to provide model to satisfy the base class, but we'll delegate to wrapped agent
-      model: (agent as any).__model ?? agent.getModel(),
+      // Provide a lazy model resolver so wrapping dynamic agents doesn't resolve the model at construction time.
+      model: ({ requestContext }) => agent.getModel({ requestContext }),
     });
 
     this.#wrappedAgent = agent;
@@ -313,6 +330,63 @@ export class DurableAgent<
   get pubsub(): PubSub {
     this.#ensurePubsubInitialized();
     return this.#cachingPubsub!;
+  }
+
+  getActiveRunForThread(options: { resourceId: string; threadId: string }): DurableAgentActiveRun | undefined {
+    const runId = this.#runRegistry.getRunIdForThread(options.resourceId, options.threadId);
+    if (!runId) return undefined;
+    const status = this.#runRegistry.getStatus(runId);
+    if (status !== 'active' && status !== 'suspended') return undefined;
+    return { ...options, runId, status };
+  }
+
+  claimThreadRun(options: DurableAgentClaimThreadOptions): DurableAgentClaimThreadResult {
+    const activeRun = this.getActiveRunForThread({ resourceId: options.resourceId, threadId: options.threadId });
+    if (activeRun) {
+      return { claimed: false, activeRun };
+    }
+    return {
+      claimed: true,
+      activeRun: {
+        resourceId: options.resourceId,
+        threadId: options.threadId,
+        runId: options.runId,
+        ownerId: options.ownerId,
+        status: 'active',
+      },
+    };
+  }
+
+  sendSignal(signal: DurableAgentSignal, target: SendDurableAgentSignalOptions): { accepted: true; runId: string } {
+    let runId: string | undefined;
+    if (target.resourceId && target.threadId) {
+      runId = this.getActiveRunForThread({ resourceId: target.resourceId, threadId: target.threadId })?.runId;
+    }
+    runId ??= target.runId;
+
+    const globalEntry = runId ? globalRunRegistry.get(runId) : undefined;
+    if (runId && globalEntry) {
+      this.#runRegistry.enqueueSignal(runId, signal);
+      globalEntry.signalQueue ??= [];
+      globalEntry.signalQueue.push(signal);
+      return { accepted: true, runId };
+    }
+
+    if (!target.resourceId || !target.threadId) {
+      throw new Error('No active durable agent run found for signal target');
+    }
+
+    runId ??= crypto.randomUUID();
+    const streamOptions = target.streamOptions as DurableAgentStreamOptions<TOutput> | undefined;
+    void this.stream([signalToMessage(signal)], {
+      ...streamOptions,
+      runId,
+      memory: streamOptions?.memory ?? ({ resource: target.resourceId, thread: target.threadId } as any),
+    } as DurableAgentStreamOptions<TOutput>).catch(error => {
+      void this.emitError(runId!, error);
+    });
+
+    return { accepted: true, runId };
   }
 
   /**
@@ -380,8 +454,43 @@ export class DurableAgent<
     return this.#wrappedAgent.listTools(options);
   }
 
-  override getMemory() {
-    return this.#wrappedAgent.getMemory();
+  override hasOwnMemory() {
+    return this.#wrappedAgent.hasOwnMemory();
+  }
+
+  override getMemory(options?: any) {
+    return this.#wrappedAgent.getMemory(options);
+  }
+
+  override __setMemory(memory: DynamicArgument<MastraMemory, any>) {
+    this.#wrappedAgent.__setMemory(memory);
+    super.__setMemory(memory);
+  }
+
+  override hasOwnWorkspace() {
+    return this.#wrappedAgent.hasOwnWorkspace();
+  }
+
+  override getWorkspace(options?: any) {
+    return this.#wrappedAgent.getWorkspace(options);
+  }
+
+  override __setWorkspace(workspace: DynamicArgument<AnyWorkspace | undefined, any>) {
+    this.#wrappedAgent.__setWorkspace(workspace);
+    super.__setWorkspace(workspace);
+  }
+
+  override hasOwnBrowser() {
+    return this.#wrappedAgent.hasOwnBrowser();
+  }
+
+  override get browser() {
+    return this.#wrappedAgent.browser;
+  }
+
+  override setBrowser(browser: Parameters<Agent['setBrowser']>[0]) {
+    this.#wrappedAgent.setBrowser(browser);
+    super.setBrowser(browser);
   }
 
   override getVoice() {
@@ -422,14 +531,33 @@ export class DurableAgent<
    */
   protected async executeWorkflow(runId: string, workflowInput: DurableAgenticWorkflowInput): Promise<void> {
     const workflow = this.getWorkflow();
-    const requestContext = globalRunRegistry.get(runId)?.requestContext;
+    const registryEntry = globalRunRegistry.get(runId);
+    const requestContext = registryEntry?.requestContext;
+    const abortSignal = registryEntry?.abortSignal;
 
     const run = await workflow.createRun({ runId, pubsub: this.pubsub });
-    const result = await run.start({ inputData: workflowInput, requestContext });
+    if (abortSignal?.aborted) {
+      await run.cancel();
+      await this.emitError(runId, createAbortError());
+      return;
+    }
 
-    if (result?.status === 'failed') {
-      const error = new Error((result as any).error?.message || 'Workflow execution failed');
-      await this.emitError(runId, error);
+    const abort = () => {
+      void run.cancel();
+      void this.emitError(runId, createAbortError());
+    };
+    abortSignal?.addEventListener('abort', abort, { once: true });
+    try {
+      const result = await run.start({ inputData: workflowInput, requestContext });
+
+      if (result?.status === 'failed') {
+        const error = new Error((result as any).error?.message || 'Workflow execution failed');
+        await this.emitError(runId, error);
+      } else if ((result as any)?.status === 'canceled' || abortSignal?.aborted) {
+        await this.emitError(runId, createAbortError());
+      }
+    } finally {
+      abortSignal?.removeEventListener('abort', abort);
     }
   }
 
@@ -470,11 +598,7 @@ export class DurableAgent<
     const entry = this.#runRegistry.get(runId);
     if (!entry) return Promise.resolve(undefined);
 
-    const {
-      output,
-      cleanup,
-      ready,
-    } = createDurableAgentStream<TOutput>({
+    const { output, cleanup, ready } = createDurableAgentStream<TOutput>({
       pubsub: this.pubsub,
       runId,
       messageId: runId,
@@ -545,7 +669,10 @@ export class DurableAgent<
 
     await this.pubsub.subscribeWithReplay(topic, handleThreadEvent);
 
-    const activeRunId = this.#runRegistry.getRunIdByThread({ resourceId: options.resourceId, threadId: options.threadId });
+    const activeRunId = this.#runRegistry.getRunIdByThread({
+      resourceId: options.resourceId,
+      threadId: options.threadId,
+    });
     if (activeRunId) {
       void enqueueRun(activeRunId);
     }
@@ -606,10 +733,12 @@ export class DurableAgent<
     });
 
     const { runId, messageId, workflowInput, registryEntry, messageList, threadId, resourceId } = preparation;
+    const streamingPubsub = this.pubsub;
+    const runRegistryEntry = { ...registryEntry, pubsub: streamingPubsub, abortSignal: options?.abortSignal };
 
     // 2. Register non-serializable state (both local and global registries)
-    this.#runRegistry.registerWithMessageList(runId, registryEntry, messageList, { threadId, resourceId });
-    globalRunRegistry.set(runId, { ...registryEntry, messageList, pubsub: this.pubsub });
+    this.#runRegistry.registerWithMessageList(runId, runRegistryEntry, messageList, { threadId, resourceId });
+    globalRunRegistry.set(runId, { ...runRegistryEntry, messageList });
 
     // Track cleanup state to avoid double cleanup
     let cleanedUp = false;
@@ -647,14 +776,19 @@ export class DurableAgent<
       onChunk: options?.onChunk,
       onStepFinish: options?.onStepFinish,
       onFinish: async result => {
+        this.#runRegistry.setStatus(runId, 'completed');
         await options?.onFinish?.(result);
         scheduleAutoCleanup();
       },
       onError: async error => {
+        this.#runRegistry.setStatus(runId, 'error');
         await options?.onError?.(error);
         scheduleAutoCleanup();
       },
-      onSuspended: options?.onSuspended,
+      onSuspended: async data => {
+        this.#runRegistry.setStatus(runId, 'suspended');
+        await options?.onSuspended?.(data);
+      },
     });
 
     // 4. Wait for subscription to be ready, then execute workflow
@@ -765,14 +899,32 @@ export class DurableAgent<
 
     // Wait for subscription to be ready, then resume workflow
     const workflow = this.getWorkflow();
-    const requestContext = globalRunRegistry.get(runId)?.requestContext;
+    const registryEntry = globalRunRegistry.get(runId);
+    const requestContext = registryEntry?.requestContext;
     ready
       .then(async () => {
+        const abortSignal = registryEntry?.abortSignal;
         const run = await workflow.createRun({ runId, pubsub: this.pubsub });
-        const result = await run.resume({ resumeData, requestContext });
-        if (result?.status === 'failed') {
-          const error = new Error((result as any).error?.message || 'Workflow resume failed');
-          void this.emitError(runId, error);
+        if (abortSignal?.aborted) {
+          await run.cancel();
+          void this.emitError(runId, createAbortError());
+          return;
+        }
+
+        const abort = () => {
+          void run.cancel();
+        };
+        abortSignal?.addEventListener('abort', abort, { once: true });
+        try {
+          const result = await run.resume({ resumeData, requestContext });
+          if (result?.status === 'failed') {
+            const error = new Error((result as any).error?.message || 'Workflow resume failed');
+            void this.emitError(runId, error);
+          } else if ((result as any)?.status === 'canceled' || abortSignal?.aborted) {
+            void this.emitError(runId, createAbortError());
+          }
+        } finally {
+          abortSignal?.removeEventListener('abort', abort);
         }
       })
       .catch(error => {
@@ -975,7 +1127,6 @@ export class DurableAgent<
     globalRunRegistry.set(preparation.runId, {
       ...preparation.registryEntry,
       messageList: preparation.messageList,
-      pubsub: this.pubsub,
     });
 
     return {

@@ -15,9 +15,24 @@ import type { MastraDBMessage } from '../../../message-list';
 import { isSupportedLanguageModel } from '../../../utils';
 import { DurableStepIds } from '../../constants';
 import { globalRunRegistry } from '../../run-registry';
+import { signalToMessage } from '../../signal-message';
 import { emitChunkEvent, emitStepStartEvent } from '../../stream-adapter';
-import type { DurableAgenticWorkflowInput, DurableLLMStepOutput, DurableToolCallInput } from '../../types';
+import type {
+  DurableAgenticWorkflowInput,
+  DurableAgentSignal,
+  DurableLLMStepOutput,
+  DurableToolCallInput,
+} from '../../types';
 import { resolveRuntimeDependencies, resolveModelFromListEntry } from '../../utils/resolve-runtime';
+
+function drainGlobalSignals(runId: string): DurableAgentSignal[] {
+  const entry = globalRunRegistry.get(runId);
+  const signals = entry?.signalQueue ?? [];
+  if (entry) {
+    entry.signalQueue = [];
+  }
+  return signals;
+}
 
 /**
  * Input schema for the durable LLM execution step
@@ -184,6 +199,11 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               );
             }
 
+            const signals = drainGlobalSignals(runId);
+            if (signals.length > 0) {
+              messageList.add(signals.map(signalToMessage), 'input');
+            }
+
             let currentMessageId = messageId;
 
             // 5. Prepare tools - cast through unknown as CoreTool and ToolSet are structurally compatible at runtime
@@ -224,12 +244,13 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 : undefined;
 
             const registryEntry = globalRunRegistry.get(runId);
-            const executionAbortSignal = (registryEntry as any)?.abortSignal ?? abortSignal;
+            const streamPubsub = registryEntry?.pubsub ?? pubsub;
+            const executionAbortSignal = registryEntry?.abortSignal ?? abortSignal;
             if (registryEntry?.inputProcessors?.length) {
-              const inputStepWriter = pubsub
+              const inputStepWriter = streamPubsub
                 ? {
                     custom: async (data: { type: string }) => {
-                      await emitChunkEvent(pubsub, runId, data as any);
+                      await emitChunkEvent(streamPubsub, runId, data as any);
                     },
                   }
                 : undefined;
@@ -310,10 +331,9 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 warnings = w || [];
                 request = r || {};
                 rawResponse = rr || {};
-                modelSpanTracker?.updateStep?.({ request, inputMessages, warnings, messageId: currentMessageId });
 
-                if (pubsub) {
-                  void emitStepStartEvent(pubsub, runId, {
+                if (streamPubsub) {
+                  void emitStepStartEvent(streamPubsub, runId, {
                     stepId: DurableStepIds.LLM_EXECUTION,
                     request,
                     warnings,
@@ -352,8 +372,8 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 // Emit chunk via pubsub for streaming to client.
                 // Finish and error chunks are terminal control flow: finish is sent once by the
                 // agentic loop, and errors are sent once after retries/fallbacks are exhausted.
-                if (pubsub && chunk.type !== 'finish' && chunk.type !== 'error') {
-                  await emitChunkEvent(pubsub, runId, chunk);
+                if (streamPubsub && chunk.type !== 'finish' && chunk.type !== 'error') {
+                  await emitChunkEvent(streamPubsub, runId, chunk);
                 }
 
                 // Process different chunk types
