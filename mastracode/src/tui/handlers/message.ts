@@ -153,6 +153,7 @@ export function handleMessageStart(ctx: EventHandlerContext, message: HarnessMes
     state.lastAskUserComponent = undefined;
     state.lastSubmitPlanComponent = undefined;
     if (!state.streamingComponent) {
+      state.followUpComponents = [];
       state.streamingComponent = new AssistantMessageComponent(undefined, state.hideThinkingBlock, getMarkdownTheme());
       ctx.addChildBeforeFollowUps(state.streamingComponent);
       state.streamingMessage = message;

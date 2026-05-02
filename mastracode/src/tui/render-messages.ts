@@ -221,16 +221,13 @@ export function addUserMessage(state: TUIState, message: HarnessMessage): void {
 
     state.messageComponentsById.set(message.id, userComponent);
 
-    // Always append to end — follow-ups should stay at the bottom
-    state.chatContainer.addChild(userComponent);
-
-    // Track follow-up components sent while streaming so tool calls
-    // can be inserted before them (keeping them anchored at bottom).
-    // Only track if the agent is already streaming a response — otherwise
-    // this is the initial message that triggers the response, not a follow-up.
-    if (state.harness.getDisplayState().isRunning && state.streamingComponent) {
+    if (state.streamingComponent && state.harness.getDisplayState().isRunning) {
+      state.chatContainer.addChild(userComponent);
       state.followUpComponents.push(userComponent);
+      return;
     }
+
+    addChildBeforeFollowUps(state, userComponent);
   }
 }
 

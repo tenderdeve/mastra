@@ -153,4 +153,38 @@ describe('thread lifecycle clears per-thread harness state', () => {
     const setStateCall = harness.setState.mock.calls[0]![0];
     expect(setStateCall).not.toHaveProperty('currentModelId');
   });
+
+  it('replaces pinned task progress from final streamed task_write args', async () => {
+    const oldTasks = [
+      { content: 'Old task', status: 'completed' as const, activeForm: 'Old task' },
+      { content: 'Stale task', status: 'pending' as const, activeForm: 'Staling task' },
+    ];
+    const newTasks = [
+      { content: 'New task', status: 'in_progress' as const, activeForm: 'Working new task' },
+      { content: 'Next task', status: 'pending' as const, activeForm: 'Working next task' },
+    ];
+    state.taskProgress = {
+      updateTasks: vi.fn(),
+      getTasks: () => oldTasks,
+    } as any;
+    state.pendingTools = new Map() as any;
+    state.seenToolCallIds = new Set(['tool-1']);
+    state.allToolComponents = [] as any;
+    state.pendingAskUserComponents = new Map() as any;
+    ectx = { ...ectx, state } as EventHandlerContext;
+
+    await dispatchEvent(
+      {
+        type: 'tool_start',
+        toolCallId: 'tool-1',
+        toolName: 'task_write',
+        args: { tasks: newTasks },
+      } as any,
+      ectx,
+      state,
+    );
+
+    expect((state.taskProgress as any).updateTasks).toHaveBeenCalledWith(newTasks);
+    expect(state.ui.requestRender).toHaveBeenCalled();
+  });
 });

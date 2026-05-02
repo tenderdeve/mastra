@@ -122,6 +122,24 @@ describe('addUserMessage', () => {
     expect(state.allSystemReminderComponents).toHaveLength(0);
     expect(state.messageComponentsById.get('user-1')).toBe(state.chatContainer.children[0]);
   });
+
+  it('pins streamed user messages as follow-ups while assistant text is still streaming', () => {
+    const state = createState();
+    const existing = new Container();
+    state.chatContainer.addChild(existing);
+    state.streamingComponent = existing as any;
+    state.harness = {
+      getDisplayState: () => ({ isRunning: true }),
+    } as unknown as TUIState['harness'];
+
+    addUserMessage(state, createUserMessage('focus on workflows', 'user-signal'));
+
+    expect(state.chatContainer.children).toHaveLength(2);
+    expect(state.chatContainer.children[0]).toBe(existing);
+    expect(state.chatContainer.children[1]).toBeInstanceOf(UserMessageComponent);
+    expect(state.followUpComponents).toEqual([state.chatContainer.children[1]]);
+    expect(state.messageComponentsById.get('user-signal')).toBe(state.chatContainer.children[1]);
+  });
 });
 
 describe('renderExistingMessages subagents', () => {
