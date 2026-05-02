@@ -5,6 +5,7 @@ vi.hoisted(() => vi.resetModules());
 const mocks = vi.hoisted(() => ({
   handleModelsPackCommand: vi.fn().mockResolvedValue(undefined),
   handleCustomProvidersCommand: vi.fn().mockResolvedValue(undefined),
+  handleJudgeCommand: vi.fn().mockResolvedValue(undefined),
   processSlashCommand: vi.fn().mockResolvedValue('custom output'),
   showError: vi.fn(),
 }));
@@ -34,8 +35,17 @@ vi.mock('../commands/index.js', () => ({
   handleSettingsCommand: vi.fn(),
   handleLoginCommand: vi.fn(),
   handleReviewCommand: vi.fn(),
+  handleReportIssueCommand: vi.fn(),
   handleSetupCommand: vi.fn(),
+  handleBrowserCommand: vi.fn(),
   handleThemeCommand: vi.fn(),
+  handleUpdateCommand: vi.fn(),
+  handleMemoryGatewayCommand: vi.fn(),
+  handleApiKeysCommand: vi.fn(),
+  handleFeedbackCommand: vi.fn(),
+  handleObservabilityCommand: vi.fn(),
+  handleGoalCommand: vi.fn(),
+  handleJudgeCommand: mocks.handleJudgeCommand,
 }));
 
 vi.mock('../display.js', () => ({
@@ -53,6 +63,7 @@ describe('dispatchSlashCommand models routing', () => {
   beforeEach(() => {
     mocks.handleModelsPackCommand.mockClear();
     mocks.handleCustomProvidersCommand.mockClear();
+    mocks.handleJudgeCommand.mockClear();
     mocks.processSlashCommand.mockClear();
     mocks.showError.mockClear();
   });
@@ -87,6 +98,17 @@ describe('dispatchSlashCommand models routing', () => {
     expect(handled).toBe(true);
     expect(mocks.handleModelsPackCommand).not.toHaveBeenCalled();
     expect(mocks.showError).toHaveBeenCalledWith(state, 'Unknown command: models:pack');
+  });
+
+  it('routes /judge to handleJudgeCommand', async () => {
+    const state = { customSlashCommands: [] } as any;
+    const ctx = {} as any;
+
+    const handled = await dispatchSlashCommand('/judge', state, () => ctx);
+
+    expect(handled).toBe(true);
+    expect(mocks.handleJudgeCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.handleJudgeCommand).toHaveBeenCalledWith(ctx);
   });
 
   it('routes //deploy to a matching custom slash command', async () => {

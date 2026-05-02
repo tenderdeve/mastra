@@ -32,7 +32,7 @@ import type { IToolExecutionComponent } from './components/tool-execution-interf
 import type { UserMessageComponent } from './components/user-message.js';
 
 import { GoalManager } from './goal-manager.js';
-import { getEditorTheme, TERM_WIDTH_BUFFER } from './theme.js';
+import { getEditorTheme, mastra, TERM_WIDTH_BUFFER } from './theme.js';
 // =============================================================================
 // MastraTUIOptions
 // =============================================================================
@@ -123,6 +123,8 @@ export interface TUIState {
   toolOutputExpanded: boolean;
   hideThinkingBlock: boolean;
   quietMode: boolean;
+  /** Active goal judge status-line override while evaluating the last turn. */
+  activeGoalJudge?: { modelId: string };
 
   // ── Thread / conversation ─────────────────────────────────────────────
   /** True when we want a new thread but haven't created it yet */
@@ -216,7 +218,6 @@ export function createTUIState(options: MastraTUIOptions): TUIState {
   const editorContainer = new Container();
   const footer = new Container();
   const editor = new CustomEditor(ui, getEditorTheme());
-  editor.getModeColor = () => options.harness.getCurrentMode()?.color;
   const result: TUIState = {
     // Core dependencies
     harness: options.harness,
@@ -281,6 +282,12 @@ export function createTUIState(options: MastraTUIOptions): TUIState {
     // Abort tracking
     lastCtrlCTime: 0,
     userInitiatedAbort: false,
+  };
+  editor.getModeColor = () => {
+    if (result.activeGoalJudge) {
+      return mastra.blue;
+    }
+    return options.harness.getCurrentMode()?.color;
   };
   return result;
 }

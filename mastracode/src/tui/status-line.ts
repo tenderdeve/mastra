@@ -35,28 +35,38 @@ export function updateStatusLine(state: TUIState): void {
 
   // --- Determine if we're showing observer/reflector instead of main mode ---
   const omStatus = state.harness.getDisplayState().omProgress.status;
+  const isJudging = Boolean(state.activeGoalJudge);
   const isObserving = omStatus === 'observing';
   const isReflecting = omStatus === 'reflecting';
-  const showOMMode = isObserving || isReflecting;
+  const showOMMode = !isJudging && (isObserving || isReflecting);
 
   // --- Mode badge ---
   let modeBadge = '';
   let modeBadgeWidth = 0;
   const modes = state.harness.listModes();
   const currentMode = modes.length > 1 ? state.harness.getCurrentMode() : undefined;
-  // Use OM color when observing/reflecting, otherwise mode color
+  const judgeModeColor = mastra.blue;
+  // Use judge color for goal judge activity, OM color for OM activity, otherwise mode color
   const mainModeColor = currentMode?.color;
-  const modeColor = showOMMode ? (isObserving ? getObserverColor() : getReflectorColor()) : mainModeColor;
+  const modeColor = isJudging
+    ? judgeModeColor
+    : showOMMode
+      ? isObserving
+        ? getObserverColor()
+        : getReflectorColor()
+      : mainModeColor;
   // Tinted near-black background from mode color (shared between badge and model ID)
   const tintBg = modeColor ? tintHex(modeColor, 0.15) : undefined;
-  // Badge name: use OM mode name when observing/reflecting, otherwise main mode name
-  const badgeName = showOMMode
-    ? isObserving
-      ? 'observe'
-      : 'reflect'
-    : currentMode
-      ? currentMode.name || currentMode.id || 'unknown'
-      : undefined;
+  // Badge name: use judge/OM mode name for background activity, otherwise main mode name
+  const badgeName = isJudging
+    ? 'judge'
+    : showOMMode
+      ? isObserving
+        ? 'observe'
+        : 'reflect'
+      : currentMode
+        ? currentMode.name || currentMode.id || 'unknown'
+        : undefined;
   if (badgeName && modeColor) {
     const [mcr, mcg, mcb] = [
       parseInt(modeColor.slice(1, 3), 16),
@@ -87,13 +97,15 @@ export function updateStatusLine(state: TUIState): void {
   }
 
   // --- Collect raw data ---
-  // Show OM model when observing/reflecting, otherwise main model
+  // Show judge/OM model during background activity, otherwise main model
   const rawModelId =
-    (showOMMode
-      ? isObserving
-        ? state.harness.getObserverModelId()
-        : state.harness.getReflectorModelId()
-      : state.harness.getFullModelId()) ?? '';
+    (isJudging
+      ? state.activeGoalJudge?.modelId
+      : showOMMode
+        ? isObserving
+          ? state.harness.getObserverModelId()
+          : state.harness.getReflectorModelId()
+        : state.harness.getFullModelId()) ?? '';
   // Rewrite Fireworks AI long paths: fireworks-ai/accounts/fireworks/models/<name> → fireworks/<name>
   let fullModelId = rawModelId.startsWith('fireworks-ai/accounts/fireworks/models/')
     ? 'fireworks/' + rawModelId.slice('fireworks-ai/accounts/fireworks/models/'.length)
@@ -130,8 +142,9 @@ export function updateStatusLine(state: TUIState): void {
   const branch = state.projectInfo.gitBranch;
   const queuedCount = state.pendingQueuedActions.length + state.harness.getFollowUpCount();
   const queuedLabel = queuedCount > 0 ? `${queuedCount} queued` : null;
-  const goalState = state.goalManager.getGoal();
-  const goalLabel = goalState?.status === 'active' ? `attempt ${goalState.turnsUsed}/${goalState.maxTurns}` : null;
+  const goalState = state.goalManager?.getGoal();
+  const goalAttempt = goalState ? Math.min(goalState.turnsUsed + 1, goalState.maxTurns) : null;
+  const goalLabel = goalState?.status === 'active' ? `attempt ${goalAttempt}/${goalState.maxTurns}` : null;
   // Build progressively shorter directory strings for layout fallback
   // Only show branch when not showing thread title (thread title takes priority)
   const dirFull = !threadTitle && branch ? `${displayPath} (${branch})` : displayPath;

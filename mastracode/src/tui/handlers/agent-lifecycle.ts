@@ -176,9 +176,22 @@ function maybeGoalContinuation(ctx: EventHandlerContext): void {
   const { state } = ctx;
   if (!state.goalManager.isActive()) return;
 
+  const goal = state.goalManager.getGoal();
+  if (!goal) return;
+
+  if (!state.gradientAnimator) {
+    state.gradientAnimator = new GradientAnimator(() => {
+      ctx.updateStatusLine();
+    });
+  }
+  state.activeGoalJudge = { modelId: goal.judgeModelId };
+  state.gradientAnimator.start();
+  ctx.updateStatusLine();
+  state.ui.requestRender();
+
   state.goalManager
     .evaluateAfterTurn(state)
-    .then(({ continuation, judgeResult }) => {
+    .then(async ({ continuation, judgeResult }) => {
       // Display the judge result in chat if available
       if (judgeResult) {
         const goal = state.goalManager.getGoal()!;
@@ -188,20 +201,32 @@ function maybeGoalContinuation(ctx: EventHandlerContext): void {
       }
 
       if (continuation) {
-        const goal = state.goalManager.getGoal()!;
-        showInfo(state, `Continuing toward goal (attempt ${goal.turnsUsed}/${goal.maxTurns})...`);
         ctx.fireMessage(continuation);
       } else {
-        // Goal is done or paused
+        // Goal is done, paused, or waiting at an explicit checkpoint. Persist the final
+        // judge response so the conversation history survives reloads.
         const goal = state.goalManager.getGoal();
-        if (goal?.status === 'done') {
-          showInfo(state, `Goal achieved: "${goal.objective}"`);
-        } else if (goal?.status === 'paused') {
+        if (goal && judgeResult) {
+          const harness = state.harness as typeof state.harness & {
+            saveSystemReminderMessage?: (args: { reminderType: string; message: string }) => Promise<unknown>;
+          };
+          await harness.saveSystemReminderMessage?.({
+            reminderType: 'goal-judge',
+            message: `${judgeResult.decision} (${goal.turnsUsed}/${goal.maxTurns})\n${judgeResult.reason}`,
+          });
+        }
+        if (goal?.status === 'paused') {
           showInfo(state, `Goal paused (attempt ${goal.turnsUsed}/${goal.maxTurns}). Use /goal resume to continue.`);
         }
       }
     })
     .catch(() => {
       // Goal evaluation failed — don't block the TUI
+    })
+    .finally(() => {
+      state.activeGoalJudge = undefined;
+      state.gradientAnimator?.fadeOut();
+      ctx.updateStatusLine();
+      state.ui.requestRender();
     });
 }

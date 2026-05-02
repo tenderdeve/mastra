@@ -143,7 +143,7 @@ export async function dispatchEvent(event: HarnessEvent, ectx: EventHandlerConte
       if (currentThread) {
         state.currentThreadTitle = currentThread.title;
         // Load goal state from thread metadata
-        state.goalManager.loadFromThreadMetadata(currentThread.metadata as Record<string, unknown> | undefined);
+        state.goalManager?.loadFromThreadMetadata(currentThread.metadata as Record<string, unknown> | undefined);
       }
       break;
     }
@@ -152,14 +152,14 @@ export async function dispatchEvent(event: HarnessEvent, ectx: EventHandlerConte
       ectx.showInfo(`Created thread: ${event.thread.id}`);
       // Update current thread title for status line display
       state.currentThreadTitle = event.thread.title;
-      // If a goal was just set (turnsUsed === 0) and hasn't been persisted yet,
-      // save it to the new thread (this happens when /goal's sendMessage creates the thread).
-      // Otherwise clear the in-memory goal so it doesn't bleed into unrelated new threads.
-      const currentGoal = state.goalManager.getGoal();
-      if (currentGoal && currentGoal.turnsUsed === 0 && currentGoal.status === 'active') {
-        state.goalManager.saveToThread(state).catch(() => {});
+      // If /goal started without an existing thread, save that pending goal to the
+      // newly-created thread. Otherwise load the thread's own goal metadata so goals
+      // do not bleed into unrelated new threads.
+      const shouldPersistPendingGoal = state.goalManager?.consumePersistOnNextThreadCreate() ?? false;
+      if (shouldPersistPendingGoal) {
+        state.goalManager?.saveToThread(state).catch(() => {});
       } else {
-        state.goalManager.loadFromThreadMetadata(event.thread.metadata as Record<string, unknown> | undefined);
+        state.goalManager?.loadFromThreadMetadata(event.thread.metadata as Record<string, unknown> | undefined);
       }
       // Sync inherited resource-level settings
       const tState = state.harness.getState() as any;

@@ -50,6 +50,7 @@ function getCommands(modes: number): HelpEntry[] {
     { key: '/update', description: 'Check for and install updates' },
     { key: '/observability', description: 'Configure cloud observability' },
     { key: '/goal', description: 'Set/manage persistent goal (Ralph loop)' },
+    { key: '/judge', description: 'Set goal judge defaults' },
   ];
 
   if (modes > 1) {

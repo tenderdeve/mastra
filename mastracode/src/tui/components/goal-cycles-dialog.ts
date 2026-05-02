@@ -1,6 +1,6 @@
 /**
  * Goal max-cycles input dialog.
- * Shows a preconfigured input with a default value (20) that the user can edit.
+ * Shows a preconfigured input with the current default value that the user can edit.
  */
 
 import { Box, getEditorKeybindings, Input, Spacer, Text } from '@mariozechner/pi-tui';

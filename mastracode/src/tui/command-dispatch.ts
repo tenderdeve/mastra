@@ -39,6 +39,7 @@ import {
   handleFeedbackCommand,
   handleObservabilityCommand,
   handleGoalCommand,
+  handleJudgeCommand,
 } from './commands/index.js';
 import type { SlashCommandContext } from './commands/types.js';
 import { SlashCommandComponent } from './components/slash-command.js';
@@ -185,6 +186,9 @@ export async function dispatchSlashCommand(
       return true;
     case 'goal':
       await handleGoalCommand(buildCtx(), args);
+      return true;
+    case 'judge':
+      await handleJudgeCommand(buildCtx());
       return true;
     default: {
       const customCommand = state.customSlashCommands.find(cmd => cmd.name === command);

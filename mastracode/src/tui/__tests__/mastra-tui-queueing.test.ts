@@ -40,7 +40,13 @@ function createQueueState(overrides: Partial<TUIState> = {}): TUIState {
     pendingQueuedActions: [],
     pendingSlashCommands: [],
     pendingTools: new Map(),
-    chatContainer: { children: [], invalidate: vi.fn() },
+    chatContainer: {
+      children: [],
+      addChild: vi.fn(function (this: any, child: unknown) {
+        this.children.push(child);
+      }),
+      invalidate: vi.fn(),
+    },
     allToolComponents: [],
     allSlashCommandComponents: [],
     allSystemReminderComponents: [],
@@ -180,6 +186,35 @@ describe('MastraTUI queueing', () => {
     expect(state.pendingFollowUpMessages).toEqual([]);
     expect(state.pendingSlashCommands).toEqual([]);
     expect(ctx.updateStatusLine).toHaveBeenCalledTimes(6);
+  });
+
+  it('persists terminal goal judge responses when no continuation is queued', async () => {
+    const saveSystemReminderMessage = vi.fn().mockResolvedValue(null);
+    const state = createQueueState({
+      harness: {
+        getFollowUpCount: vi.fn(() => 0),
+        saveSystemReminderMessage,
+      } as any,
+      gradientAnimator: { fadeOut: vi.fn(), start: vi.fn() } as any,
+      goalManager: {
+        isActive: vi.fn(() => true),
+        getGoal: vi.fn(() => ({ status: 'active', judgeModelId: 'openai/gpt-5.5', turnsUsed: 1, maxTurns: 20 })),
+        evaluateAfterTurn: vi.fn().mockResolvedValue({
+          continuation: null,
+          judgeResult: { decision: 'waiting', reason: 'Waiting for explicit verification.' },
+        }),
+      } as any,
+    });
+    const ctx = createQueueContext(state);
+
+    handleAgentEnd(ctx);
+
+    await vi.waitFor(() => {
+      expect(saveSystemReminderMessage).toHaveBeenCalledWith({
+        reminderType: 'goal-judge',
+        message: 'waiting (1/20)\nWaiting for explicit verification.',
+      });
+    });
   });
 
   it('waits for harness-level follow-ups to finish before draining the local queue', () => {

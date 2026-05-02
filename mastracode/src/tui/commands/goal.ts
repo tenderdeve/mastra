@@ -2,22 +2,23 @@
  * /goal command — persistent cross-turn goals (Ralph loop).
  *
  * Usage:
- *   /goal <text>      Set a standing goal (shows judge model picker)
+ *   /goal <text>      Set a standing goal (asks for judge defaults only if unset)
  *   /goal             Show current goal status
  *   /goal status      Show current goal status
  *   /goal pause       Pause the continuation loop
  *   /goal resume      Resume (resets turn counter)
  *   /goal clear       Drop the goal
+ *   /judge            Set global judge model and max-attempt defaults
  */
+import type { HarnessMessage } from '@mastra/core/harness';
 import { loadSettings, saveSettings } from '../../onboarding/settings.js';
 import { GoalCyclesDialogComponent } from '../components/goal-cycles-dialog.js';
 import { ModelSelectorComponent } from '../components/model-selector.js';
 import type { ModelItem } from '../components/model-selector.js';
+import { DEFAULT_MAX_TURNS } from '../goal-manager.js';
 import { promptForApiKeyIfNeeded } from '../prompt-api-key.js';
 
 import type { SlashCommandContext } from './types.js';
-
-const DEFAULT_MAX_CYCLES = 20;
 
 export async function handleGoalCommand(ctx: SlashCommandContext, args: string[]): Promise<void> {
   const { state } = ctx;
@@ -61,6 +62,10 @@ export async function handleGoalCommand(ctx: SlashCommandContext, args: string[]
       ctx.showInfo('Goal is already active.');
       return;
     }
+    if (goal.status !== 'paused') {
+      ctx.showInfo('Goal is already done. Use /goal <text> to set a new goal.');
+      return;
+    }
     goalManager.resume();
     await goalManager.saveToThread(state);
     ctx.showInfo(`Goal resumed: "${goal.objective}" — turn counter reset. Sending continuation...`);
@@ -86,60 +91,74 @@ export async function handleGoalCommand(ctx: SlashCommandContext, args: string[]
     return;
   }
 
-  // /goal <text> — set a new goal; show judge model picker first
+  // /goal <text> — set a new goal using saved judge defaults, asking only once if needed.
   const objective = args.join(' ');
+  const defaults = getJudgeDefaults();
+  const judgeDefaults = defaults ?? (await promptForJudgeDefaults(ctx, 'Goal cancelled.'));
+  if (!judgeDefaults) return;
+
+  await startGoal(ctx, objective, judgeDefaults.judgeModelId, judgeDefaults.maxTurns);
+}
+
+export async function handleJudgeCommand(ctx: SlashCommandContext): Promise<void> {
+  const defaults = await promptForJudgeDefaults(ctx, 'Judge settings unchanged.');
+  if (!defaults) return;
+  ctx.showInfo(`Judge defaults set: ${defaults.judgeModelId}, ${defaults.maxTurns} max attempts.`);
+}
+
+interface JudgeDefaults {
+  judgeModelId: string;
+  maxTurns: number;
+}
+
+function getJudgeDefaults(): JudgeDefaults | null {
+  const settings = loadSettings();
+  const judgeModelId = settings.models.goalJudgeModel;
+  const maxTurns = settings.models.goalMaxTurns;
+  if (!judgeModelId || typeof maxTurns !== 'number' || maxTurns <= 0) return null;
+  return { judgeModelId, maxTurns };
+}
+
+async function promptForJudgeDefaults(ctx: SlashCommandContext, cancelMessage: string): Promise<JudgeDefaults | null> {
+  const { state } = ctx;
   const availableModels = await state.harness.listAvailableModels();
 
   if (availableModels.length === 0) {
-    ctx.showError('No models available. Cannot set goal without a judge model.');
-    return;
+    ctx.showError('No models available. Cannot set goal judge defaults.');
+    return null;
   }
 
-  // Preselect: last judge choice from settings, or current main model
   const settings = loadSettings();
-  const lastJudgeModelId = (settings.models as Record<string, unknown>).goalJudgeModel as string | undefined;
-  const preselectedId = lastJudgeModelId ?? state.harness.getCurrentModelId() ?? undefined;
+  const preselectedId = settings.models.goalJudgeModel ?? state.harness.getCurrentModelId() ?? undefined;
+  const defaultMaxTurns =
+    typeof settings.models.goalMaxTurns === 'number' && settings.models.goalMaxTurns > 0
+      ? settings.models.goalMaxTurns
+      : DEFAULT_MAX_TURNS;
 
   return new Promise(resolve => {
     const selector = new ModelSelectorComponent({
       tui: state.ui,
       models: availableModels,
       currentModelId: preselectedId,
-      title: 'Select Judge Model for Goal',
+      title: 'Select Goal Judge Model',
       onSelect: async (model: ModelItem) => {
         state.ui.hideOverlay();
         await promptForApiKeyIfNeeded(state.ui, model, ctx.authStorage);
 
-        // Save judge preference for next time
-        const s = loadSettings();
-        (s.models as Record<string, unknown>).goalJudgeModel = model.id;
-        saveSettings(s);
-
-        // Show max-cycles input
         const cyclesDialog = new GoalCyclesDialogComponent({
-          defaultValue: DEFAULT_MAX_CYCLES,
-          onSubmit: async (maxCycles: number) => {
+          defaultValue: defaultMaxTurns,
+          onSubmit: (maxTurns: number) => {
             state.ui.hideOverlay();
-
-            // Set the goal
-            const goal = goalManager.setGoal(objective, model.id, maxCycles);
-            await goalManager.saveToThread(state);
-            ctx.showInfo(`Goal set (${goal.maxTurns} max attempts, judge: ${model.id}): "${objective}"`);
-
-            // Kick off the first turn
-            try {
-              await state.harness.sendMessage({ content: objective });
-            } catch (err) {
-              goalManager.pause();
-              await goalManager.saveToThread(state);
-              ctx.showError(`Goal paused — failed to start: ${err instanceof Error ? err.message : String(err)}`);
-            }
-            resolve();
+            const s = loadSettings();
+            s.models.goalJudgeModel = model.id;
+            s.models.goalMaxTurns = maxTurns;
+            saveSettings(s);
+            resolve({ judgeModelId: model.id, maxTurns });
           },
           onCancel: () => {
             state.ui.hideOverlay();
-            ctx.showInfo('Goal cancelled.');
-            resolve();
+            ctx.showInfo(cancelMessage);
+            resolve(null);
           },
         });
 
@@ -152,8 +171,8 @@ export async function handleGoalCommand(ctx: SlashCommandContext, args: string[]
       },
       onCancel: () => {
         state.ui.hideOverlay();
-        ctx.showInfo('Goal cancelled.');
-        resolve();
+        ctx.showInfo(cancelMessage);
+        resolve(null);
       },
     });
 
@@ -164,4 +183,60 @@ export async function handleGoalCommand(ctx: SlashCommandContext, args: string[]
     });
     selector.focused = true;
   });
+}
+
+async function startGoal(
+  ctx: SlashCommandContext,
+  objective: string,
+  judgeModelId: string,
+  maxTurns: number,
+): Promise<void> {
+  const { state } = ctx;
+  const goalManager = state.goalManager;
+  const shouldPersistToCreatedThread = !state.harness.getCurrentThreadId();
+  const goal = goalManager.setGoal(objective, judgeModelId, maxTurns);
+  if (shouldPersistToCreatedThread) {
+    goalManager.persistOnNextThreadCreate();
+  }
+  await goalManager.saveToThread(state);
+
+  ctx.addUserMessage(createGoalReminderMessage(goal.id, objective, goal.maxTurns, judgeModelId));
+
+  try {
+    await state.harness.sendMessage({ content: toSystemReminderXml('goal', objective) });
+  } catch (err) {
+    goalManager.pause();
+    await goalManager.saveToThread(state);
+    ctx.showError(`Goal paused — failed to start: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export function createGoalReminderMessage(
+  goalId: string,
+  objective: string,
+  maxTurns: number,
+  judgeModelId: string,
+): HarnessMessage {
+  return {
+    id: `goal-${goalId}`,
+    role: 'user',
+    createdAt: new Date(),
+    content: [
+      {
+        type: 'system_reminder',
+        reminderType: 'goal',
+        message: objective,
+        goalMaxTurns: maxTurns,
+        judgeModelId,
+      },
+    ],
+  } as unknown as HarnessMessage;
+}
+
+function toSystemReminderXml(type: string, message: string): string {
+  return `<system-reminder type="${type}">${escapeXml(message)}</system-reminder>`;
+}
+
+function escapeXml(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
