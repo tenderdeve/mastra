@@ -56,7 +56,7 @@ function TabLink({
             className="flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 border-transparent text-neutral2 cursor-not-allowed opacity-50"
           >
             <Icon size="sm">{icon}</Icon>
-            <Txt variant="ui-sm" className="text-inherit hidden sm:inline">
+            <Txt variant="ui-sm" className="text-inherit">
               {label}
             </Txt>
           </span>
