@@ -193,6 +193,12 @@ async function startGoal(
 ): Promise<void> {
   const { state } = ctx;
   const goalManager = state.goalManager;
+
+  if (state.pendingNewThread) {
+    await state.harness.createThread();
+    state.pendingNewThread = false;
+  }
+
   const shouldPersistToCreatedThread = !state.harness.getCurrentThreadId();
   const goal = goalManager.setGoal(objective, judgeModelId, maxTurns);
   if (shouldPersistToCreatedThread) {

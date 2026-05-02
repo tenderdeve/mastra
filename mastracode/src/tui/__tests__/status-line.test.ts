@@ -208,7 +208,7 @@ describe('updateStatusLine', () => {
     expect(chalkRgbMock).toHaveBeenCalledWith(53, 117, 221);
   });
 
-  it('shows active goal attempts as 1-indexed', () => {
+  it('shows active goal judge cycles as 1-indexed', () => {
     const state = createState();
     state.goalManager = {
       getGoal: vi.fn(() => ({ status: 'active', turnsUsed: 0, maxTurns: 20 })),
@@ -217,7 +217,8 @@ describe('updateStatusLine', () => {
     updateStatusLine(state);
 
     const rendered = state.statusLine.setText.mock.calls[0]?.[0];
-    expect(rendered).toContain('attempt 1/20');
-    expect(rendered).not.toContain('attempt 0/20');
+    expect(rendered).toContain('judge 1/20');
+    expect(rendered).not.toContain('judge 0/20');
+    expect(rendered).not.toContain('attempt');
   });
 });

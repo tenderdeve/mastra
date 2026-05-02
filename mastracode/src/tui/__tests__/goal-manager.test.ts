@@ -229,7 +229,9 @@ describe('GoalManager', () => {
 
     expect(mocks.agentConstructor).toHaveBeenCalledWith(
       expect.objectContaining({
-        instructions: expect.stringContaining('keep choosing "waiting" when the user\'s latest response asks a question'),
+        instructions: expect.stringContaining(
+          'keep choosing "waiting" when the user\'s latest response asks a question',
+        ),
       }),
     );
     expect(result.continuation).toBeNull();
@@ -251,7 +253,10 @@ describe('GoalManager', () => {
     });
 
     const manager = new GoalManager();
-    manager.setGoal('tell three facts. after each fact stop until the goal judge tells you to continue', 'openai/gpt-5.4-mini');
+    manager.setGoal(
+      'tell three facts. after each fact stop until the goal judge tells you to continue',
+      'openai/gpt-5.4-mini',
+    );
 
     const result = await manager.evaluateAfterTurn(createState());
 

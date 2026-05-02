@@ -144,7 +144,7 @@ export function updateStatusLine(state: TUIState): void {
   const queuedLabel = queuedCount > 0 ? `${queuedCount} queued` : null;
   const goalState = state.goalManager?.getGoal();
   const goalAttempt = goalState ? Math.min(goalState.turnsUsed + 1, goalState.maxTurns) : null;
-  const goalLabel = goalState?.status === 'active' ? `attempt ${goalAttempt}/${goalState.maxTurns}` : null;
+  const goalLabel = goalState?.status === 'active' ? `judge ${goalAttempt}/${goalState.maxTurns}` : null;
   // Build progressively shorter directory strings for layout fallback
   // Only show branch when not showing thread title (thread title takes priority)
   const dirFull = !threadTitle && branch ? `${displayPath} (${branch})` : displayPath;
