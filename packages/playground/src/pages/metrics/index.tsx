@@ -38,7 +38,13 @@ import { useSearchParams } from 'react-router';
 import { useMastraPackages } from '@/domains/configuration/hooks/use-mastra-packages';
 import { LatencyCard } from '@/domains/metrics/components/latency-card';
 import { MemoryCard } from '@/domains/metrics/components/memory-card';
-import { AgentRunsKpiCard, ModelCostKpiCard, TotalTokensKpiCard } from '@/domains/metrics/components/metrics-kpi-cards';
+import {
+  ActiveResourcesKpiCard,
+  ActiveThreadsKpiCard,
+  AgentRunsKpiCard,
+  ModelCostKpiCard,
+  TotalTokensKpiCard,
+} from '@/domains/metrics/components/metrics-kpi-cards';
 import { MetricsToolbar } from '@/domains/metrics/components/metrics-toolbar';
 import { ModelUsageCostCard } from '@/domains/metrics/components/model-usage-cost-card';
 import { TokenUsageByAgentCard } from '@/domains/metrics/components/token-usage-by-agent-card';
@@ -309,6 +315,8 @@ function MetricsContent() {
             <AgentRunsKpiCard />
             <ModelCostKpiCard />
             <TotalTokensKpiCard />
+            <ActiveThreadsKpiCard />
+            <ActiveResourcesKpiCard />
           </MetricsFlexGrid>
 
           <MetricsFlexGrid>
