@@ -87,6 +87,7 @@ import {
 import { gatewayAgent } from './agents/gateway';
 import { DaytonaSandbox } from '@mastra/daytona';
 import { StagehandBrowser } from '@mastra/stagehand';
+import { Workspace, LocalFilesystem } from '@mastra/core/workspace';
 
 const libsqlStore = new LibSQLStore({
   id: 'mastra-storage',
@@ -100,6 +101,13 @@ const storage = new MastraCompositeStore({
   domains: {
     observability: duckdbStore.observability,
   },
+});
+
+const builderWorkspace = new Workspace({
+  id: 'builder-workspace',
+  name: 'Builder Workspace',
+  filesystem: new LocalFilesystem({ basePath: '.mastra/workspace' }),
+  sandbox: new DaytonaSandbox(),
 });
 
 export const mastra = new Mastra({
@@ -137,6 +145,7 @@ export const mastra = new Mastra({
     sensitiveTopicBlocker,
     stepLoggerProcessor,
   },
+  workspace: builderWorkspace,
   storage,
   mcpServers: {
     myMcpServer,
