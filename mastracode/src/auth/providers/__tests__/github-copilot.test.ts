@@ -101,7 +101,10 @@ describe('refreshGitHubCopilotToken', () => {
   });
 
   it('throws when the response is missing required fields', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ token: 'copilot-bearer' })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ token: 'copilot-bearer' })),
+    );
     await expect(refreshGitHubCopilotToken('ghu_test_token')).rejects.toThrow(/Invalid Copilot token response/);
   });
 });

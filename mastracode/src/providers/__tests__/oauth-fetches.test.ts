@@ -140,9 +140,7 @@ describe('gateway oauth fetch wrappers', () => {
     const { buildGitHubCopilotOAuthFetch } = await import('../github-copilot.js');
     const fetchWithOAuth = buildGitHubCopilotOAuthFetch({ authStorage: githubCopilotStorage as any });
 
-    await expect(
-      fetchWithOAuth('https://api.openai.com/v1/chat/completions', { headers: {} }),
-    ).rejects.toMatchObject({
+    await expect(fetchWithOAuth('https://api.openai.com/v1/chat/completions', { headers: {} })).rejects.toMatchObject({
       requestUrl: 'https://api.individual.githubcopilot.com/v1/chat/completions',
     });
   });

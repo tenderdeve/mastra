@@ -83,7 +83,9 @@ function detectIsVision(body: unknown): boolean {
   if (Array.isArray(messages)) {
     return messages.some(
       (msg: unknown) =>
-        msg && typeof msg === 'object' && Array.isArray((msg as { content?: unknown }).content) &&
+        msg &&
+        typeof msg === 'object' &&
+        Array.isArray((msg as { content?: unknown }).content) &&
         ((msg as { content: unknown[] }).content as unknown[]).some(matchPart),
     );
   }
@@ -92,7 +94,9 @@ function detectIsVision(body: unknown): boolean {
   if (Array.isArray(input)) {
     return input.some(
       (item: unknown) =>
-        item && typeof item === 'object' && Array.isArray((item as { content?: unknown }).content) &&
+        item &&
+        typeof item === 'object' &&
+        Array.isArray((item as { content?: unknown }).content) &&
         ((item as { content: unknown[] }).content as unknown[]).some(matchPart),
     );
   }
@@ -191,11 +195,7 @@ export function buildGitHubCopilotOAuthFetch(
   }) as typeof fetch;
 }
 
-function rewriteToCopilotBase(
-  url: string | URL | Request,
-  token: string,
-  enterpriseDomain?: string,
-): URL {
+function rewriteToCopilotBase(url: string | URL | Request, token: string, enterpriseDomain?: string): URL {
   const original = url instanceof URL ? url : new URL(typeof url === 'string' ? url : (url as Request).url);
   const base = new URL(getGitHubCopilotBaseUrl(token, enterpriseDomain));
   // Preserve the path/search of the original request, anchored at the Copilot base.

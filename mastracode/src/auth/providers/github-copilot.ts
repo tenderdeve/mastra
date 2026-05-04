@@ -230,8 +230,7 @@ async function pollForGitHubAccessToken(
 
       if (error === 'slow_down') {
         slowDownResponses += 1;
-        intervalMs =
-          typeof interval === 'number' && interval > 0 ? interval * 1000 : Math.max(1000, intervalMs + 5000);
+        intervalMs = typeof interval === 'number' && interval > 0 ? interval * 1000 : Math.max(1000, intervalMs + 5000);
         intervalMultiplier = SLOW_DOWN_POLL_INTERVAL_MULTIPLIER;
         continue;
       }
