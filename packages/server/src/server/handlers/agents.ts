@@ -221,6 +221,7 @@ export interface SerializedAgent {
   defaultStreamOptionsLegacy?: Record<string, unknown>;
   /** Serialized JSON schema for request context validation */
   requestContextSchema?: string;
+
   source?: 'code' | 'stored';
   status?: 'draft' | 'published' | 'archived';
   activeVersionId?: string;

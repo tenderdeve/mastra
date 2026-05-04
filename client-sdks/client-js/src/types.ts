@@ -759,6 +759,7 @@ export interface McpToolInfo {
   description?: string;
   inputSchema: string;
   toolType?: MCPToolType;
+  _meta?: Record<string, unknown>;
 }
 
 export interface McpServerToolListResponse {
