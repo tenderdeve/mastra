@@ -27,8 +27,59 @@ describe('getAvailableModePacks', () => {
       cerebras: false,
       google: false,
       deepseek: false,
+      'github-copilot': false,
     });
 
     expect(PROVIDER_DEFAULT_MODELS['openai-codex']).toBe(packs.find(pack => pack.id === 'openai')?.models.build);
+  });
+
+  it('exposes a GitHub Copilot pack with low-multiplier model defaults', () => {
+    const packs = getAvailableModePacks({
+      anthropic: false,
+      openai: false,
+      cerebras: false,
+      google: false,
+      deepseek: false,
+      'github-copilot': 'oauth',
+    });
+
+    const pack = packs.find(p => p.id === 'github-copilot');
+    expect(pack).toBeDefined();
+    // Pack chosen with Copilot premium-request multipliers in mind:
+    //   - claude-sonnet-4.5 = 1x for build/plan
+    //   - gpt-4.1 = 0x (free) for fast
+    expect(pack?.models).toEqual({
+      plan: 'github-copilot/claude-sonnet-4.5',
+      build: 'github-copilot/claude-sonnet-4.5',
+      fast: 'github-copilot/gpt-4.1',
+    });
+  });
+
+  it('keeps the GitHub Copilot OAuth post-login default aligned with the build model', () => {
+    const packs = getAvailableModePacks({
+      anthropic: false,
+      openai: false,
+      cerebras: false,
+      google: false,
+      deepseek: false,
+      'github-copilot': 'oauth',
+    });
+
+    expect(PROVIDER_DEFAULT_MODELS['github-copilot']).toBe(
+      packs.find(pack => pack.id === 'github-copilot')?.models.build,
+    );
+  });
+
+  it('hides the GitHub Copilot pack when access is unavailable', () => {
+    const packs = getAvailableModePacks({
+      anthropic: false,
+      openai: false,
+      cerebras: false,
+      google: false,
+      deepseek: false,
+      'github-copilot': false,
+    });
+
+    expect(packs.find(p => p.id === 'github-copilot')).toBeUndefined();
   });
 });

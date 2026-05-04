@@ -398,6 +398,7 @@ export async function createMastraCode(config?: MastraCodeConfig) {
   // Also scan the full provider registry so configured API keys satisfy access checks.
   const anthropicCred = authStorage.get('anthropic');
   const openaiCred = authStorage.get('openai-codex');
+  const githubCopilotCred = authStorage.get('github-copilot');
   const startupAccess: ProviderAccess = {
     anthropic:
       anthropicCred?.type === 'oauth'
@@ -414,6 +415,7 @@ export async function createMastraCode(config?: MastraCodeConfig) {
     cerebras: process.env.CEREBRAS_API_KEY ? 'apikey' : false,
     google: process.env.GOOGLE_GENERATIVE_AI_API_KEY ? 'apikey' : false,
     deepseek: process.env.DEEPSEEK_API_KEY ? 'apikey' : false,
+    'github-copilot': githubCopilotCred?.type === 'oauth' ? 'oauth' : false,
   };
   // Gateway covers all providers — ensure Anthropic/OpenAI packs are visible
   if (mgApiKey) {

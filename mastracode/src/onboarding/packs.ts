@@ -37,6 +37,7 @@ export interface ProviderAccess {
   cerebras: ProviderAccessLevel;
   google: ProviderAccessLevel;
   deepseek: ProviderAccessLevel;
+  'github-copilot': ProviderAccessLevel;
   [provider: string]: ProviderAccessLevel;
 }
 
@@ -85,6 +86,22 @@ export function getAvailableModePacks(
         build: openaiCodex,
         plan: openaiCodex,
         fast: openaiFast,
+      },
+    });
+  }
+
+  if (access['github-copilot']) {
+    // Pack chosen with GitHub Copilot premium-request multipliers in mind:
+    //   build / plan: claude-sonnet-4.5 (1x premium request)
+    //   fast:        gpt-4.1            (0x — included with all paid Copilot plans)
+    packs.push({
+      id: 'github-copilot',
+      name: 'GitHub Copilot',
+      description: 'GitHub Copilot subscription (Claude Sonnet for build/plan, GPT-4.1 for fast)',
+      models: {
+        build: 'github-copilot/claude-sonnet-4.5',
+        plan: 'github-copilot/claude-sonnet-4.5',
+        fast: 'github-copilot/gpt-4.1',
       },
     });
   }
