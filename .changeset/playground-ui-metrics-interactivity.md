@@ -2,29 +2,32 @@
 '@mastra/playground-ui': minor
 ---
 
-Added optional interactivity props to the metrics chart primitives so cards can turn data points into links without wrapping or reimplementing the components. All additions are opt-in; existing call sites render identically.
+Added opt-in interactivity and shared filter persistence support for observability UI components.
 
-- `MetricsLineChart` accepts an `onPointClick` callback that fires with the clicked point and series key.
-- `HorizontalBars` accepts a per-row `href` (the whole row becomes a link) and a per-segment `hrefs` array (individual segments become links).
-- `MetricsDataTable` accepts a `getRowHref(row)` function that turns each row into a link when it returns a URL.
-- `MetricsCard` exposes a new `Actions` slot in the top bar for icon-button links alongside the title and summary.
+- `MetricsLineChart` accepts an `onPointClick` callback so chart points can drive drilldowns.
+- `HorizontalBars` accepts row-level and segment-level hrefs for linked metric bars without nested anchors.
+- `MetricsDataTable` accepts `getRowHref(row)` for linked rows with consistent hover and focus styling.
+- `MetricsCard` exposes an `Actions` slot in the top bar for contextual icon links.
+- Observability filter helpers for Metrics, Traces, and Logs use the shared saved-filters storage key so saved filters can hydrate across observability tabs.
+
+All additions are optional, so existing consumers continue to render the same way unless they pass the new props.
 
 ```tsx
 <MetricsLineChart
   data={points}
   series={series}
-  onPointClick={point => navigate(`/traces?dateFrom=${point.from}&dateTo=${point.to}`)}
+  onPointClick={point => navigate(`/observability?dateFrom=${point.from}&dateTo=${point.to}`)}
 />
 
-<HorizontalBars data={[{ name: 'agent-a', values: [42, 3], href: '/traces?entityName=agent-a' }]} />
+<HorizontalBars data={[{ name: 'agent-a', values: [42, 3], href: '/observability?filterEntityName=agent-a' }]} />
 
-<MetricsDataTable columns={cols} data={rows} getRowHref={row => `/traces?threadId=${row.threadId}`} />
+<MetricsDataTable columns={cols} data={rows} getRowHref={row => `/observability?filterThreadId=${row.threadId}`} />
 
 <MetricsCard>
   <MetricsCard.TopBar>
     <MetricsCard.TitleAndDescription title="Latency" />
     <MetricsCard.Actions>
-      <IconButton href="/traces" />
+      <IconButton href="/observability" />
     </MetricsCard.Actions>
   </MetricsCard.TopBar>
 </MetricsCard>

@@ -2,23 +2,24 @@
 'mastra': minor
 ---
 
-Made the Studio metrics dashboard filterable, memory-aware, and clickable.
+Updated the Studio observability UI with a filterable metrics dashboard and cross-page observability filter persistence.
 
-**Dimensional filter toolbar**
+**Metrics dashboard filters**
 
-The metrics page now has a property-filter toolbar mirroring the Traces toolbar. Filters persist in the URL and `localStorage`, and every card re-queries with the active dimensions and date range. Supported fields: `rootEntityType`, `entityName`, `entityId`, `tags`, `serviceName`, `environment`, plus free-text filters for identity and correlation IDs (`threadId`, `resourceId`, `userId`, `organizationId`, `runId`, `sessionId`, `requestId`, `experimentId`).
+The metrics page now includes a dimensional filter toolbar for `rootEntityType`, `entityName`, `entityId`, `tags`, `serviceName`, `environment`, and common identity/correlation IDs such as `threadId`, `resourceId`, `userId`, `organizationId`, `runId`, `sessionId`, `requestId`, and `experimentId`. Active filters are reflected in the URL and persisted with the shared observability saved-filters key used across Metrics, Traces, and Logs.
 
 **Memory card**
 
-A new **Memory** card shows distinct thread and resource activity with tokens and cost per row. Threads and Resources live under tabs in the same card; each row is a TopK over the active date range and filters.
+A new **Memory** card shows thread and resource activity in one tabbed card. Rows include run counts, token usage, and cost for the active date range and filters. The dashboard also restores the Total Threads and Total Resources KPI cards.
 
 **Drilldowns**
 
-Clicking meaningful data points on the dashboard now navigates to Traces (or Logs) with matching filters and the right time window:
+Metrics cards can now link into Traces or Logs while preserving the active date range and relevant filters:
 
-- Card header icons on Latency, Trace Volume, Token Usage by Agent, and Model Usage & Cost open Traces pre-filtered to the card's active dimensions. Trace Volume also exposes a "View errors in Logs" icon.
-- Clickable bar rows on Token Usage by Agent, Trace Volume, and Model Usage & Cost drill into Traces scoped by `entityName` and `rootEntityType`. Trace Volume's "Errors" segment additionally applies `status=error`.
-- Clickable table rows on Memory open Traces filtered to the clicked `threadId` / `resourceId`.
-- Clickable chart nodes on the Latency line chart narrow the Traces window to the clicked point's hourly bucket — for example, clicking 14:00 on the Agents tab opens `?rootEntityType=AGENT&dateFrom=…14:00…&dateTo=…15:00…`.
+- Latency, Trace Volume, Token Usage by Agent, and Model Usage & Cost expose header drilldown actions.
+- Token Usage by Agent, Trace Volume, and Model Usage & Cost rows/bars drill into Traces scoped to the clicked entity.
+- Trace Volume error segments can drill into Logs with `level=error`.
+- Memory rows drill into Traces scoped to the clicked `threadId` or `resourceId`.
+- Latency chart points narrow Traces to the clicked time bucket.
 
-Dashboard filters and the active date range are preserved through every drilldown. KPI cards stay non-clickable.
+Metrics-to-Traces drilldowns open the branch-oriented trace list so nested agent, workflow, and tool spans are visible. KPI cards remain non-clickable.
