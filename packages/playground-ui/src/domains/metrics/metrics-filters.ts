@@ -41,9 +41,9 @@ export const METRICS_PROPERTY_FILTER_FIELD_IDS = Object.keys(
   METRICS_PROPERTY_FILTER_PARAM_BY_FIELD,
 ) as Array<MetricsPropertyFilterFieldId>;
 
-const METRICS_FILTERS_STORAGE_KEY = 'mastra:observability:saved-filters';
+const METRICS_FILTERS_STORAGE_KEY = 'mastra:metrics:saved-filters';
 
-/** Save the current metrics filter URL params so observability pages can restore
+/** Save the current metrics filter URL params so the metrics page can restore
  *  them on next visit (same pattern as traces/logs). */
 export function saveMetricsFiltersToStorage(params: URLSearchParams): void {
   const serialized = getPreservedMetricsFilterParams(params);

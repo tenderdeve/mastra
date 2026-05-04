@@ -2,13 +2,13 @@
 '@mastra/playground-ui': minor
 ---
 
-Added opt-in interactivity and shared filter persistence support for observability UI components.
+Added opt-in interactivity and per-page filter persistence support for observability UI components.
 
 - `MetricsLineChart` accepts an `onPointClick` callback so chart points can drive drilldowns.
 - `HorizontalBars` accepts row-level and segment-level hrefs for linked metric bars without nested anchors.
 - `MetricsDataTable` accepts `getRowHref(row)` for linked rows with consistent hover and focus styling.
 - `MetricsCard` exposes an `Actions` slot in the top bar for contextual icon links.
-- Observability filter helpers for Metrics, Traces, and Logs use the shared saved-filters storage key so saved filters can hydrate across observability tabs.
+- Observability filter helpers for Metrics, Traces, and Logs each keep their own saved-filters storage key so pages remember filters independently.
 
 All additions are optional, so existing consumers continue to render the same way unless they pass the new props.
 

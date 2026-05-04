@@ -1,34 +1,39 @@
 import { test, expect } from '@playwright/test';
 import { resetStorage } from '../__utils__/reset-storage';
 
-const OBSERVABILITY_FILTERS_STORAGE_KEY = 'mastra:observability:saved-filters';
+const METRICS_FILTERS_STORAGE_KEY = 'mastra:metrics:saved-filters';
+const TRACE_FILTERS_STORAGE_KEY = 'mastra:traces:saved-filters';
+const LOGS_FILTERS_STORAGE_KEY = 'mastra:logs:saved-filters';
+
+const STORAGE_KEYS = [METRICS_FILTERS_STORAGE_KEY, TRACE_FILTERS_STORAGE_KEY, LOGS_FILTERS_STORAGE_KEY];
 
 test.afterEach(async ({ page }) => {
-  await page.evaluate(key => localStorage.removeItem(key), OBSERVABILITY_FILTERS_STORAGE_KEY).catch(() => undefined);
+  await page.evaluate(keys => keys.forEach(key => localStorage.removeItem(key)), STORAGE_KEYS).catch(() => undefined);
   await resetStorage();
 });
 
 /**
  * FEATURE: Observability filter persistence
- * USER STORY: As a user, I want saved filters to follow me between Metrics, Traces, and Logs so I can keep investigating the same slice of data.
- * BEHAVIOR UNDER TEST: A filter saved in localStorage hydrates clean observability URLs across tabs without requiring users to re-enter filters.
+ * USER STORY: As a user, I want Metrics, Traces, and Logs to each remember their own saved filters.
+ * BEHAVIOR UNDER TEST: Each observability page hydrates only from its own localStorage key when the URL is clean.
  */
-test('saved observability filters hydrate metrics, traces, and logs pages', async ({ page }) => {
+test('saved filters hydrate separately for metrics, traces, and logs pages', async ({ page }) => {
   await page.goto('/metrics');
-  await page.evaluate(
-    ([key, value]) => localStorage.setItem(key, value),
-    [OBSERVABILITY_FILTERS_STORAGE_KEY, 'filterEnvironment=production&filterEntityName=Observer'],
-  );
+  await page.evaluate(([metricsKey, tracesKey, logsKey]) => {
+    localStorage.setItem(metricsKey, 'filterEnvironment=metrics-env&filterEntityName=MetricsAgent');
+    localStorage.setItem(tracesKey, 'filterEnvironment=traces-env&filterEntityName=TracesAgent');
+    localStorage.setItem(logsKey, 'filterEnvironment=logs-env&filterEntityName=LogsAgent');
+  }, STORAGE_KEYS);
 
   await page.goto('/metrics');
-  await expect(page).toHaveURL(/filterEnvironment=production/);
-  await expect(page).toHaveURL(/filterEntityName=Observer/);
+  await expect(page).toHaveURL(/filterEnvironment=metrics-env/);
+  await expect(page).toHaveURL(/filterEntityName=MetricsAgent/);
 
   await page.goto('/observability');
-  await expect(page).toHaveURL(/filterEnvironment=production/);
-  await expect(page).toHaveURL(/filterEntityName=Observer/);
+  await expect(page).toHaveURL(/filterEnvironment=traces-env/);
+  await expect(page).toHaveURL(/filterEntityName=TracesAgent/);
 
   await page.goto('/logs');
-  await expect(page).toHaveURL(/filterEnvironment=production/);
-  await expect(page).toHaveURL(/filterEntityName=Observer/);
+  await expect(page).toHaveURL(/filterEnvironment=logs-env/);
+  await expect(page).toHaveURL(/filterEntityName=LogsAgent/);
 });

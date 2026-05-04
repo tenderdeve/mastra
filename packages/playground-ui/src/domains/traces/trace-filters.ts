@@ -74,7 +74,7 @@ export const TRACE_PROPERTY_FILTER_FIELD_IDS = Object.keys(TRACE_PROPERTY_FILTER
 
 export const TRACE_STATUS_VALUES = new Set<TraceStatusFilter>(['running', 'success', 'error']);
 
-export const DEFAULT_TRACE_FILTERS_STORAGE_KEY = 'mastra:observability:saved-filters';
+export const DEFAULT_TRACE_FILTERS_STORAGE_KEY = 'mastra:traces:saved-filters';
 
 /** Serialize the filter-related URL params (date + rootEntityType + status +
  *  generic filterX set) to localStorage so the user can restore them on next

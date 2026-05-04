@@ -2,11 +2,11 @@
 'mastra': minor
 ---
 
-Updated the Studio observability UI with a filterable metrics dashboard and cross-page observability filter persistence.
+Updated the Studio observability UI with a filterable metrics dashboard and saved filter persistence.
 
 **Metrics dashboard filters**
 
-The metrics page now includes a dimensional filter toolbar for `rootEntityType`, `entityName`, `entityId`, `tags`, `serviceName`, `environment`, and common identity/correlation IDs such as `threadId`, `resourceId`, `userId`, `organizationId`, `runId`, `sessionId`, `requestId`, and `experimentId`. Active filters are reflected in the URL and persisted with the shared observability saved-filters key used across Metrics, Traces, and Logs.
+The metrics page now includes a dimensional filter toolbar for `rootEntityType`, `entityName`, `entityId`, `tags`, `serviceName`, `environment`, and common identity/correlation IDs such as `threadId`, `resourceId`, `userId`, `organizationId`, `runId`, `sessionId`, `requestId`, and `experimentId`. Active metrics filters are reflected in the URL and can be saved to the Metrics page's own localStorage key.
 
 **Memory card**
 
