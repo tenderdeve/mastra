@@ -74324,6 +74324,8 @@ export interface GetBackgroundTasksBackgroundTaskId_RouteContract {
 export type GetSchedules_QueryParams = {
   workflowId?: string | undefined;
   status?: ('active' | 'paused') | undefined;
+  ownerType?: string | undefined;
+  ownerId?: string | undefined;
 };
 
 export type GetSchedules_Response = {
@@ -74370,6 +74372,8 @@ export type GetSchedules_Response = {
           [key: string]: unknown;
         }
       | undefined;
+    ownerType?: string | undefined;
+    ownerId?: string | undefined;
     createdAt: number;
     updatedAt: number;
   }[];
@@ -74444,6 +74448,8 @@ export type GetSchedulesScheduleId_Response = {
         [key: string]: unknown;
       }
     | undefined;
+  ownerType?: string | undefined;
+  ownerId?: string | undefined;
   createdAt: number;
   updatedAt: number;
 };
@@ -74478,12 +74484,30 @@ export type GetSchedulesScheduleIdTriggers_QueryParams = {
 
 export type GetSchedulesScheduleIdTriggers_Response = {
   triggers: {
+    id?: string | undefined;
     scheduleId: string;
-    runId: string;
+    runId: string | null;
     scheduledFireAt: number;
     actualFireAt: number;
-    status: 'published' | 'failed';
+    outcome:
+      | 'published'
+      | 'failed'
+      | 'skipped'
+      | 'acked'
+      | 'alerted'
+      | 'deferred'
+      | 'appended-from-queue'
+      | 'dropped-stale'
+      | 'dropped-superseded'
+      | 'dropped-busy';
     error?: string | undefined;
+    triggerKind?: ('schedule-fire' | 'queue-drain') | undefined;
+    parentTriggerId?: string | undefined;
+    metadata?:
+      | {
+          [key: string]: unknown;
+        }
+      | undefined;
     run?:
       | {
           status:
@@ -74577,6 +74601,8 @@ export type PostSchedulesScheduleIdPause_Response = {
         [key: string]: unknown;
       }
     | undefined;
+  ownerType?: string | undefined;
+  ownerId?: string | undefined;
   createdAt: number;
   updatedAt: number;
 };
@@ -74646,6 +74672,8 @@ export type PostSchedulesScheduleIdResume_Response = {
         [key: string]: unknown;
       }
     | undefined;
+  ownerType?: string | undefined;
+  ownerId?: string | undefined;
   createdAt: number;
   updatedAt: number;
 };
