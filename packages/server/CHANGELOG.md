@@ -1,5 +1,48 @@
 # @mastra/server
 
+## 1.32.0-alpha.2
+
+### Minor Changes
+
+- Added Fine-Grained Authorization (FGA) enforcement across server handlers and memory APIs: ([#15410](https://github.com/mastra-ai/mastra/pull/15410))
+  - Route-level checks on detail endpoints, custom routes (including request-aware resource ID resolvers and path parameters), and resource-scoped search
+  - Thread-level checks on reads, writes, creation, cloning, message saving, and listing — with unviewable threads hidden from totals and pagination
+  - Message deletion now denies access when the message's thread cannot be verified
+  - Authenticated user context preserved through thread authorization, and the thread's owning `resourceId` forwarded into the FGA context so providers can derive composite tenant-scoped resource IDs
+  - Route permission derivation and memory clone checks now use the correct resource context
+  - Typed FGA permission constants accepted in route and thread authorization config
+
+### Patch Changes
+
+- Added an observability score lookup endpoint at `GET /observability/scores/:scoreId` backed by observability storage. ([#16162](https://github.com/mastra-ai/mastra/pull/16162))
+
+- Added server-generated route contract types for the JavaScript client SDK and updated the SDK to use those generated request and response types. ([#15519](https://github.com/mastra-ai/mastra/pull/15519))
+
+- Updated dependencies [[`86c0298`](https://github.com/mastra-ai/mastra/commit/86c0298e647306423c842f9d5ac827bd616bd13d), [`7fce309`](https://github.com/mastra-ai/mastra/commit/7fce30912b14170bfc41f0ac736cca0f39fe0cd4), [`7997c2e`](https://github.com/mastra-ai/mastra/commit/7997c2e55ddd121562a4098cd8d2b89c68433bf1), [`e97ccb9`](https://github.com/mastra-ai/mastra/commit/e97ccb900f8b7a390ce82c9f8eb8d6eb2c5e3777), [`c5daf48`](https://github.com/mastra-ai/mastra/commit/c5daf48556e98c46ae06caf00f92c249912007e9), [`cd96779`](https://github.com/mastra-ai/mastra/commit/cd9677937f113b2856dc8b9f3d4bdabcee58bb2e)]:
+  - @mastra/core@1.32.0-alpha.2
+
+## 1.32.0-alpha.1
+
+### Minor Changes
+
+- Added HTTP routes for scheduled workflows. ([#15830](https://github.com/mastra-ai/mastra/pull/15830))
+  - `GET /api/schedules` — list schedules across the project, optionally filtered by `workflowId`.
+  - `GET /api/schedules/:scheduleId` — fetch a schedule with its most recent run summary.
+  - `GET /api/schedules/:scheduleId/triggers` — paginated trigger history joined to the corresponding workflow run.
+  - `POST /api/schedules/:scheduleId/pause` and `POST /api/schedules/:scheduleId/resume` — durable pause/resume. Both require `schedules:write` and are idempotent. Resume recomputes `nextFireAt` from now so a long-paused schedule does not fire a backlog.
+
+### Patch Changes
+
+- Updated dependencies [[`c05c9a1`](https://github.com/mastra-ai/mastra/commit/c05c9a13230988cef6d438a62f37760f31927bc7), [`e24aacb`](https://github.com/mastra-ai/mastra/commit/e24aacba07bd66f5d95b636dc24016fca26b52cf), [`c721164`](https://github.com/mastra-ai/mastra/commit/c7211643f7ac861f83b19a3757cc921487fc9d75), [`1b55954`](https://github.com/mastra-ai/mastra/commit/1b559541c1e08a10e49d01ffc51a634dfc37a286), [`5adc55e`](https://github.com/mastra-ai/mastra/commit/5adc55e63407be8ee977914957d68bcc2a075ceb), [`70017d7`](https://github.com/mastra-ai/mastra/commit/70017d72ab741b5d7040e2a15c251a317782e39e), [`e4942bc`](https://github.com/mastra-ai/mastra/commit/e4942bc7fdc903572f7d84f26d5e15f9d39c763d)]:
+  - @mastra/core@1.32.0-alpha.1
+
+## 1.31.1-alpha.0
+
+### Patch Changes
+
+- Updated dependencies [[`6dcd65f`](https://github.com/mastra-ai/mastra/commit/6dcd65f2a34069e6dc43ba35f1d11119b9b40bef), [`1c2dda8`](https://github.com/mastra-ai/mastra/commit/1c2dda805fbfccc0abf55d4cb20cc34402dc3f0c)]:
+  - @mastra/core@1.31.1-alpha.0
+
 ## 1.31.0
 
 ### Patch Changes

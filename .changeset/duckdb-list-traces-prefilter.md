@@ -2,4 +2,6 @@
 '@mastra/duckdb': patch
 ---
 
-Improved `listTraces` performance on DuckDB. The query now prefilters raw `span_events` on scalar columns and `parentSpanId IS NULL` before reconstructing rows, and when no post-aggregation filters are in play, ordering and pagination happen inside the prefilter so reconstruction only touches the rows on the current page. `hasChildError` runs directly against raw `span_events` instead of the reconstructed-spans CTE. The `SpanRecord` shape returned to callers is unchanged.
+Improved performance of `listTraces` and `listBranches` on DuckDB. The Traces and Branches lists in the observability UI now load noticeably faster, especially on large span tables, because filtering and pagination happen up front and the store only assembles full span data for the rows on the page being viewed.
+
+No API or behavior changes — return shapes and filter semantics are unchanged, and no migration is required.

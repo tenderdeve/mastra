@@ -8,32 +8,29 @@ Added `count_distinct` aggregation and server-side TopK to the metrics storage A
 
 **New aggregation**
 
-`getMetricAggregate`, `getMetricBreakdown`, and `getMetricTimeSeries` accept `aggregation: 'count_distinct'` with an optional `distinctColumn`. Backends pick the most efficient native implementation — `uniq` on ClickHouse, `approx_count_distinct` on DuckDB.
+`getMetricAggregate`, `getMetricBreakdown`, and `getMetricTimeSeries` accept `aggregation: 'count_distinct'` with a `distinctColumn`. Backends pick the most efficient native implementation — `uniq` on ClickHouse, `approx_count_distinct` on DuckDB.
+
+`distinctColumn` is restricted to a low/medium-cardinality categorical allowlist (`entityType`, `entityName`, `parentEntityType`, `parentEntityName`, `rootEntityType`, `rootEntityName`, `name`, `provider`, `model`, `environment`, `executionSource`, `serviceName`). ID columns are not allowed — distinct counts over near-unique values converge to the row count and are rarely useful.
 
 ```ts
 await store.getMetricAggregate({
-  name: 'mastra_agent_duration_ms',
+  name: ['mastra_llm_tokens_total'],
   aggregation: 'count_distinct',
-  distinctColumn: 'threadId',
+  distinctColumn: 'model',
   filters: { timestamp: { start, end } },
 });
 ```
 
 **Server-side TopK**
 
-`getMetricBreakdown` accepts `limit`, `orderBy` (`value` | `dimension`), and `orderDirection`, so breakdowns never return the full cardinality of a column from the database.
+`getMetricBreakdown` accepts `limit` and `orderDirection`, so breakdowns never return the full cardinality of a column from the database. Ordering is always by the aggregated `value`; `orderDirection` flips between top-N (`DESC`, default) and bottom-N (`ASC`).
 
 ```ts
 await store.getMetricBreakdown({
-  name: 'mastra_agent_duration_ms',
+  name: ['mastra_agent_duration_ms'],
   aggregation: 'sum',
-  groupBy: 'threadId',
+  groupBy: ['threadId'],
   limit: 20,
-  orderBy: 'value',
   orderDirection: 'DESC',
 });
 ```
-
-**ClickHouse skip indexes**
-
-`metric_events` gains `bloom_filter` skip indexes on `threadId`, `resourceId`, `userId`, and `organizationId`. New deployments pick them up automatically on `init`. Existing deployments get them via an additive `ALTER TABLE … ADD INDEX IF NOT EXISTS` migration; new parts and lazy merges populate them automatically. To populate existing parts immediately, run `ALTER TABLE mastra_metric_events MATERIALIZE INDEX <name>` during a maintenance window — it rewrites part data and can be expensive on large tables.
