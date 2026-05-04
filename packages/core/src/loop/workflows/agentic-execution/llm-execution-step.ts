@@ -387,9 +387,6 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
       let currentMessageId = inputData.isTaskCompleteCheckFailed
         ? `${messageIdPassed}-${currentIteration}`
         : inputData.messageId || messageIdPassed;
-      // Start the MODEL_STEP span at the beginning of LLM execution
-      modelSpanTracker?.startStep();
-
       let modelResult;
       let warnings: any;
       let request: any;
@@ -473,7 +470,8 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
             });
 
             try {
-              // Use MODEL_STEP context so step processor spans are children of MODEL_STEP
+              // Step processors run before the provider call, so they should not be children
+              // of the MODEL_STEP span that represents the provider call itself.
               const stepTracingContext = modelSpanTracker?.getTracingContext() ?? tracingContext;
 
               // Create a ProcessorStreamWriter from outputWriter if available.
@@ -659,6 +657,44 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
             _internal: _internal!,
             model: currentStep.model,
           });
+          let modelStepEnded = false;
+          const endModelStep = ({
+            messageId = currentStep.messageId,
+            reason = 'error',
+            text = '',
+            toolCalls = [],
+            usage = inputData.output?.usage,
+            object,
+            metadata = { request, ...rawResponse },
+          }: {
+            messageId?: string;
+            reason?: string;
+            text?: string;
+            toolCalls?: any[];
+            usage?: any;
+            object?: unknown;
+            metadata?: Record<string, unknown>;
+          } = {}) => {
+            if (modelStepEnded) {
+              return;
+            }
+            modelStepEnded = true;
+            modelSpanTracker?.endStep?.({
+              messageId,
+              stepResult: {
+                reason: reason as any,
+                warnings,
+                isContinued: false,
+              },
+              output: {
+                text,
+                toolCalls,
+                usage,
+                ...(object ? { object } : {}),
+              },
+              metadata,
+            });
+          };
 
           // Resolve supportedUrls - it may be a Promise (e.g., from ModelRouterLanguageModel)
           // This allows providers like Mistral to expose their native URL support for PDFs
@@ -755,78 +791,90 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
           }
 
           if (isSupportedLanguageModel(currentStep.model)) {
-            modelResult = executeWithContextSync({
-              span: modelSpanTracker?.getTracingContext()?.currentSpan,
-              fn: () =>
-                execute({
-                  runId,
-                  model: currentStep.model,
-                  // Per-model providerOptions deep-merge per provider key on top of call-time providerOptions
-                  providerOptions: mergeProviderOptions(currentStep.providerOptions, modelConfig.providerOptions),
-                  inputMessages,
-                  tools: currentStep.tools,
-                  toolChoice: currentStep.toolChoice,
-                  activeTools: currentStep.activeTools as string[] | undefined,
-                  options,
-                  // Per-model modelSettings shallow-merge on top of call-time modelSettings.
-                  // Per-model maxRetries always wins so p-retry uses the right retry count for this model.
-                  modelSettings: {
-                    ...currentStep.modelSettings,
-                    ...modelConfig.modelSettings,
-                    maxRetries: modelConfig.maxRetries,
-                  },
-                  includeRawChunks,
-                  structuredOutput: currentStep.structuredOutput,
-                  // Merge headers: memory context first, then modelConfig headers, then modelSettings overrides
-                  // x-thread-id / x-resource-id enable server-side memory enrichment (e.g. Memory Gateway)
-                  headers: (() => {
-                    const memoryHeaders: Record<string, string> = {};
-                    if (_internal?.threadId) memoryHeaders['x-thread-id'] = _internal.threadId;
-                    if (_internal?.resourceId) memoryHeaders['x-resource-id'] = _internal.resourceId;
-                    const merged = {
-                      ...memoryHeaders,
-                      ...modelHeaders,
-                      ...currentStep.modelSettings?.headers,
-                    };
-                    return Object.keys(merged).length > 0 ? merged : undefined;
-                  })(),
-                  methodType,
-                  generateId: _internal?.generateId,
-                  onResult: ({
-                    warnings: warningsFromStream,
-                    request: requestFromStream,
-                    rawResponse: rawResponseFromStream,
-                  }) => {
-                    warnings = warningsFromStream;
-                    request = requestFromStream || {};
-                    rawResponse = rawResponseFromStream;
+            // Start the MODEL_STEP span immediately before the provider call so its
+            // duration reflects the actual model call, excluding step processors.
+            modelSpanTracker?.startStep();
 
-                    modelSpanTracker?.updateStep?.({
-                      request: request || {},
-                      inputMessages,
-                      warnings: warnings || [],
-                      messageId: currentStep.messageId,
-                    });
+            try {
+              modelResult = executeWithContextSync({
+                span: modelSpanTracker?.getTracingContext()?.currentSpan,
+                fn: () =>
+                  execute({
+                    runId,
+                    model: currentStep.model,
+                    // Per-model providerOptions deep-merge per provider key on top of call-time providerOptions
+                    providerOptions: mergeProviderOptions(currentStep.providerOptions, modelConfig.providerOptions),
+                    inputMessages,
+                    tools: currentStep.tools,
+                    toolChoice: currentStep.toolChoice,
+                    activeTools: currentStep.activeTools as string[] | undefined,
+                    options,
+                    // Per-model modelSettings shallow-merge on top of call-time modelSettings.
+                    // Per-model maxRetries always wins so p-retry uses the right retry count for this model.
+                    modelSettings: {
+                      ...currentStep.modelSettings,
+                      ...modelConfig.modelSettings,
+                      maxRetries: modelConfig.maxRetries,
+                    },
+                    includeRawChunks,
+                    structuredOutput: currentStep.structuredOutput,
+                    // Merge headers: memory context first, then modelConfig headers, then modelSettings overrides
+                    // x-thread-id / x-resource-id enable server-side memory enrichment (e.g. Memory Gateway)
+                    headers: (() => {
+                      const memoryHeaders: Record<string, string> = {};
+                      if (_internal?.threadId) memoryHeaders['x-thread-id'] = _internal.threadId;
+                      if (_internal?.resourceId) memoryHeaders['x-resource-id'] = _internal.resourceId;
+                      const merged = {
+                        ...memoryHeaders,
+                        ...modelHeaders,
+                        ...currentStep.modelSettings?.headers,
+                      };
+                      return Object.keys(merged).length > 0 ? merged : undefined;
+                    })(),
+                    methodType,
+                    generateId: _internal?.generateId,
+                    onResult: ({
+                      warnings: warningsFromStream,
+                      request: requestFromStream,
+                      rawResponse: rawResponseFromStream,
+                    }) => {
+                      warnings = warningsFromStream;
+                      request = requestFromStream || {};
+                      rawResponse = rawResponseFromStream;
 
-                    safeEnqueue(controller, {
-                      runId,
-                      from: ChunkFrom.AGENT,
-                      type: 'step-start',
-                      payload: {
+                      modelSpanTracker?.updateStep?.({
                         request: request || {},
+                        inputMessages,
                         warnings: warnings || [],
                         messageId: currentStep.messageId,
-                      },
-                    });
-                  },
-                  shouldThrowError: !isLastModel,
-                }),
-            });
+                      });
+
+                      safeEnqueue(controller, {
+                        runId,
+                        from: ChunkFrom.AGENT,
+                        type: 'step-start',
+                        payload: {
+                          request: request || {},
+                          warnings: warnings || [],
+                          messageId: currentStep.messageId,
+                        },
+                      });
+                    },
+                    shouldThrowError: !isLastModel,
+                  }),
+              });
+            } catch (error) {
+              endModelStep();
+              throw error;
+            }
           } else {
             throw new Error(
               `Unsupported model version: ${(currentStep.model as { specificationVersion?: string }).specificationVersion}. Supported versions: ${supportedLanguageModelSpecifications.join(', ')}`,
             );
           }
+
+          const tracedModelResult =
+            modelSpanTracker?.wrapStream?.(modelResult as ReadableStream<ChunkType<OUTPUT>>) ?? modelResult;
 
           const outputStream = new MastraModelOutput<OUTPUT>({
             model: {
@@ -834,7 +882,7 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
               provider: currentStep.model.provider,
               version: currentStep.model.specificationVersion,
             },
-            stream: modelResult as ReadableStream<ChunkType<OUTPUT>>,
+            stream: tracedModelResult as ReadableStream<ChunkType<OUTPUT>>,
             messageList,
             messageId: currentStep.messageId,
             options: {
@@ -920,6 +968,19 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
               });
 
               safeEnqueue(controller, { type: 'abort', runId, from: ChunkFrom.AGENT, payload: {} });
+              endModelStep({
+                messageId: outputStream.messageId,
+                text: outputStream._getImmediateText(),
+                usage: outputStream._getImmediateUsage() ?? inputData.output?.usage,
+                metadata: {
+                  providerMetadata: runState.state.providerOptions,
+                  ...runState.state.responseMetadata,
+                  ...rawResponse,
+                  modelMetadata: runState.state.modelMetadata,
+                  headers: rawResponse?.headers,
+                  request,
+                },
+              });
 
               return { callBail: true, outputStream, runState, stepTools: currentStep.tools };
             }
@@ -1025,6 +1086,19 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
                 };
               }
 
+              endModelStep({
+                messageId: outputStream.messageId,
+                text: outputStream._getImmediateText(),
+                usage: outputStream._getImmediateUsage() ?? inputData.output?.usage,
+                metadata: {
+                  providerMetadata: runState.state.providerOptions,
+                  ...runState.state.responseMetadata,
+                  ...rawResponse,
+                  modelMetadata: runState.state.modelMetadata,
+                  headers: rawResponse?.headers,
+                  request,
+                },
+              });
               throw error;
             }
           }
@@ -1038,6 +1112,19 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
             });
 
             safeEnqueue(controller, { type: 'abort', runId, from: ChunkFrom.AGENT, payload: {} });
+            endModelStep({
+              messageId: outputStream.messageId,
+              text: outputStream._getImmediateText(),
+              usage: outputStream._getImmediateUsage() ?? inputData.output?.usage,
+              metadata: {
+                providerMetadata: runState.state.providerOptions,
+                ...runState.state.responseMetadata,
+                ...rawResponse,
+                modelMetadata: runState.state.modelMetadata,
+                headers: rawResponse?.headers,
+                request,
+              },
+            });
 
             return { callBail: true, outputStream, runState, stepTools: currentStep.tools };
           }
@@ -1166,6 +1253,27 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
           nonUser: [],
         };
 
+        modelSpanTracker?.endStep?.({
+          messageId: outputStream.messageId,
+          stepResult: {
+            reason: 'error' as any,
+            warnings,
+            isContinued: false,
+          },
+          output: {
+            text: outputStream._getImmediateText(),
+            toolCalls: [],
+            usage: outputStream._getImmediateUsage() ?? inputData.output?.usage,
+          },
+          metadata: {
+            providerMetadata: runState.state.providerOptions,
+            ...runState.state.responseMetadata,
+            modelMetadata: runState.state.modelMetadata,
+            headers: rawResponse?.headers,
+            request,
+          },
+        });
+
         return {
           messageId: outputStream.messageId,
           stepResult: {
@@ -1222,6 +1330,32 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
           providerExecuted: inferProviderExecuted(chunk.payload.providerExecuted, tool),
         };
       });
+      const modelStepFinishReason = runState?.state?.stepResult?.reason ?? outputStream._getImmediateFinishReason();
+      const modelStepUsage = outputStream._getImmediateUsage() ?? inputData.output?.usage;
+      const modelStepObject = outputStream._getImmediateObject();
+
+      modelSpanTracker?.endStep?.({
+        messageId: outputStream.messageId,
+        stepResult: {
+          reason: modelStepFinishReason as any,
+          warnings,
+          isContinued: false,
+        },
+        output: {
+          text: outputStream._getImmediateText(),
+          toolCalls,
+          usage: modelStepUsage,
+          ...(modelStepObject ? { object: modelStepObject } : {}),
+        },
+        metadata: {
+          providerMetadata: runState.state.providerOptions,
+          ...runState.state.responseMetadata,
+          ...rawResponse,
+          modelMetadata: runState.state.modelMetadata,
+          headers: rawResponse?.headers,
+          request,
+        },
+      });
 
       // Call processOutputStep for processors (runs AFTER LLM response, BEFORE tool execution)
       // This allows processors to validate/modify the response and trigger retries if needed
@@ -1250,7 +1384,8 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
           // Get current processor retry count from iteration data
           const currentRetryCount = inputData.processorRetryCount || 0;
 
-          // Use MODEL_STEP context so step processor spans are children of MODEL_STEP
+          // Output step processors run after the provider call, so they should not be
+          // children of the MODEL_STEP span that represents the provider call itself.
           const outputStepTracingContext = modelSpanTracker?.getTracingContext() ?? tracingContext;
 
           // Create a ProcessorStreamWriter from outputWriter if available.
@@ -1299,7 +1434,7 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
       const usage = outputStream._getImmediateUsage();
       const responseMetadata = runState.state.responseMetadata;
       const text = outputStream._getImmediateText();
-      const object = outputStream._getImmediateObject();
+      const object = modelStepObject;
       // Check if tripwire was triggered (from stream processors or output step processors)
       const tripwireTriggered = outputStream.tripwire || processOutputStepTripwire !== null;
 

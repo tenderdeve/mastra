@@ -10,7 +10,7 @@ import { EntityType } from '@internal/core/storage';
 import type { MastraError } from '../../error';
 import type { Mastra } from '../../mastra';
 import type { RequestContext } from '../../request-context';
-import type { LanguageModelUsage, ProviderMetadata, StepStartPayload } from '../../stream/types';
+import type { LanguageModelUsage, ProviderMetadata, StepFinishPayload, StepStartPayload } from '../../stream/types';
 import type { WorkflowRunStatus, WorkflowStepStatus } from '../../workflows';
 import type {
   CustomSamplerOptions,
@@ -843,11 +843,12 @@ export interface IModelSpanTracker {
   wrapStream<T extends { pipeThrough: Function }>(stream: T): T;
   startStep(payload?: StepStartPayload): void;
   updateStep?(payload?: StepStartPayload): void;
+  endStep?(payload: StepFinishPayload): void;
 
   /**
    * Enable or disable deferred step closing for durable execution.
    * When enabled, step-finish chunks won't automatically close the step span.
-   * Use exportCurrentStep() to get the span data, then endDeferredStep() to close later.
+   * Use exportCurrentStep() to get the span data, then endStep() to close later.
    */
   setDeferStepClose(defer: boolean): void;
 

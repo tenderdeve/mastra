@@ -398,6 +398,13 @@ export class ModelSpanTracker {
   /**
    * End the current Model execution step with token usage, finish reason, output, and metadata
    */
+  endStep<OUTPUT>(payload: StepFinishPayload<any, OUTPUT>): void {
+    this.#endStepSpan(payload);
+  }
+
+  /**
+   * Internal implementation for ending the current Model execution step.
+   */
   #endStepSpan<OUTPUT>(payload: StepFinishPayload<any, OUTPUT>) {
     // Flush any pending chunk span before ending the step
     // (handles case where text-delta arrives without text-end)

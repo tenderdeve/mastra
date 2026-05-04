@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { z } from 'zod/v4';
 import { MessageList } from '../../../agent/message-list';
+import { SpanType } from '../../../observability';
 import { RequestContext } from '../../../request-context';
 import { ToolStream } from '../../../tools/stream';
 import { createTool } from '../../../tools/tool';
@@ -660,6 +661,124 @@ describe('createLLMExecutionStep gateway provider tools', () => {
         }),
       }),
     );
+  });
+
+  it('scopes MODEL_STEP tracing to the provider call only', async () => {
+    const order: string[] = [];
+
+    const createSpan = (type: SpanType, parent?: any): any => {
+      const span: any = {
+        type,
+        parent,
+        createChildSpan: vi.fn((options: { type: SpanType }) => createSpan(options.type, span)),
+        findParent: vi.fn((spanType: SpanType) => {
+          let current = span.parent;
+          while (current) {
+            if (current.type === spanType) return current;
+            current = current.parent;
+          }
+          return undefined;
+        }),
+      };
+      return span;
+    };
+
+    const modelGenerationSpan = createSpan(SpanType.MODEL_GENERATION);
+    const modelStepSpan = createSpan(SpanType.MODEL_STEP, modelGenerationSpan);
+    let currentSpan = modelGenerationSpan;
+
+    const modelSpanTracker = {
+      getTracingContext: vi.fn(() => ({ currentSpan })),
+      startStep: vi.fn(() => {
+        order.push('startStep');
+        currentSpan = modelStepSpan;
+      }),
+      updateStep: vi.fn(),
+      endStep: vi.fn(() => {
+        order.push('endStep');
+        currentSpan = modelGenerationSpan;
+      }),
+      wrapStream: vi.fn(<T>(stream: T) => stream),
+    };
+
+    const doStream = vi.fn(async () => {
+      order.push('doStream');
+      return {
+        stream: convertArrayToReadableStream([
+          { type: 'text-delta', textDelta: 'Hello!' },
+          { type: 'finish', finishReason: 'stop', usage: testUsage },
+        ]),
+        request: {},
+        response: { headers: undefined },
+        warnings: [],
+      };
+    });
+
+    const llmExecutionStep = createLLMExecutionStep({
+      agentId: 'test-agent',
+      messageId: 'msg-0',
+      runId: 'test-run',
+      startTimestamp: Date.now(),
+      methodType: 'stream',
+      controller,
+      outputWriter: vi.fn(),
+      messageList,
+      models: [
+        {
+          id: 'test-model',
+          maxRetries: 0,
+          model: {
+            specificationVersion: 'v2' as const,
+            provider: 'mock-provider',
+            modelId: 'mock-model-id',
+            supportedUrls: {},
+            doGenerate: vi.fn(),
+            doStream,
+          } as any,
+        },
+      ],
+      inputProcessors: [
+        {
+          id: 'input-step-recorder',
+          processInputStep: vi.fn(async (args: any) => {
+            order.push(`input:${args.tracingContext.currentSpan.parent.type}`);
+            return {};
+          }),
+        },
+      ],
+      outputProcessors: [
+        {
+          id: 'output-step-recorder',
+          processOutputStep: vi.fn(async (args: any) => {
+            order.push(`output:${args.tracingContext.currentSpan.parent.type}`);
+          }),
+        },
+      ],
+      tools: {},
+      streamState: {
+        serialize: vi.fn(),
+        deserialize: vi.fn(),
+      },
+      modelSpanTracker,
+      logger: {
+        error: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      } as any,
+    } as unknown as OuterLLMRun<{}>);
+
+    const input = createIterationInput();
+    input.stepResult.isContinued = false;
+
+    await llmExecutionStep.execute(createExecuteParams(input));
+
+    expect(order).toEqual([
+      `input:${SpanType.MODEL_GENERATION}`,
+      'startStep',
+      'doStream',
+      'endStep',
+      `output:${SpanType.MODEL_GENERATION}`,
+    ]);
   });
 
   it('stamps step-start.model from the processor-updated model', async () => {

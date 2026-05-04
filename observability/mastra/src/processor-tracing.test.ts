@@ -774,11 +774,11 @@ describe('Processor Tracing Tests', () => {
      * Expected span structure:
      * - test-agent AGENT_RUN (root)
      *   - MODEL_GENERATION
+     *     - input step processor: step-validator PROCESSOR_RUN
      *     - MODEL_STEP
-     *       - input step processor: step-validator PROCESSOR_RUN
      *       - MODEL_CHUNK (1+ chunks)
      *
-     * Execution order within MODEL_STEP: input_step_processor → model_chunks
+     * Execution order: input_step_processor → MODEL_STEP/model_chunks
      */
     it('should trace input step processor with correct entity type', async () => {
       const model = createMockModel();
@@ -828,13 +828,13 @@ describe('Processor Tracing Tests', () => {
       expect(modelSpan?.parentSpanId).toBe(agentSpan?.id);
       // 2. MODEL_STEP is child of MODEL_GENERATION
       expect(modelStepSpan?.parentSpanId).toBe(modelSpan?.id);
-      // 3. Step processor span is child of MODEL_STEP span
-      expect(inputStepSpan?.parentSpanId).toBe(modelStepSpan?.id);
+      // 3. Step processor span is child of MODEL_GENERATION, not MODEL_STEP
+      expect(inputStepSpan?.parentSpanId).toBe(modelSpan?.id);
       // 4. Model chunk spans are children of MODEL_STEP span
       const chunkSpansInStep = modelChunkSpans.filter(s => s.parentSpanId === modelStepSpan?.id);
       expect(chunkSpansInStep.length).toBe(1);
 
-      // EXECUTION ORDER within MODEL_STEP: input_step_processor → model_chunks
+      // EXECUTION ORDER: input_step_processor → model_chunks
       const firstChunkInStep = chunkSpansInStep[0];
       testExporter.expectStartedBefore(inputStepSpan, firstChunkInStep);
 
@@ -847,9 +847,9 @@ describe('Processor Tracing Tests', () => {
      *   - MODEL_GENERATION
      *     - MODEL_STEP
      *       - MODEL_CHUNK (1+ chunks)
-     *       - output step processor: step-formatter PROCESSOR_RUN
+     *     - output step processor: step-formatter PROCESSOR_RUN
      *
-     * Execution order within MODEL_STEP: model_chunks → output_step_processor
+     * Execution order: MODEL_STEP/model_chunks → output_step_processor
      */
     it('should trace output step processor with correct entity type', async () => {
       const model = createMockModel();
@@ -898,13 +898,13 @@ describe('Processor Tracing Tests', () => {
       expect(modelSpan?.parentSpanId).toBe(agentSpan?.id);
       // 2. MODEL_STEP is child of MODEL_GENERATION
       expect(modelStepSpan?.parentSpanId).toBe(modelSpan?.id);
-      // 3. Step processor span is child of MODEL_STEP span
-      expect(outputStepSpan?.parentSpanId).toBe(modelStepSpan?.id);
+      // 3. Step processor span is child of MODEL_GENERATION, not MODEL_STEP
+      expect(outputStepSpan?.parentSpanId).toBe(modelSpan?.id);
       // 4. Model chunk spans are children of MODEL_STEP span
       const chunkSpansInStep = modelChunkSpans.filter(s => s.parentSpanId === modelStepSpan?.id);
       expect(chunkSpansInStep.length).toBe(1);
 
-      // EXECUTION ORDER within MODEL_STEP: model_chunks → output_step_processor
+      // EXECUTION ORDER: model_chunks → output_step_processor
       const lastChunkInStep = chunkSpansInStep[chunkSpansInStep.length - 1];
       testExporter.expectStartedBefore(lastChunkInStep, outputStepSpan);
 
@@ -916,13 +916,13 @@ describe('Processor Tracing Tests', () => {
      * - test-agent AGENT_RUN (root)
      *   - input processor: full-input PROCESSOR_RUN
      *   - MODEL_GENERATION
+     *     - input step processor: full-input PROCESSOR_RUN
      *     - MODEL_STEP
-     *       - input step processor: full-input PROCESSOR_RUN
      *       - MODEL_CHUNK (1+ chunks)
-     *       - output step processor: full-output PROCESSOR_RUN
+     *     - output step processor: full-output PROCESSOR_RUN
      *   - output processor: full-output PROCESSOR_RUN
      *
-     * Execution order within MODEL_STEP: input_step → model_chunks → output_step
+     * Execution order: input_step → MODEL_STEP/model_chunks → output_step
      */
     it('should trace full processor with spans for each phase it implements', async () => {
       const model = createMockModel();
@@ -978,9 +978,9 @@ describe('Processor Tracing Tests', () => {
       expect(modelSpan?.parentSpanId).toBe(agentSpan?.id);
       // 3. MODEL_STEP is child of MODEL_GENERATION
       expect(modelStepSpan?.parentSpanId).toBe(modelSpan?.id);
-      // 4. Step processors are children of MODEL_STEP span
-      expect(inputStepSpan?.parentSpanId).toBe(modelStepSpan?.id);
-      expect(outputStepSpan?.parentSpanId).toBe(modelStepSpan?.id);
+      // 4. Step processors are children of MODEL_GENERATION, not MODEL_STEP
+      expect(inputStepSpan?.parentSpanId).toBe(modelSpan?.id);
+      expect(outputStepSpan?.parentSpanId).toBe(modelSpan?.id);
       // 5. Model chunk spans are children of MODEL_STEP span
       const chunkSpansInStep = modelChunkSpans.filter(s => s.parentSpanId === modelStepSpan?.id);
       expect(chunkSpansInStep.length).toBe(1);
@@ -989,7 +989,7 @@ describe('Processor Tracing Tests', () => {
       testExporter.expectStartedBefore(inputSpan, modelSpan);
       testExporter.expectStartedBefore(modelSpan, outputSpan);
 
-      // EXECUTION ORDER within MODEL_STEP: input_step → model_chunks → output_step
+      // EXECUTION ORDER: input_step → model_chunks → output_step
       const firstChunkInStep = chunkSpansInStep[0];
       const lastChunkInStep = chunkSpansInStep[chunkSpansInStep.length - 1];
       testExporter.expectStartedBefore(inputStepSpan, firstChunkInStep);
@@ -1364,9 +1364,9 @@ describe('Processor Tracing Tests', () => {
      *   - input processor: simple PROCESSOR_RUN (processInput only)
      *   - input processor: full PROCESSOR_RUN (processInput from FullProcessor)
      *   - MODEL_GENERATION
+     *     - input step processor: step PROCESSOR_RUN (processInputStep only)
+     *     - input step processor: full PROCESSOR_RUN (processInputStep from FullProcessor)
      *     - MODEL_STEP
-     *       - input step processor: step PROCESSOR_RUN (processInputStep only)
-     *       - input step processor: full PROCESSOR_RUN (processInputStep from FullProcessor)
      */
     it('should only create spans for phases that have implementing processors', async () => {
       const model = createMockModel();
@@ -1430,9 +1430,9 @@ describe('Processor Tracing Tests', () => {
       expect(modelSpan?.parentSpanId).toBe(agentSpan?.id);
       // 3. MODEL_STEP is child of MODEL_GENERATION
       expect(modelStepSpan?.parentSpanId).toBe(modelSpan?.id);
-      // 4. Step processor spans are children of MODEL_STEP span
-      expect(stepInputStepSpan?.parentSpanId).toBe(modelStepSpan?.id);
-      expect(fullInputStepSpan?.parentSpanId).toBe(modelStepSpan?.id);
+      // 4. Step processor spans are children of MODEL_GENERATION, not MODEL_STEP
+      expect(stepInputStepSpan?.parentSpanId).toBe(modelSpan?.id);
+      expect(fullInputStepSpan?.parentSpanId).toBe(modelSpan?.id);
 
       // EXECUTION ORDER: input processors -> MODEL_GENERATION
       testExporter.expectStartedBefore(simpleInputSpan, modelSpan);

@@ -274,10 +274,6 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             // Get messages for LLM (using async llmPrompt for proper format conversion)
             const inputMessages = (await messageList.get.all.aiV5.llmPrompt()) as LanguageModelV2Prompt;
 
-            // Enable defer mode - step-finish won't auto-close the step span
-            // This allows us to export the step span and close it later after tool execution
-            modelSpanTracker?.setDeferStepClose(true);
-
             // 7. Track state during streaming
             let warnings: any[] = [];
             let request: any = {};
@@ -439,6 +435,28 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
               break; // exhausted retries, try next model
             }
 
+            modelSpanTracker?.endStep?.({
+              messageId: currentMessageId,
+              stepResult: {
+                reason: finishReason as any,
+                warnings,
+                isContinued: false,
+              },
+              output: {
+                text: textDeltas.join(''),
+                toolCalls: toolCalls as any,
+                usage,
+              },
+              metadata: {
+                id: responseMetadata.id,
+                modelId: responseMetadata.modelId || currentModel.modelId,
+                timestamp: responseMetadata.timestamp || new Date().toISOString(),
+                providerMetadata: responseMetadata,
+                headers: rawResponse?.headers,
+                request,
+              },
+            });
+
             // 12. Add assistant response to message list
             if (textDeltas.length > 0 || toolCalls.length > 0) {
               const parts: any[] = [];
@@ -479,10 +497,8 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
             const isContinued = toolCalls.length > 0 && finishReason !== 'stop';
             const hasToolCalls = toolCalls.length > 0;
 
-            // 14. Export spans if there are tool calls (so tools can be children of model_step)
-            // Don't end the spans yet - they will be ended after tool execution
-            const stepSpanData = hasToolCalls ? modelSpanTracker?.exportCurrentStep() : undefined;
-            const stepFinishPayload = hasToolCalls ? modelSpanTracker?.getPendingStepFinishPayload() : undefined;
+            // 14. Keep MODEL_STEP scoped to the provider call. Tool execution is
+            // represented by separate spans and should not be a child of MODEL_STEP.
 
             // 15. Build output
             const output: DurableLLMStepOutput = {
@@ -505,38 +521,11 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
                 request,
               },
               state: typedInput.state,
-              // Pass span data so tool calls can be children of model_step
               modelSpanData: hasToolCalls ? modelSpan?.exportSpan?.() : undefined,
-              stepSpanData,
-              stepFinishPayload,
             };
 
-            // 16. End step span only if there are NO tool calls
-            // If there are tool calls, step span will be ended after tool execution
-            // NOTE: We NEVER close the model span here - it stays open for the entire agent run
-            // and is closed in map-final-output after the agentic loop completes
-            if (!hasToolCalls) {
-              // Close the step span with usage/finish info
-              const pendingPayload = modelSpanTracker?.getPendingStepFinishPayload() as any;
-              if (pendingPayload) {
-                // End step span using the pending payload
-                const stepSpan = modelSpanTracker?.exportCurrentStep();
-                if (stepSpan && observability) {
-                  const rebuiltStepSpan = observability.rebuildSpan(stepSpan);
-                  rebuiltStepSpan?.end({
-                    output: {
-                      text: textDeltas.join(''),
-                      toolCalls: [],
-                    },
-                    attributes: {
-                      usage: pendingPayload.output?.usage,
-                      finishReason: pendingPayload.stepResult?.reason,
-                      isContinued: pendingPayload.stepResult?.isContinued,
-                    },
-                  });
-                }
-              }
-            }
+            // 16. NOTE: We NEVER close the model span here - it stays open for the
+            // entire agent run and is closed in map-final-output after the loop completes.
 
             // Success - return the output
             return output;
