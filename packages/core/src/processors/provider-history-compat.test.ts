@@ -2,7 +2,13 @@ import type { LanguageModelV2Prompt } from '@ai-sdk/provider-v5';
 import { APICallError } from '@internal/ai-sdk-v5';
 import { describe, expect, it } from 'vitest';
 import { MessageList } from '../agent/message-list';
-import { cerebrasStripReasoningContent, isMaybeCerebras, ProviderHistoryCompat } from './provider-history-compat';
+import {
+  anthropicStripForeignReasoningContent,
+  cerebrasStripReasoningContent,
+  isMaybeAnthropic,
+  isMaybeCerebras,
+  ProviderHistoryCompat,
+} from './provider-history-compat';
 import { ProcessorRunner } from './runner';
 import type { ProcessAPIErrorArgs, ProcessLLMPromptArgs } from './index';
 
@@ -279,8 +285,21 @@ describe('ProviderHistoryCompat', () => {
 });
 
 // ---------------------------------------------------------------------------
-// isMaybeCerebras
+// isMaybeAnthropic / isMaybeCerebras
 // ---------------------------------------------------------------------------
+
+describe('isMaybeAnthropic', () => {
+  it('matches provider-shaped anthropic models and gateway-prefixed strings', () => {
+    expect(isMaybeAnthropic('anthropic/claude-haiku-4-5-20251001')).toBe(true);
+    expect(isMaybeAnthropic('anthropic:claude-haiku-4-5-20251001')).toBe(true);
+    expect(isMaybeAnthropic({ provider: 'anthropic.messages', modelId: 'claude-haiku-4-5-20251001' })).toBe(true);
+    expect(
+      isMaybeAnthropic({ provider: 'openai-compatible.chat', modelId: 'anthropic/claude-haiku-4-5-20251001' }),
+    ).toBe(true);
+    expect(isMaybeAnthropic({ provider: 'openai.chat', modelId: 'gpt-4o' })).toBe(false);
+    expect(isMaybeAnthropic('anthropic-foo')).toBe(false);
+  });
+});
 
 describe('isMaybeCerebras', () => {
   it('matches the gateway-prefixed model id string', () => {
@@ -361,6 +380,50 @@ const mockLogger = {
   error: () => {},
   trackException: () => {},
 } as any;
+
+describe('anthropicStripForeignReasoningContent', () => {
+  it('strips foreign reasoning parts from assistant messages when model is Anthropic', () => {
+    const result = anthropicStripForeignReasoningContent.applyToPrompt!({
+      prompt: promptWithReasoning(),
+      model: { provider: 'anthropic.messages', modelId: 'claude-haiku-4-5-20251001' },
+    });
+
+    expect(result).toBeDefined();
+    const assistant = result!.find(m => m.role === 'assistant')!;
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
+  });
+
+  it('preserves Anthropic-native reasoning parts', () => {
+    const prompt: LanguageModelV2Prompt = [
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'reasoning',
+            text: 'native thinking',
+            providerOptions: { anthropic: { signature: 'sig' } },
+          },
+          { type: 'text', text: 'answer' },
+        ],
+      },
+    ];
+
+    const result = anthropicStripForeignReasoningContent.applyToPrompt!({
+      prompt,
+      model: { provider: 'anthropic.messages', modelId: 'claude-haiku-4-5-20251001' },
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined when the model is not Anthropic', () => {
+    const result = anthropicStripForeignReasoningContent.applyToPrompt!({
+      prompt: promptWithReasoning(),
+      model: { provider: 'openai.chat', modelId: 'gpt-4o' },
+    });
+    expect(result).toBeUndefined();
+  });
+});
 
 describe('cerebrasStripReasoningContent', () => {
   it('strips reasoning parts from assistant messages when model is cerebras', () => {
@@ -472,6 +535,20 @@ describe('ProviderHistoryCompat.processLLMPrompt', () => {
     expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
   });
 
+  it('strips foreign reasoning parts from the prompt on Anthropic', async () => {
+    const handler = new ProviderHistoryCompat();
+    const args = makePromptArgs(promptWithReasoning(), {
+      provider: 'anthropic.messages',
+      modelId: 'claude-haiku-4-5-20251001',
+    });
+
+    const result = await handler.processLLMPrompt(args);
+
+    expect(Array.isArray(result)).toBe(true);
+    const assistant = (result as LanguageModelV2Prompt).find(m => m.role === 'assistant')!;
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
+  });
+
   it('returns undefined when nothing needs to change', async () => {
     const handler = new ProviderHistoryCompat();
     const prompt: LanguageModelV2Prompt = [
@@ -528,6 +605,25 @@ describe('ProcessorRunner.runProcessLLMPrompt', () => {
     const result = await runner.runProcessLLMPrompt({
       prompt: promptWithReasoning(),
       model: { provider: 'openai-compatible.chat', modelId: 'cerebras/zai-glm-4.7' },
+      stepNumber: 0,
+      steps: [],
+    });
+
+    const assistant = result.prompt.find(m => m.role === 'assistant')!;
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
+  });
+
+  it('auto-injects ProviderHistoryCompat for Anthropic models', async () => {
+    const runner = new ProcessorRunner({
+      inputProcessors: [],
+      outputProcessors: [],
+      logger: mockLogger,
+      agentName: 'test-agent',
+    });
+
+    const result = await runner.runProcessLLMPrompt({
+      prompt: promptWithReasoning(),
+      model: { provider: 'anthropic.messages', modelId: 'claude-haiku-4-5-20251001' },
       stepNumber: 0,
       steps: [],
     });

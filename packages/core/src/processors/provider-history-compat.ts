@@ -174,6 +174,31 @@ export const anthropicToolIdFormat: CompatRule = {
  * passed to processors may be a resolved language model, an unresolved
  * model id string, a dynamic function, or a fallback array.
  */
+function matchesProviderPrefix(model: unknown, providerPrefix: string): boolean {
+  if (model == null) return false;
+  if (typeof model === 'function') return false;
+
+  if (Array.isArray(model)) {
+    return model.some(m => matchesProviderPrefix((m as { model?: unknown }).model ?? m, providerPrefix));
+  }
+
+  const gatewayPattern = new RegExp(`^${providerPrefix}[/:]`, 'i');
+  const providerPattern = new RegExp(`^${providerPrefix}($|[.\\-])`, 'i');
+
+  if (typeof model === 'string') {
+    // Common forms: 'provider/...' (mastra gateway prefix), 'provider:...' (some routers)
+    return gatewayPattern.test(model);
+  }
+
+  if (typeof model === 'object') {
+    const { provider, modelId } = model as { provider?: unknown; modelId?: unknown };
+    if (typeof provider === 'string' && providerPattern.test(provider)) return true;
+    if (typeof modelId === 'string') return gatewayPattern.test(modelId);
+  }
+
+  return false;
+}
+
 export function isMaybeCerebras(
   model:
     | string
@@ -182,50 +207,54 @@ export function isMaybeCerebras(
     | { model: any; enabled?: boolean }[]
     | unknown,
 ): boolean {
-  if (model == null) return false;
-  if (typeof model === 'function') return false;
+  return matchesProviderPrefix(model, 'cerebras');
+}
 
-  if (Array.isArray(model)) {
-    return model.some(m => isMaybeCerebras((m as { model?: unknown }).model ?? m));
-  }
-
-  if (typeof model === 'string') {
-    // Common forms: 'cerebras/...' (mastra gateway prefix), 'cerebras:...' (some routers)
-    return /^cerebras[/:]/i.test(model);
-  }
-
-  if (typeof model === 'object') {
-    const { provider, modelId } = model as { provider?: unknown; modelId?: unknown };
-    if (typeof provider === 'string') {
-      // `@ai-sdk/cerebras` sets provider to 'cerebras.chat'. mastra gateway
-      // resolution preserves the upstream SDK provider id.
-      if (/^cerebras($|[.\-])/i.test(provider)) return true;
-    }
-
-    if (typeof modelId === 'string') {
-      return /^cerebras[/:]/i.test(modelId);
-    }
-  }
-
-  return false;
+export function isMaybeAnthropic(
+  model:
+    | string
+    | { provider?: string; modelId?: string }
+    | ((...args: any[]) => any)
+    | { model: any; enabled?: boolean }[]
+    | unknown,
+): boolean {
+  return matchesProviderPrefix(model, 'anthropic');
 }
 
 /**
- * Returns a copy of the prompt with `reasoning` parts stripped from assistant
- * messages. Returns `undefined` if no changes were necessary.
+ * Returns a copy of the prompt with selected `reasoning` parts stripped from
+ * assistant messages. Returns `undefined` if no changes were necessary.
  */
-function stripReasoningFromPrompt(prompt: LanguageModelV2Prompt): LanguageModelV2Prompt | undefined {
+function stripReasoningFromPrompt(
+  prompt: LanguageModelV2Prompt,
+  shouldStrip: (
+    part: Extract<
+      Extract<LanguageModelV2Prompt[number], { role: 'assistant' }>['content'][number],
+      { type: 'reasoning' }
+    >,
+  ) => boolean = () => true,
+): LanguageModelV2Prompt | undefined {
   let mutated = false;
   const next: LanguageModelV2Prompt = prompt.map(message => {
     if (message.role !== 'assistant') return message;
     if (typeof message.content === 'string') return message;
     if (!Array.isArray(message.content)) return message;
-    const filtered = message.content.filter(part => part.type !== 'reasoning');
+    const filtered = message.content.filter(part => part.type !== 'reasoning' || !shouldStrip(part as any));
     if (filtered.length === message.content.length) return message;
     mutated = true;
     return { ...message, content: filtered };
   });
   return mutated ? next : undefined;
+}
+
+function isAnthropicReasoningPart(part: { providerOptions?: unknown; providerMetadata?: unknown }): boolean {
+  const providerOptions = part.providerOptions;
+  if (providerOptions && typeof providerOptions === 'object' && 'anthropic' in providerOptions) return true;
+
+  const providerMetadata = part.providerMetadata;
+  if (providerMetadata && typeof providerMetadata === 'object' && 'anthropic' in providerMetadata) return true;
+
+  return false;
 }
 
 /**
@@ -262,6 +291,20 @@ export const cerebrasStripReasoningContent: CompatRule = {
   },
 };
 
+/**
+ * Anthropic accepts its own thinking/reasoning history, but rejects reasoning
+ * parts emitted by other providers. Strip only foreign reasoning parts at the
+ * Anthropic provider boundary so persisted history remains intact and native
+ * Anthropic thinking can still round-trip.
+ */
+export const anthropicStripForeignReasoningContent: CompatRule = {
+  name: 'anthropic-strip-foreign-reasoning-content',
+  applyToPrompt({ prompt, model }) {
+    if (!isMaybeAnthropic(model)) return undefined;
+    return stripReasoningFromPrompt(prompt, part => !isAnthropicReasoningPart(part));
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Default rule set
 // ---------------------------------------------------------------------------
@@ -270,7 +313,11 @@ export const cerebrasStripReasoningContent: CompatRule = {
  * All built-in compat rules. Extend by passing additional rules to the
  * `ProviderHistoryCompat` constructor.
  */
-export const DEFAULT_COMPAT_RULES: CompatRule[] = [anthropicToolIdFormat, cerebrasStripReasoningContent];
+export const DEFAULT_COMPAT_RULES: CompatRule[] = [
+  anthropicToolIdFormat,
+  cerebrasStripReasoningContent,
+  anthropicStripForeignReasoningContent,
+];
 
 // ---------------------------------------------------------------------------
 // Processor
@@ -293,6 +340,9 @@ export const DEFAULT_COMPAT_RULES: CompatRule[] = [anthropicToolIdFormat, cerebr
  *   that serializes them as `reasoning_content` (a field Cerebras's API
  *   rejects). Preemptive; runs in `processLLMPrompt` so the persisted
  *   message list keeps the reasoning trace.
+ * - **anthropic-strip-foreign-reasoning-content** — strips non-Anthropic
+ *   `reasoning` parts from assistant messages in the outbound prompt when the
+ *   resolved model is Anthropic. Anthropic-native reasoning parts are kept.
  *
  * To add custom rules, pass them to the constructor:
  * ```ts

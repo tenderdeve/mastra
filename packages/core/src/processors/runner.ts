@@ -15,7 +15,7 @@ import type { RequestContext } from '../request-context';
 import type { ChunkType } from '../stream';
 import type { MastraModelOutput } from '../stream/base/output';
 import type { LanguageModelUsage } from '../stream/types';
-import { isMaybeCerebras, ProviderHistoryCompat } from './provider-history-compat';
+import { isMaybeAnthropic, isMaybeCerebras, ProviderHistoryCompat } from './provider-history-compat';
 import {
   summarizeActiveToolsForSpan,
   summarizeProcessorModelForSpan,
@@ -1272,13 +1272,12 @@ export class ProcessorRunner {
   }): Promise<{ prompt: LanguageModelV2Prompt }> {
     const observabilityContext = resolveObservabilityContext({ tracingContext: args.tracingContext });
 
-    // Auto-inject ProviderHistoryCompat for Cerebras when the user hasn't
-    // already added one. The default ruleset includes the cerebras strip
-    // rule, so injection enables the fix without explicit configuration.
+    // Auto-inject ProviderHistoryCompat for providers with preemptive prompt
+    // rules when the user hasn't already added one.
     let processors = this.inputProcessors;
     if (
       args.model &&
-      isMaybeCerebras(args.model) &&
+      (isMaybeCerebras(args.model) || isMaybeAnthropic(args.model)) &&
       !this.inputProcessors.some(p => !isProcessorWorkflow(p) && p.id === 'provider-history-compat')
     ) {
       processors = [...this.inputProcessors, new ProviderHistoryCompat()];

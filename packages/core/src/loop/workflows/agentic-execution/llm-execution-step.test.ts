@@ -869,6 +869,127 @@ describe('createLLMExecutionStep gateway provider tools', () => {
     );
   });
 
+  it('strips foreign reasoning history before sending prompts to Anthropic models', async () => {
+    messageList.add(
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'reasoning',
+            text: 'OpenAI-only reasoning trace',
+            providerOptions: {
+              openai: {
+                itemId: 'rs_openai_123',
+              },
+            },
+          },
+          { type: 'text', text: 'Previous answer' },
+        ],
+      } as any,
+      'response',
+    );
+
+    const doStream = vi.fn(async ({ prompt }) => {
+      const hasForeignReasoning = prompt.some(
+        (message: any) =>
+          message.role === 'assistant' &&
+          Array.isArray(message.content) &&
+          message.content.some((part: any) => part.type === 'reasoning' && !part.providerOptions?.anthropic),
+      );
+
+      if (hasForeignReasoning) {
+        throw new APICallError({
+          message: 'messages: reasoning content is not supported from non-Anthropic providers',
+          url: 'https://api.anthropic.com/v1/messages',
+          requestBodyValues: {},
+          statusCode: 400,
+          responseHeaders: {},
+          responseBody: JSON.stringify({
+            error: {
+              type: 'invalid_request_error',
+              message: 'reasoning content is not supported',
+            },
+          }),
+          isRetryable: false,
+        });
+      }
+
+      return {
+        stream: convertArrayToReadableStream([
+          {
+            type: 'finish',
+            finishReason: 'stop',
+            usage: testUsage,
+          },
+        ]),
+        request: {},
+        response: { headers: undefined },
+        warnings: [],
+      };
+    });
+
+    const llmExecutionStep = createLLMExecutionStep({
+      agentId: 'test-agent',
+      messageId: 'msg-0',
+      runId: 'test-run',
+      startTimestamp: Date.now(),
+      methodType: 'stream',
+      controller,
+      outputWriter: vi.fn(),
+      messageList,
+      models: [
+        {
+          id: 'test-model',
+          maxRetries: 0,
+          model: {
+            specificationVersion: 'v2' as const,
+            provider: 'anthropic.messages',
+            modelId: 'claude-3-7-sonnet-20250219',
+            supportedUrls: {},
+            doGenerate: vi.fn(),
+            doStream,
+          } as any,
+        },
+      ],
+      inputProcessors: [],
+      tools: {},
+      streamState: {
+        serialize: vi.fn(),
+        deserialize: vi.fn(),
+      },
+      _internal: {
+        generateId: () => 'generated-id',
+        threadId: 'thread-123',
+        resourceId: 'resource-456',
+      },
+      logger: {
+        error: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      } as any,
+    } as unknown as OuterLLMRun<{}>);
+
+    await llmExecutionStep.execute(createExecuteParams(createIterationInput()));
+
+    expect(doStream).toHaveBeenCalledOnce();
+    expect(doStream.mock.calls[0]?.[0]?.prompt).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'assistant',
+          content: expect.arrayContaining([expect.objectContaining({ type: 'text', text: 'Previous answer' })]),
+        }),
+      ]),
+    );
+    expect(messageList.get.response.aiV5.model()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'assistant',
+          content: expect.arrayContaining([expect.objectContaining({ type: 'reasoning' })]),
+        }),
+      ]),
+    );
+  });
+
   it('bails with a tripwire response when processLLMPrompt aborts', async () => {
     const doStream = vi.fn(async () => ({
       stream: convertArrayToReadableStream([
