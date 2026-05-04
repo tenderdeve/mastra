@@ -566,13 +566,19 @@ export class InngestRun<
         },
       });
     } catch (err) {
-      // Rollback: restore the original snapshot so the run isn't stuck in 'running'
-      await workflowsStore.persistWorkflowSnapshot({
-        workflowName: this.workflowId,
-        runId: this.runId,
-        resourceId: this.resourceId,
-        snapshot: snapshot as any,
-      });
+      // Rollback: restore the original snapshot so the run isn't stuck in 'running'.
+      // The rollback itself can fail (e.g. transient storage error); log it but
+      // always rethrow the original error so the underlying failure isn't masked.
+      try {
+        await workflowsStore.persistWorkflowSnapshot({
+          workflowName: this.workflowId,
+          runId: this.runId,
+          resourceId: this.resourceId,
+          snapshot: snapshot as any,
+        });
+      } catch (rollbackErr) {
+        console.error('Failed to rollback snapshot during resume error recovery:', rollbackErr);
+      }
       throw err;
     }
 
@@ -751,14 +757,20 @@ export class InngestRun<
         },
       });
     } catch (err) {
-      // Rollback: restore the previous snapshot so the run isn't stuck in 'running'
+      // Rollback: restore the previous snapshot so the run isn't stuck in 'running'.
+      // The rollback itself can fail (e.g. transient storage error); log it but
+      // always rethrow the original error so the underlying failure isn't masked.
       if (previousSnapshot) {
-        await workflowsStore.persistWorkflowSnapshot({
-          workflowName: this.workflowId,
-          runId: this.runId,
-          resourceId: this.resourceId,
-          snapshot: previousSnapshot as any,
-        });
+        try {
+          await workflowsStore.persistWorkflowSnapshot({
+            workflowName: this.workflowId,
+            runId: this.runId,
+            resourceId: this.resourceId,
+            snapshot: previousSnapshot as any,
+          });
+        } catch (rollbackErr) {
+          console.error('Failed to rollback snapshot during time-travel error recovery:', rollbackErr);
+        }
       }
       throw err;
     }

@@ -41,22 +41,73 @@ interface LocalTestContext {
 // Inngest dev server process (managed via inngest-cli, no Docker required)
 let standaloneInngestProcess: ResultPromise | null = null;
 
-// Global flag to indicate if Docker is being used (detected at startup)
+// Whether an Inngest server is already listening on port 4000 (Docker or host CLI)
+let inngestServerRunning = false;
+// Whether that already-running server is *Docker* specifically. Only Docker requires
+// rewriting the SDK origin to `host.docker.internal` so the container can reach the
+// host. A host-side `inngest-cli dev` should keep `localhost`.
 let useDockerInngest = false;
 
+/** Best-effort check whether this process is itself running inside a container. */
+function isInsideContainer(): boolean {
+  try {
+    if (fs.existsSync('/.dockerenv')) return true;
+    if (fs.existsSync('/run/.containerenv')) return true;
+    const cgroup = fs.readFileSync('/proc/1/cgroup', 'utf8');
+    if (/docker|kubepods|containerd/.test(cgroup)) return true;
+  } catch {
+    // /proc/1/cgroup doesn't exist on macOS hosts; fall through.
+  }
+  return false;
+}
+
 /**
- * Detect if an Inngest server is already running (e.g., via Docker).
- * Must be called once at startup before any tests run.
+ * Detect whether an Inngest server is already running, and whether it's running
+ * inside Docker (vs a host `inngest-cli dev`). Must be called once at startup
+ * before any tests run.
+ *
+ * "Server reachable on port 4000" alone isn't sufficient — a host-side CLI
+ * satisfies that probe too, and treating it as Docker would incorrectly rewrite
+ * the SDK origin to `host.docker.internal`. We therefore require an explicit
+ * Docker indicator: an env var, a docker-compose-managed container running on
+ * the host, or this process being inside a container itself.
  */
 async function detectDockerInngest(): Promise<boolean> {
   try {
     const response = await fetch('http://localhost:4000/dev', { signal: AbortSignal.timeout(1000) });
-    if (response.ok) {
+    if (!response.ok) return false;
+    inngestServerRunning = true;
+  } catch {
+    return false;
+  }
+
+  // Explicit opt-in / opt-out via env wins.
+  if (process.env.MASTRA_INNGEST_TEST_DOCKER === '1') {
+    useDockerInngest = true;
+    return true;
+  }
+  if (process.env.MASTRA_INNGEST_TEST_DOCKER === '0') {
+    return false;
+  }
+
+  // We're inside a container — the host of the dev server is irrelevant; Docker mode applies.
+  if (isInsideContainer()) {
+    useDockerInngest = true;
+    return true;
+  }
+
+  // Host machine: only treat as Docker if we can confirm a docker-compose-managed
+  // container with the expected name is up.
+  try {
+    const result = await execaCommand('docker ps --filter name=mastra-inngest-test --format {{.Names}}', {
+      reject: false,
+    });
+    if (typeof result.stdout === 'string' && result.stdout.includes('mastra-inngest-test')) {
       useDockerInngest = true;
       return true;
     }
   } catch {
-    // Not running
+    // docker CLI unavailable — assume host inngest-cli, not Docker.
   }
   return false;
 }
@@ -65,40 +116,70 @@ async function detectDockerInngest(): Promise<boolean> {
 await detectDockerInngest();
 
 /**
- * Get additional serve options based on whether Docker is being used.
- * When Docker is used, we need to set serveOrigin so the Inngest server can reach our handler.
+ * Get additional serve options for tests that need Inngest registration to
+ * point at a non-default origin/path. When the dev server is running in Docker,
+ * the container can't reach `localhost`, so we rewrite the SDK origin to
+ * `host.docker.internal`. When running against a host-side `inngest-cli dev`,
+ * `localhost` works fine and no override is needed.
+ *
+ * `handlerPort` and `servePath` default to the values used by the legacy
+ * per-test setups (4001, `/inngest/api`); pass explicit values from any test
+ * that binds to a different port or mount path.
  */
-function getDockerRegisterOptions() {
+function getDockerRegisterOptions(handlerPort: number = 4001, servePath: string = '/inngest/api') {
   if (useDockerInngest) {
-    return { registerOptions: { serveOrigin: 'http://host.docker.internal:4001', servePath: '/inngest/api' } };
+    return {
+      registerOptions: {
+        serveOrigin: `http://host.docker.internal:${handlerPort}`,
+        servePath,
+      },
+    };
   }
   return {};
 }
 
 /**
- * Start a fresh inngest-cli dev server, killing any existing one first.
- * If Docker is already running, just trigger registration without starting a new server.
+ * Wait for `expectedFnIds` to all be registered with the dev server, ignoring
+ * any stale registrations from earlier tests. If `expectedFnIds` is empty, fall
+ * back to waiting for at least one function (best effort).
  */
-async function resetInngest() {
-  if (useDockerInngest) {
-    // Docker is running, just trigger registration
+async function waitForFunctionRegistration(expectedFnIds: string[] = []): Promise<void> {
+  const maxAttempts = 20;
+  const matches = (id: string, candidate: string) =>
+    candidate === id || candidate.endsWith(`-${id}`) || candidate.endsWith(`.${id}`);
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const response = await fetch('http://localhost:4000/dev');
+      const data = await response.json();
+      const fns = (data.functions ?? []) as Array<{ slug?: string; id?: string; name?: string }>;
+      const candidates = fns.flatMap(f => [f.slug, f.id, f.name].filter(Boolean) as string[]);
+      if (expectedFnIds.length > 0) {
+        if (expectedFnIds.every(id => candidates.some(c => matches(id, c)))) return;
+      } else if (fns.length > 0) {
+        return;
+      }
+    } catch {
+      // Keep trying
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
+
+/**
+ * Start a fresh inngest-cli dev server, killing any existing one first.
+ * If a server is already running (Docker or host CLI), just trigger registration
+ * without starting a new server.
+ */
+async function resetInngest(expectedFnIds: string[] = []) {
+  if (inngestServerRunning) {
+    // Server (Docker or host CLI) is already running — just trigger registration
     try {
       await fetch('http://localhost:4001/inngest/api', { method: 'PUT' });
     } catch {
       // Ignore - handler may not be up yet
     }
 
-    // Wait for function registration
-    for (let i = 0; i < 20; i++) {
-      try {
-        const response = await fetch('http://localhost:4000/dev');
-        const data = await response.json();
-        if (data.functions?.length > 0) return;
-      } catch {
-        // Keep trying
-      }
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
+    await waitForFunctionRegistration(expectedFnIds);
     return;
   }
 
@@ -133,17 +214,7 @@ async function resetInngest() {
     // Ignore
   }
 
-  // Wait for function registration
-  for (let i = 0; i < 20; i++) {
-    try {
-      const response = await fetch('http://localhost:4000/dev');
-      const data = await response.json();
-      if (data.functions?.length > 0) return;
-    } catch {
-      // Keep trying
-    }
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
+  await waitForFunctionRegistration(expectedFnIds);
 }
 
 describe('MastraInngestWorkflow', () => {
@@ -14540,7 +14611,12 @@ let sharedInngestProcess: ResultPromise | null = null;
 const SHARED_INNGEST_PORT = 4000;
 const SHARED_HANDLER_PORT = 4001;
 
-// Flag to indicate if Docker is being used (detected in startSharedInngest)
+// Whether the shared Inngest dev server is already running on port 4000 (Docker
+// or host CLI), as opposed to one we start ourselves. Tracked for diagnostics
+// but not read directly — the actual switching happens via `usingDocker` below.
+let _sharedInngestServerRunning = false;
+// Whether that already-running shared server is *Docker* specifically. Only
+// Docker requires rewriting the SDK origin to `host.docker.internal`.
 let usingDocker = false;
 
 /**
@@ -14566,12 +14642,49 @@ async function waitForSharedHandler(maxAttempts = 30, intervalMs = 100): Promise
 }
 
 /**
+ * Wait until the shared dev server reports `expectedFnIds` are all registered.
+ * Falls back to "any function present" if no expected ids are passed.
+ */
+async function waitForSharedFunctionRegistration(expectedFnIds: string[] = [], maxAttempts = 30): Promise<boolean> {
+  const matches = (id: string, candidate: string) =>
+    candidate === id || candidate.endsWith(`-${id}`) || candidate.endsWith(`.${id}`);
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const response = await fetch(`http://localhost:${SHARED_INNGEST_PORT}/dev`);
+      const data = await response.json();
+      const fns = (data.functions ?? []) as Array<{ slug?: string; id?: string; name?: string }>;
+      const candidates = fns.flatMap(f => [f.slug, f.id, f.name].filter(Boolean) as string[]);
+      if (expectedFnIds.length > 0) {
+        if (expectedFnIds.every(id => candidates.some(c => matches(id, c)))) {
+          console.log(`[waitForSharedFunctionRegistration] all ${expectedFnIds.length} expected functions registered`);
+          return true;
+        }
+      } else if (fns.length > 0) {
+        return true;
+      }
+    } catch {
+      // Keep trying
+    }
+    if (i === Math.floor(maxAttempts / 3)) {
+      // Re-trigger registration mid-wait in case the first PUT raced startup
+      try {
+        await fetch(`http://localhost:${SHARED_HANDLER_PORT}/inngest/api`, { method: 'PUT' });
+      } catch {
+        // Ignore
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  return false;
+}
+
+/**
  * Ensure the Inngest dev server is running and has registered our functions.
  *
  * Uses the npm-installed inngest-cli binary (no Docker required).
  * The dev server polls the handler URL for function definitions.
  */
-async function startSharedInngest() {
+async function startSharedInngest(expectedFnIds: string[] = []) {
   // First, verify the handler is responding
   console.log('[startSharedInngest] Verifying handler is responding...');
   const handlerReady = await waitForSharedHandler();
@@ -14579,17 +14692,25 @@ async function startSharedInngest() {
     throw new Error('Handler not responding on port ' + SHARED_HANDLER_PORT);
   }
 
-  // Check if Inngest is already running (e.g., via Docker)
+  // Check if a server is already running (Docker or host CLI). Don't equate
+  // "port reachable" with "Docker" — that would break host inngest-cli setups.
   try {
     const response = await fetch(`http://localhost:${SHARED_INNGEST_PORT}/dev`);
     if (response.ok) {
-      const data = await response.json();
-      const functionsRegistered = data.functions?.length || 0;
-      console.log(`[startSharedInngest] Inngest already running with ${functionsRegistered} functions`);
-      // Mark that Docker is being used - the serve handler needs to use host.docker.internal
-      usingDocker = true;
-      console.log(`[startSharedInngest] Docker detected, usingDocker=${usingDocker}`);
-      if (functionsRegistered > 0) return;
+      _sharedInngestServerRunning = true;
+      console.log(`[startSharedInngest] Inngest already running on port ${SHARED_INNGEST_PORT}`);
+      // Trigger registration so the running server picks up *this* run's
+      // workflows (its previous registry may be stale from an earlier suite).
+      try {
+        await fetch(`http://localhost:${SHARED_HANDLER_PORT}/inngest/api`, { method: 'PUT' });
+      } catch {
+        // Ignore
+      }
+      const ok = await waitForSharedFunctionRegistration(expectedFnIds);
+      if (!ok && expectedFnIds.length > 0) {
+        throw new Error(`[startSharedInngest] expected functions not registered: ${expectedFnIds.join(', ')}`);
+      }
+      return;
     }
   } catch {
     // Not running yet
@@ -14626,33 +14747,17 @@ async function startSharedInngest() {
     console.log('[startSharedInngest] PUT registration failed:', e);
   }
 
-  // Wait for function registration
+  // Wait for the *expected* set of functions to register, not just "any"
   console.log('[startSharedInngest] Waiting for function registration...');
-  for (let i = 0; i < 30; i++) {
-    try {
-      const response = await fetch(`http://localhost:${SHARED_INNGEST_PORT}/dev`);
-      const data = await response.json();
-      const functionsRegistered = data.functions?.length || 0;
-      if (functionsRegistered > 0) {
-        console.log(`[startSharedInngest] ${functionsRegistered} functions registered`);
-        return;
-      }
-    } catch {
-      // Keep trying
+  const ok = await waitForSharedFunctionRegistration(expectedFnIds);
+  if (!ok) {
+    if (expectedFnIds.length > 0) {
+      throw new Error(
+        `[startSharedInngest] expected functions not registered after polling: ${expectedFnIds.join(', ')}`,
+      );
     }
-    if (i === 10) {
-      // Retry PUT registration if not yet registered
-      console.log('[startSharedInngest] Retrying PUT registration...');
-      try {
-        await fetch(`http://localhost:${SHARED_HANDLER_PORT}/inngest/api`, { method: 'PUT' });
-      } catch {
-        // Ignore
-      }
-    }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    throw new Error('[startSharedInngest] No functions registered after 30 attempts - aborting test suite');
   }
-
-  throw new Error('[startSharedInngest] No functions registered after 30 attempts - aborting test suite');
 }
 
 /**
@@ -14689,12 +14794,34 @@ createWorkflowTestSuite({
    * 3. Wait for sync to complete
    */
   registerWorkflows: async (registry: WorkflowRegistry) => {
-    // Detect Docker early - before setting up the serve handler
+    // Detect whether a server is already running (Docker or host CLI). Don't
+    // equate "port reachable" with "Docker" — only set `usingDocker` when we
+    // can confirm it via an explicit Docker indicator.
     try {
       const response = await fetch(`http://localhost:${SHARED_INNGEST_PORT}/dev`);
       if (response.ok) {
-        usingDocker = true;
-        console.log(`[registerWorkflows] Docker detected, usingDocker=${usingDocker}`);
+        _sharedInngestServerRunning = true;
+        if (process.env.MASTRA_INNGEST_TEST_DOCKER === '1') {
+          usingDocker = true;
+        } else if (process.env.MASTRA_INNGEST_TEST_DOCKER === '0') {
+          usingDocker = false;
+        } else if (isInsideContainer()) {
+          usingDocker = true;
+        } else {
+          try {
+            const psResult = await execaCommand('docker ps --filter name=mastra-inngest-test --format {{.Names}}', {
+              reject: false,
+            });
+            if (typeof psResult.stdout === 'string' && psResult.stdout.includes('mastra-inngest-test')) {
+              usingDocker = true;
+            }
+          } catch {
+            // docker CLI unavailable — assume host inngest-cli, not Docker.
+          }
+        }
+        console.log(
+          `[registerWorkflows] dev server reachable on port ${SHARED_INNGEST_PORT} (usingDocker=${usingDocker})`,
+        );
       }
     } catch {
       // Not running yet, will use inngest-cli
@@ -14762,9 +14889,13 @@ createWorkflowTestSuite({
     // Wait for handler to be fully ready before starting Inngest
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Now start Inngest (this also triggers registration via PUT with url body)
+    // Now start Inngest (this also triggers registration via PUT with url body).
+    // We pass through the expected function ids so the registration wait verifies
+    // *our* workflows have synced — not just that the dev server has at least one
+    // function left over from a previous suite.
+    const expectedFnIds = Object.keys(workflows).map(id => `workflow.${id}`);
     console.log('[registerWorkflows] Starting Inngest...');
-    await startSharedInngest();
+    await startSharedInngest(expectedFnIds);
     console.log('[registerWorkflows] Inngest started and functions registered');
   },
 
