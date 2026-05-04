@@ -84,6 +84,13 @@
       "matchSourceUrls": ["https://github.com/vercel/ai"]
     },
     {
+      "groupName": "AI SDK",
+      "description": "Pin @ai-sdk/openai-compatible to <1.0.32 because 1.0.32 began serializing reasoning parts as a `reasoning_content` field on outbound assistant messages, which Cerebras (and other openai-compatible providers built on it) reject as an unsupported property. Tracked upstream by https://github.com/vercel/ai/pull/12049 (cause) and https://github.com/vercel/ai/pull/11278 (fix - adds an opt-out flag, not yet merged). Once #11278 ships and we adopt it, remove this rule, the pnpm.overrides entry in the root package.json, and unpin @ai-sdk/openai-compatible-v5 in packages/core/package.json.",
+      "matchPackageNames": ["@ai-sdk/openai-compatible"],
+      "matchFileNames": ["**/package.json", "!examples/**", "!docs/**"],
+      "enabled": false
+    },
+    {
       "groupName": "Assistant UI",
       "matchSourceUrls": ["https://github.com/assistant-ui/assistant-ui"]
     },
