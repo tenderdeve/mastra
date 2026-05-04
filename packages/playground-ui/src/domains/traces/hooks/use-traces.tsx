@@ -31,9 +31,9 @@ const fetchTracesFn = async ({
   };
 
   if (listMode === 'branches') {
-    return (client as unknown as { listBranches: (args: ListBranchesArgs) => Promise<ListBranchesResponse> }).listBranches(
-      params as ListBranchesArgs,
-    );
+    return (
+      client as unknown as { listBranches: (args: ListBranchesArgs) => Promise<ListBranchesResponse> }
+    ).listBranches(params as ListBranchesArgs);
   }
 
   return client.listTraces(params as ListTracesArgs);

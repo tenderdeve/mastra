@@ -75,7 +75,7 @@ export const LOGS_PROPERTY_FILTER_FIELD_IDS = Object.keys(LOGS_PROPERTY_FILTER_P
 /** Fields stored as repeated URL params (value is string[]). */
 const LOGS_ARRAY_FIELD_IDS = new Set<string>(['tags']);
 
-export const DEFAULT_LOGS_FILTERS_STORAGE_KEY = 'mastra:logs:saved-filters';
+export const DEFAULT_LOGS_FILTERS_STORAGE_KEY = 'mastra:observability:saved-filters';
 
 export function saveLogsFiltersToStorage(
   params: URLSearchParams,

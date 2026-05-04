@@ -14866,7 +14866,7 @@ export type PostObservabilityMetricsAggregate_Body = {
   name: string[];
   /** Aggregation function */
   aggregation: 'sum' | 'avg' | 'min' | 'max' | 'count' | 'count_distinct' | 'last';
-  /** Column to apply count_distinct over (required when aggregation is 'count_distinct'). Restricted to low/medium-cardinality categorical columns; ID columns are not allowed. */
+  /** Column to apply count_distinct over (required when aggregation is 'count_distinct'). Restricted to allowlisted metric dimensions. */
   distinctColumn?:
     | (
         | 'entityType'
@@ -14881,6 +14881,8 @@ export type PostObservabilityMetricsAggregate_Body = {
         | 'environment'
         | 'executionSource'
         | 'serviceName'
+        | 'threadId'
+        | 'resourceId'
       )
     | undefined;
   filters?:
@@ -15033,7 +15035,7 @@ export type PostObservabilityMetricsBreakdown_Body = {
   groupBy: string[];
   /** Aggregation function */
   aggregation: 'sum' | 'avg' | 'min' | 'max' | 'count' | 'count_distinct' | 'last';
-  /** Column to apply count_distinct over (required when aggregation is 'count_distinct'). Restricted to low/medium-cardinality categorical columns; ID columns are not allowed. */
+  /** Column to apply count_distinct over (required when aggregation is 'count_distinct'). Restricted to allowlisted metric dimensions. */
   distinctColumn?:
     | (
         | 'entityType'
@@ -15048,6 +15050,8 @@ export type PostObservabilityMetricsBreakdown_Body = {
         | 'environment'
         | 'executionSource'
         | 'serviceName'
+        | 'threadId'
+        | 'resourceId'
       )
     | undefined;
   filters?:
@@ -15201,7 +15205,7 @@ export type PostObservabilityMetricsTimeseries_Body = {
   interval: '1m' | '5m' | '15m' | '1h' | '1d';
   /** Aggregation function */
   aggregation: 'sum' | 'avg' | 'min' | 'max' | 'count' | 'count_distinct' | 'last';
-  /** Column to apply count_distinct over (required when aggregation is 'count_distinct'). Restricted to low/medium-cardinality categorical columns; ID columns are not allowed. */
+  /** Column to apply count_distinct over (required when aggregation is 'count_distinct'). Restricted to allowlisted metric dimensions. */
   distinctColumn?:
     | (
         | 'entityType'
@@ -15216,6 +15220,8 @@ export type PostObservabilityMetricsTimeseries_Body = {
         | 'environment'
         | 'executionSource'
         | 'serviceName'
+        | 'threadId'
+        | 'resourceId'
       )
     | undefined;
   filters?:
