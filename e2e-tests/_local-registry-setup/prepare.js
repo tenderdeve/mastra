@@ -146,6 +146,10 @@ export async function prepareMonorepo(monorepoDir, glob, tag) {
         env: {
           ...process.env,
           HUSKY: '0',
+          GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME || 'Mastra CI',
+          GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL || 'ci@mastra.ai',
+          GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME || 'Mastra CI',
+          GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL || 'ci@mastra.ai',
         },
       });
       shelvedChanges = true;
