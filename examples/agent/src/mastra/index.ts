@@ -8,7 +8,7 @@ import { DuckDBStore } from '@mastra/duckdb';
 import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';
 import { SlackProvider } from '@mastra/slack';
 
-import { mastraAuth, rbacProvider } from './auth';
+import { mastraAuth, rbacProvider, fgaProvider } from './auth';
 
 import {
   agentThatHarassesYou,
@@ -205,6 +205,7 @@ export const mastra = new Mastra({
   server: {
     auth: mastraAuth,
     rbac: rbacProvider,
+    fga: fgaProvider,
   },
   backgroundTasks: {
     enabled: true,
