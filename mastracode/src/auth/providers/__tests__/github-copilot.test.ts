@@ -324,6 +324,51 @@ describe('GitHub Copilot OAuth device flow', () => {
     await expect(loginPromise).rejects.toThrow(/Invalid GitHub Enterprise URL\/domain/);
   });
 
+  it('passes the AbortSignal into the underlying fetch calls', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-09T00:00:00Z'));
+
+    const seenSignals: (AbortSignal | undefined)[] = [];
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit): Promise<Response> => {
+      seenSignals.push(init?.signal ?? undefined);
+      const url = getUrl(input);
+
+      if (url.endsWith('/login/device/code')) {
+        return jsonResponse({
+          device_code: 'device-code',
+          user_code: 'ABCD-EFGH',
+          verification_uri: 'https://github.com/login/device',
+          interval: 5,
+          expires_in: 900,
+        });
+      }
+      if (url.endsWith('/login/oauth/access_token')) {
+        return jsonResponse({ access_token: 'ghu_user_token' });
+      }
+      if (url.endsWith('/copilot_internal/v2/token')) {
+        return jsonResponse({ token: 'copilot-bearer', expires_at: 9999999999 });
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const controller = new AbortController();
+    const loginPromise = loginGitHubCopilot({
+      onAuth: () => {},
+      onPrompt: async () => '',
+      signal: controller.signal,
+    });
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    await loginPromise;
+
+    // Device code, access token, and copilot token requests should all carry the signal.
+    expect(seenSignals.length).toBeGreaterThanOrEqual(3);
+    for (const signal of seenSignals) {
+      expect(signal).toBe(controller.signal);
+    }
+  });
+
   it('honors AbortSignal cancellation between polls', async () => {
     vi.useFakeTimers();
     const controller = new AbortController();

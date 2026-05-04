@@ -72,6 +72,7 @@ import { acquireThreadLock, releaseThreadLock } from './utils/thread-lock.js';
 const PROVIDER_TO_OAUTH_ID: Record<string, string> = {
   anthropic: 'anthropic',
   openai: 'openai-codex',
+  'github-copilot': 'github-copilot',
 };
 
 export interface MastraCodeConfig {

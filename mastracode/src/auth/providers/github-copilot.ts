@@ -107,8 +107,8 @@ export function getGitHubCopilotBaseUrl(token?: string, enterpriseDomain?: strin
   return 'https://api.individual.githubcopilot.com';
 }
 
-async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
-  const response = await fetch(url, init);
+async function fetchJson(url: string, init: RequestInit, signal?: AbortSignal): Promise<unknown> {
+  const response = await fetch(url, signal ? { ...init, signal } : init);
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     throw new Error(`${response.status} ${response.statusText}: ${text}`);
@@ -116,20 +116,24 @@ async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
   return response.json();
 }
 
-async function startDeviceFlow(domain: string): Promise<DeviceCodeResponse> {
+async function startDeviceFlow(domain: string, signal?: AbortSignal): Promise<DeviceCodeResponse> {
   const urls = getUrls(domain);
-  const data = await fetchJson(urls.deviceCodeUrl, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': COPILOT_USER_AGENT,
+  const data = await fetchJson(
+    urls.deviceCodeUrl,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': COPILOT_USER_AGENT,
+      },
+      body: new URLSearchParams({
+        client_id: CLIENT_ID,
+        scope: 'read:user',
+      }),
     },
-    body: new URLSearchParams({
-      client_id: CLIENT_ID,
-      scope: 'read:user',
-    }),
-  });
+    signal,
+  );
 
   if (!data || typeof data !== 'object') {
     throw new Error('Invalid device code response');
@@ -169,16 +173,18 @@ function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
       return;
     }
 
-    const timeout = setTimeout(resolve, ms);
+    let timeout: ReturnType<typeof setTimeout>;
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new Error('Login cancelled'));
+    };
 
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timeout);
-        reject(new Error('Login cancelled'));
-      },
-      { once: true },
-    );
+    timeout = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -204,19 +210,23 @@ async function pollForGitHubAccessToken(
     const waitMs = Math.min(Math.ceil(intervalMs * intervalMultiplier), remainingMs);
     await abortableSleep(waitMs, signal);
 
-    const raw = await fetchJson(urls.accessTokenUrl, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': COPILOT_USER_AGENT,
+    const raw = await fetchJson(
+      urls.accessTokenUrl,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': COPILOT_USER_AGENT,
+        },
+        body: new URLSearchParams({
+          client_id: CLIENT_ID,
+          device_code: deviceCode,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }),
       },
-      body: new URLSearchParams({
-        client_id: CLIENT_ID,
-        device_code: deviceCode,
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-      }),
-    });
+      signal,
+    );
 
     if (raw && typeof raw === 'object' && typeof (raw as DeviceTokenSuccessResponse).access_token === 'string') {
       return (raw as DeviceTokenSuccessResponse).access_token;
@@ -258,17 +268,22 @@ async function pollForGitHubAccessToken(
 export async function refreshGitHubCopilotToken(
   refreshToken: string,
   enterpriseDomain?: string,
+  signal?: AbortSignal,
 ): Promise<GitHubCopilotCredentials> {
   const domain = enterpriseDomain || 'github.com';
   const urls = getUrls(domain);
 
-  const raw = await fetchJson(urls.copilotTokenUrl, {
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${refreshToken}`,
-      ...COPILOT_HEADERS,
+  const raw = await fetchJson(
+    urls.copilotTokenUrl,
+    {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${refreshToken}`,
+        ...COPILOT_HEADERS,
+      },
     },
-  });
+    signal,
+  );
 
   if (!raw || typeof raw !== 'object') {
     throw new Error('Invalid Copilot token response');
@@ -323,7 +338,7 @@ export async function loginGitHubCopilot(options: {
   }
   const domain = enterpriseDomain || 'github.com';
 
-  const device = await startDeviceFlow(domain);
+  const device = await startDeviceFlow(domain, options.signal);
   options.onAuth(device.verification_uri, `Enter code: ${device.user_code}`);
 
   const githubAccessToken = await pollForGitHubAccessToken(
@@ -335,7 +350,7 @@ export async function loginGitHubCopilot(options: {
   );
 
   options.onProgress?.('Fetching Copilot token...');
-  return refreshGitHubCopilotToken(githubAccessToken, enterpriseDomain ?? undefined);
+  return refreshGitHubCopilotToken(githubAccessToken, enterpriseDomain ?? undefined, options.signal);
 }
 
 export const githubCopilotOAuthProvider: OAuthProviderInterface = {
