@@ -152,6 +152,37 @@ describe('Agent.stream', () => {
     expect(typeof firstCall[0]).toBe('string');
     expect(firstCall[0]).toBe('test');
   });
+
+  it('should handle vNext step-finish and finish chunks without stepResult payloads', async () => {
+    const encoder = new TextEncoder();
+    const chunks = [{ type: 'text-delta', payload: { text: 'hello' } }, { type: 'step-finish' }, { type: 'finish' }];
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        }
+        controller.close();
+      },
+    });
+    const updates: any[] = [];
+    const onFinish = vi.fn();
+
+    await expect(
+      (agent as any).processChatResponse_vNext({
+        stream,
+        update: (update: any) => updates.push(update),
+        onFinish,
+        lastMessage: undefined,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(updates[updates.length - 1].message.content).toBe('hello');
+    expect(onFinish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finishReason: 'unknown',
+      }),
+    );
+  });
 });
 
 describe('Agent.network', () => {
