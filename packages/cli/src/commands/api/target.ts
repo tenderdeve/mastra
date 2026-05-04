@@ -78,7 +78,7 @@ async function canReachLocal(timeoutMs: number): Promise<boolean> {
   try {
     const response = await fetch(`${LOCAL_URL}/api/system/api-schema`, { method: 'GET', signal: controller.signal });
     await response.body?.cancel();
-    return true;
+    return response.ok;
   } catch {
     return false;
   } finally {

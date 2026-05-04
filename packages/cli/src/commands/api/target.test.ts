@@ -69,7 +69,7 @@ describe('resolveTarget', () => {
 
   it('uses localhost when the default server is reachable and cancels the probe body', async () => {
     const cancel = vi.fn();
-    fetchMock.mockResolvedValueOnce({ body: { cancel } });
+    fetchMock.mockResolvedValueOnce({ ok: true, body: { cancel } });
 
     await expect(resolveTarget(options({ header: ['X-Test: yes'], timeout: '5000' }))).resolves.toEqual({
       baseUrl: 'http://localhost:4111',
@@ -107,6 +107,23 @@ describe('resolveTarget', () => {
     expect(mocks.loadProjectConfig).toHaveBeenCalledWith(process.cwd());
     expect(mocks.getToken).toHaveBeenCalledTimes(2);
     expect(mocks.fetchServerProjects).toHaveBeenCalledWith('platform-token', 'org-1');
+  });
+
+  it('does not use localhost when the probe returns a non-2xx response', async () => {
+    const cancel = vi.fn();
+    fetchMock.mockResolvedValueOnce({ ok: false, body: { cancel } });
+    mocks.loadProjectConfig.mockResolvedValueOnce(linkedProject);
+    mocks.fetchServerProjects.mockResolvedValueOnce([
+      { id: 'project-1', slug: 'project-one', instanceUrl: 'https://project.example.com' },
+    ]);
+
+    await expect(resolveTarget(options())).resolves.toMatchObject({
+      baseUrl: 'https://project.example.com',
+    });
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(mocks.loadProjectConfig).toHaveBeenCalledWith(process.cwd());
+    expect(mocks.fetchServerProjects).toHaveBeenCalledOnce();
   });
 
   it('throws target resolution errors for missing local/project/platform URL cases', async () => {

@@ -117,7 +117,11 @@ function addAction(parent: Command, name: string, descriptor: ApiCommandDescript
       const [seconds, nanoseconds] = process.hrtime(startedAt);
       analytics?.trackCommand({
         command: `api-${descriptor.name}`,
-        args: { positionals: identityValues, hasInput: maybeInput !== undefined },
+        args: {
+          positionalCount: identityValues.length,
+          positionalPresent: identityValues.length > 0,
+          hasInput: maybeInput !== undefined,
+        },
         durationMs: seconds * 1000 + nanoseconds / 1_000_000,
         status: process.exitCode ? 'error' : 'success',
       });

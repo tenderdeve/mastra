@@ -244,8 +244,10 @@ export const LIST_SCORES_ROUTE = createRoute({
       if (runId) {
         scoreResults = (await scoresStore?.listScoresByRunId?.({ runId, pagination })) || empty;
       } else if (scorerId) {
-        scoreResults =
-          (await scoresStore?.listScoresByScorerId?.({ scorerId, pagination, entityId, entityType })) || empty;
+        const filters = Object.fromEntries(
+          Object.entries({ entityId, entityType }).filter(([_, v]) => v !== undefined),
+        );
+        scoreResults = (await scoresStore?.listScoresByScorerId?.({ scorerId, pagination, ...filters })) || empty;
       } else if (entityId && entityType) {
         scoreResults = (await scoresStore?.listScoresByEntityId?.({ entityId, entityType, pagination })) || empty;
       }

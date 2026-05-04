@@ -164,8 +164,8 @@ export const GET_SCORE = createNewRoute(NEW_ROUTE_DEFS.GET_SCORE, {
   responseSchema: z.object({ score: scoreRecordSchema.nullable() }),
   handler: async ({ mastra, scoreId }) => {
     const observabilityStore = await getObservabilityStore(mastra);
-    const { scores } = await observabilityStore.listScores({ pagination: { page: 0, perPage: 100 } });
-    return { score: scores.find(score => score.scoreId === scoreId) ?? null };
+    const score = await observabilityStore.getScoreById(scoreId);
+    return { score: score ?? null };
   },
 });
 
@@ -414,6 +414,7 @@ export const NEW_ROUTES = {
   LIST_LOGS,
   LIST_SCORES,
   CREATE_SCORE,
+  GET_SCORE,
   GET_SCORE_AGGREGATE,
   GET_SCORE_BREAKDOWN,
   GET_SCORE_TIME_SERIES,
