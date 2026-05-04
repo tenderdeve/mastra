@@ -20,11 +20,7 @@ import type { AgentBuilderEditFormValues } from '../../schemas';
 import { ChannelDialog } from './publish-channel-dialogs';
 import type { Visibility } from './visibility-select';
 import { PlatformIcon } from '@/domains/agents/components/agent-channels/platform-icons';
-import {
-  useChannelInstallations,
-  useChannelPlatforms,
-  useConnectChannel,
-} from '@/domains/agents/hooks/use-channels';
+import { useChannelInstallations, useChannelPlatforms, useConnectChannel } from '@/domains/agents/hooks/use-channels';
 import type { ChannelInstallationInfo, ChannelPlatformInfo } from '@/domains/agents/hooks/use-channels';
 
 export interface AgentBuilderMobileMenuProps {
