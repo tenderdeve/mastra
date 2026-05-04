@@ -93,7 +93,7 @@ function CmsPromptBlocksEditForm({
   const [formResetKey, setFormResetKey] = useState(0);
 
   useEffect(() => {
-    if (initialValues && !form.formState.isDirty) {
+    if (initialValues) {
       form.reset(initialValues);
       setFormResetKey(prev => prev + 1);
     }
