@@ -711,8 +711,8 @@ export function createInngestAgent<TOutput = undefined>(options: CreateInngestAg
       mastra = mastraInstance;
 
       // NOTE: Unlike core DurableAgent, we do NOT replace innerPubsub with mastra.pubsub.
-      // InngestAgent uses InngestPubSub which handles both publishing (inside Inngest
-      // functions via the realtime publishFn) and subscribing (via @inngest/realtime).
+      // InngestAgent uses InngestPubSub which handles both publishing (via
+      // `inngest.realtime.publish()` in SDK v4) and subscribing (via @inngest/realtime).
       // Replacing it with mastra's EventEmitterPubSub would break streaming because
       // the subscriber would be on a different transport than the publisher.
     },

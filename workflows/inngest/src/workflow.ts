@@ -239,7 +239,7 @@ export class InngestWorkflow<
         // Spread flow control configuration
         ...this.flowControlConfig,
       },
-      async ({ event, step, attempt, publish }) => {
+      async ({ event, step, attempt }) => {
         let {
           inputData,
           initialState,
@@ -259,8 +259,10 @@ export class InngestWorkflow<
           });
         }
 
-        // Create InngestPubSub instance with the publish function from Inngest context
-        const pubsub = new InngestPubSub(this.inngest, this.id, publish);
+        // Create InngestPubSub instance. Publishes go through `inngest.realtime.publish()`
+        // (Inngest SDK v4 client API), which auto-includes the current runId from the
+        // function's async context.
+        const pubsub = new InngestPubSub(this.inngest, this.id);
 
         // Create requestContext before execute so we can reuse it in finalize
         const requestContext: RequestContext = new RequestContext(Object.entries(event.data.requestContext ?? {}));
