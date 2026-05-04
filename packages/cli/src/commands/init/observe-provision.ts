@@ -10,25 +10,37 @@ interface ObserveProject {
   organizationId: string;
 }
 
-interface CreateIngestKeyResponse {
-  key: { id: string; projectId: string; name: string };
+interface CreateTokenResponse {
+  token: { id: string; name: string };
   secret: string;
-  endpoint: string;
 }
 
 export interface ObserveProvisionResult {
+  /** WorkOS organization API key (sk_*) used as MASTRA_CLOUD_ACCESS_TOKEN. */
   token: string;
-  endpoint: string;
-  projectName: string;
+  /** Platform project id (UUID) used as MASTRA_PROJECT_ID. */
+  projectId: string;
+  /** Platform project slug. */
   projectSlug: string;
+  /** Platform project name. */
+  projectName: string;
+  /** Organization display name for messaging. */
   orgName: string;
+  /**
+   * Spans endpoint override. Only set when the platform URL is non-default
+   * (e.g., local dev or staging). When omitted, the CloudExporter falls back
+   * to its built-in `https://observability.mastra.ai` default.
+   */
+  tracesEndpoint?: string;
 }
+
+const DEFAULT_PLATFORM_API_URL = 'https://platform.mastra.ai';
 
 /**
  * Walk the user through enabling Mastra Observe for a freshly-scaffolded
  * project: log in (via the existing browser flow) if needed, pick or create a
- * platform project, mint a fresh ingest key, and return the token + endpoint
- * for the caller to write to `.env`.
+ * platform project, mint a fresh org-scoped ingest token, and return what the
+ * caller needs to write to `.env`.
  *
  * Defaults the project name to `defaultProjectName` (typically the package
  * name from `package.json`) when creating a new project.
@@ -41,14 +53,14 @@ export async function provisionObserveProject({
   const token = await getToken();
   const { orgId, orgName } = await resolveCurrentOrg(token);
 
-  const projects = await listObserveProjects(token, orgId);
+  const projects = await listProjects(token, orgId);
 
   let project: ObserveProject;
   if (projects.length === 0) {
-    project = await createObserveProject({ token, orgId, defaultName: defaultProjectName, orgName });
+    project = await createProject({ token, orgId, defaultName: defaultProjectName, orgName });
   } else {
     const choice = await p.select({
-      message: `Select an Observe project (in ${orgName})`,
+      message: `Select a project (in ${orgName})`,
       options: [
         ...projects.map(proj => ({ value: proj.id, label: proj.name, hint: proj.slug })),
         { value: '__new__', label: '+ Create new project' },
@@ -60,30 +72,38 @@ export async function provisionObserveProject({
     }
 
     if (choice === '__new__') {
-      project = await createObserveProject({ token, orgId, defaultName: defaultProjectName, orgName });
+      project = await createProject({ token, orgId, defaultName: defaultProjectName, orgName });
     } else {
       project = projects.find(proj => proj.id === choice)!;
     }
   }
 
-  const { secret, endpoint } = await createIngestKey({
+  const secret = await mintOrgToken({
     token,
     orgId,
-    slug: project.slug,
-    keyName: 'CLI init',
+    keyName: `mastra observe – ${project.name}`,
   });
 
-  return {
+  const result: ObserveProvisionResult = {
     token: secret,
-    endpoint,
-    projectName: project.name,
+    projectId: project.id,
     projectSlug: project.slug,
+    projectName: project.name,
     orgName,
   };
+
+  // Only emit a traces endpoint override when the user is pointed at a
+  // non-default platform (local dev / staging). For prod, omit it so the
+  // CloudExporter uses its built-in https://observability.mastra.ai default.
+  if (MASTRA_PLATFORM_API_URL !== DEFAULT_PLATFORM_API_URL) {
+    result.tracesEndpoint = deriveTracesEndpoint(MASTRA_PLATFORM_API_URL, project.id);
+  }
+
+  return result;
 }
 
-async function listObserveProjects(token: string, orgId: string): Promise<ObserveProject[]> {
-  const res = await platformFetch(`${MASTRA_PLATFORM_API_URL}/v1/projects`, {
+async function listProjects(token: string, orgId: string): Promise<ObserveProject[]> {
+  const res = await platformFetch(`${MASTRA_PLATFORM_API_URL}/v1/studio/projects`, {
     headers: authHeaders(token, orgId),
   });
   if (!res.ok) {
@@ -93,7 +113,7 @@ async function listObserveProjects(token: string, orgId: string): Promise<Observ
   return body.projects;
 }
 
-async function createObserveProject({
+async function createProject({
   token,
   orgId,
   defaultName,
@@ -115,7 +135,7 @@ async function createObserveProject({
     throw new Error('Cancelled');
   }
 
-  const res = await platformFetch(`${MASTRA_PLATFORM_API_URL}/v1/projects`, {
+  const res = await platformFetch(`${MASTRA_PLATFORM_API_URL}/v1/studio/projects`, {
     method: 'POST',
     headers: { ...authHeaders(token, orgId), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: name as string }),
@@ -127,24 +147,35 @@ async function createObserveProject({
   return body.project;
 }
 
-async function createIngestKey({
+async function mintOrgToken({
   token,
   orgId,
-  slug,
   keyName,
 }: {
   token: string;
   orgId: string;
-  slug: string;
   keyName: string;
-}): Promise<CreateIngestKeyResponse> {
-  const res = await platformFetch(`${MASTRA_PLATFORM_API_URL}/v1/projects/${encodeURIComponent(slug)}/ingest-keys`, {
+}): Promise<string> {
+  const res = await platformFetch(`${MASTRA_PLATFORM_API_URL}/v1/auth/tokens`, {
     method: 'POST',
     headers: { ...authHeaders(token, orgId), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: keyName }),
   });
   if (!res.ok) {
-    throw new Error(`Failed to create ingest key (${res.status})`);
+    throw new Error(`Failed to create access token (${res.status})`);
   }
-  return (await res.json()) as CreateIngestKeyResponse;
+  const body = (await res.json()) as CreateTokenResponse;
+  return body.secret;
+}
+
+/**
+ * Derive a per-project spans endpoint matching the mobs-collector route
+ * `POST /projects/:projectId/ai/spans/publish`. Only used when a non-default
+ * platform URL is in play; production usage relies on the CloudExporter's
+ * own default base.
+ */
+function deriveTracesEndpoint(platformUrl: string, projectId: string): string {
+  // Strip a trailing /v1 (or any other path) — we want the host root.
+  const url = new URL(platformUrl);
+  return `${url.origin}/projects/${projectId}/ai/spans/publish`;
 }

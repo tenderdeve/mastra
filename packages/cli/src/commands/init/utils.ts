@@ -620,17 +620,28 @@ export const writeAPIKey = async ({ provider, apiKey }: { provider: LLMProvider;
  * When called with no token, writes empty placeholders so the user can paste
  * a key minted manually from the dashboard.
  */
-export const writeObserveEnv = async ({ token, endpoint }: { token?: string; endpoint?: string } = {}) => {
+export const writeObserveEnv = async ({
+  token,
+  projectId,
+  endpoint,
+}: { token?: string; projectId?: string; endpoint?: string } = {}) => {
   const envFilePath = path.join(process.cwd(), '.env');
   const lines = [
     '',
     '# Mastra Observe — https://cloud.mastra.ai',
-    '# Create a project and paste your access token below to send traces to',
-    '# the hosted Mastra Studio.',
+    '# Access token and project id wired up automatically when you ran',
+    '# `mastra init` / `create-mastra` with Observe enabled.',
     `MASTRA_CLOUD_ACCESS_TOKEN=${token ?? ''}`,
-    `MASTRA_CLOUD_TRACES_ENDPOINT=${endpoint ?? ''}`,
-    '',
+    `MASTRA_PROJECT_ID=${projectId ?? ''}`,
   ];
+  // Only emit the traces endpoint when caller provided one (e.g. local dev or
+  // staging). In production the CloudExporter falls back to its built-in
+  // https://observability.mastra.ai default and per-project URLs are derived
+  // from MASTRA_PROJECT_ID.
+  if (endpoint) {
+    lines.push(`MASTRA_CLOUD_TRACES_ENDPOINT=${endpoint}`);
+  }
+  lines.push('');
   await fs.appendFile(envFilePath, lines.join('\n'));
 };
 export const createMastraDir = async (directory: string): Promise<{ ok: true; dirPath: string } | { ok: false }> => {

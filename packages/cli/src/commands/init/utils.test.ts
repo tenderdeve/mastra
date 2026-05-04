@@ -32,13 +32,29 @@ describe('writeObserveEnv', () => {
     expect(contents).not.toMatch(/MASTRA_CLOUD_ACCESS_TOKEN=\S/);
   });
 
-  test('writes a real token when one is provided', async () => {
+  test('writes a real token and project id when provided', async () => {
     fs.writeFileSync(`${cwd}/.env`, '');
 
-    await writeObserveEnv({ token: 'tok_abc123' });
+    await writeObserveEnv({ token: 'sk_abc123', projectId: 'proj_xyz' });
 
     const contents = fs.readFileSync(`${cwd}/.env`, 'utf-8') as string;
-    expect(contents).toContain('MASTRA_CLOUD_ACCESS_TOKEN=tok_abc123');
+    expect(contents).toContain('MASTRA_CLOUD_ACCESS_TOKEN=sk_abc123');
+    expect(contents).toContain('MASTRA_PROJECT_ID=proj_xyz');
+    // No endpoint emitted unless explicitly passed.
+    expect(contents).not.toContain('MASTRA_CLOUD_TRACES_ENDPOINT');
+  });
+
+  test('writes the traces endpoint only when provided', async () => {
+    fs.writeFileSync(`${cwd}/.env`, '');
+
+    await writeObserveEnv({
+      token: 'sk_abc',
+      projectId: 'proj_x',
+      endpoint: 'http://localhost:8080/projects/proj_x/ai/spans/publish',
+    });
+
+    const contents = fs.readFileSync(`${cwd}/.env`, 'utf-8') as string;
+    expect(contents).toContain('MASTRA_CLOUD_TRACES_ENDPOINT=http://localhost:8080/projects/proj_x/ai/spans/publish');
   });
 
   test('creates the .env file if it does not exist', async () => {
@@ -46,5 +62,6 @@ describe('writeObserveEnv', () => {
 
     const contents = fs.readFileSync(`${cwd}/.env`, 'utf-8') as string;
     expect(contents).toContain('MASTRA_CLOUD_ACCESS_TOKEN=');
+    expect(contents).toContain('MASTRA_PROJECT_ID=');
   });
 });

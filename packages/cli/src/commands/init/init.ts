@@ -190,12 +190,16 @@ export const init = async ({
       try {
         const defaultProjectName = await readPackageName();
         const result = await provisionObserveProject({ defaultProjectName });
-        await writeObserveEnv({ token: result.token, endpoint: result.endpoint });
+        await writeObserveEnv({
+          token: result.token,
+          projectId: result.projectId,
+          endpoint: result.tracesEndpoint,
+        });
         p.note(
           `${color.green('Mastra Observe enabled.')}
 
   Project: ${color.cyan(result.projectName)} (${result.orgName})
-  Access token written to ${color.cyan('.env')} as ${color.cyan('MASTRA_CLOUD_ACCESS_TOKEN')}.`,
+  Wrote ${color.cyan('MASTRA_CLOUD_ACCESS_TOKEN')} and ${color.cyan('MASTRA_PROJECT_ID')} to ${color.cyan('.env')}.`,
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
@@ -205,10 +209,10 @@ export const init = async ({
         p.note(
           `${color.yellow('Could not connect this project to Mastra Observe automatically:')} ${message}
 
-  Empty ${color.cyan('MASTRA_CLOUD_ACCESS_TOKEN')} and ${color.cyan('MASTRA_CLOUD_TRACES_ENDPOINT')} placeholders were added to your ${color.cyan('.env')} file.
+  Empty ${color.cyan('MASTRA_CLOUD_ACCESS_TOKEN')} and ${color.cyan('MASTRA_PROJECT_ID')} placeholders were added to your ${color.cyan('.env')} file.
 
   1. Visit ${color.cyan('https://cloud.mastra.ai')} to create a project and mint an access token.
-  2. Paste the token into ${color.cyan('MASTRA_CLOUD_ACCESS_TOKEN')} and the spans endpoint into ${color.cyan('MASTRA_CLOUD_TRACES_ENDPOINT')}.`,
+  2. Paste the token into ${color.cyan('MASTRA_CLOUD_ACCESS_TOKEN')} and the project id into ${color.cyan('MASTRA_PROJECT_ID')}.`,
         );
       }
     }

@@ -59,9 +59,8 @@ describe('provisionObserveProject', () => {
       )
       .mockResolvedValueOnce(
         jsonResponse({
-          key: { id: 'k1', projectId: 'p1', name: 'CLI init' },
+          token: { id: 'k1', name: 'mastra observe – my-app' },
           secret: 'sk_secret_value',
-          endpoint: 'https://ingest.mastra.ai/projects/p1/ai/spans/publish',
         }),
       );
 
@@ -71,32 +70,37 @@ describe('provisionObserveProject', () => {
 
     expect(result).toEqual({
       token: 'sk_secret_value',
-      endpoint: 'https://ingest.mastra.ai/projects/p1/ai/spans/publish',
-      projectName: 'my-app',
+      projectId: 'p1',
       projectSlug: 'my-app',
+      projectName: 'my-app',
       orgName: 'Test Org',
+      // Non-default platform URL → tracesEndpoint is derived.
+      tracesEndpoint: 'https://platform.test/projects/p1/ai/spans/publish',
     });
 
     // No select prompt when project list is empty.
     expect(selectMock).not.toHaveBeenCalled();
 
-    // Verify the 3 HTTP calls.
+    // Verify the 3 HTTP calls hit the new endpoints.
     expect(platformFetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://platform.test/v1/projects',
+      'https://platform.test/v1/studio/projects',
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
       }),
     );
     expect(platformFetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://platform.test/v1/projects',
+      'https://platform.test/v1/studio/projects',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'my-app' }) }),
     );
     expect(platformFetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://platform.test/v1/projects/my-app/ingest-keys',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'CLI init' }) }),
+      'https://platform.test/v1/auth/tokens',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: 'mastra observe – my-app' }),
+      }),
     );
   });
 
@@ -112,9 +116,8 @@ describe('provisionObserveProject', () => {
       )
       .mockResolvedValueOnce(
         jsonResponse({
-          key: { id: 'k1', projectId: 'p2', name: 'CLI init' },
+          token: { id: 'k1', name: 'mastra observe – Beta' },
           secret: 'sk_beta',
-          endpoint: 'https://ingest.mastra.ai/projects/p2/ai/spans/publish',
         }),
       );
 
@@ -124,14 +127,18 @@ describe('provisionObserveProject', () => {
 
     expect(result.projectSlug).toBe('beta');
     expect(result.projectName).toBe('Beta');
+    expect(result.projectId).toBe('p2');
     expect(result.token).toBe('sk_beta');
 
     // No project creation call should have been made.
     expect(platformFetchMock).toHaveBeenCalledTimes(2);
     expect(platformFetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://platform.test/v1/projects/beta/ingest-keys',
-      expect.objectContaining({ method: 'POST' }),
+      'https://platform.test/v1/auth/tokens',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: 'mastra observe – Beta' }),
+      }),
     );
   });
 
@@ -149,9 +156,8 @@ describe('provisionObserveProject', () => {
       )
       .mockResolvedValueOnce(
         jsonResponse({
-          key: { id: 'k1', projectId: 'p2', name: 'CLI init' },
+          token: { id: 'k1', name: 'mastra observe – Gamma' },
           secret: 'sk_gamma',
-          endpoint: 'https://ingest.mastra.ai/projects/p2/ai/spans/publish',
         }),
       );
 
@@ -161,6 +167,7 @@ describe('provisionObserveProject', () => {
     const result = await provisionObserveProject();
 
     expect(result.projectSlug).toBe('gamma');
+    expect(result.projectId).toBe('p2');
     expect(result.token).toBe('sk_gamma');
     expect(platformFetchMock).toHaveBeenCalledTimes(3);
   });
@@ -171,7 +178,7 @@ describe('provisionObserveProject', () => {
     await expect(provisionObserveProject()).rejects.toThrow(/Failed to list projects \(500\)/);
   });
 
-  test('throws when the ingest-key mint fails', async () => {
+  test('throws when the access token mint fails', async () => {
     platformFetchMock
       .mockResolvedValueOnce(
         jsonResponse({
@@ -182,7 +189,7 @@ describe('provisionObserveProject', () => {
 
     selectMock.mockResolvedValueOnce('p1' as never);
 
-    await expect(provisionObserveProject()).rejects.toThrow(/Failed to create ingest key \(403\)/);
+    await expect(provisionObserveProject()).rejects.toThrow(/Failed to create access token \(403\)/);
   });
 
   test('throws when the user cancels the project picker', async () => {
