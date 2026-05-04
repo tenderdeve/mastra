@@ -32,11 +32,23 @@ This takes a few minutes on first run (monorepo with many packages).
 cp examples/agent/.env.example examples/agent/.env
 ```
 
-Edit `examples/agent/.env` and add your OpenAI key:
+Edit `examples/agent/.env`:
 
-```
+```bash
+# Required — LLM calls
 OPENAI_API_KEY=sk-...
+
+# Required — Auth (WorkOS)
+AUTH_PROVIDER=workos
+WORKOS_API_KEY=<your-workos-api-key>
+WORKOS_CLIENT_ID=<your-workos-client-id>
+WORKOS_ORGANIZATION_ID=<your-workos-org-id>
+
+# Optional — defaults to http://localhost:4111/api/auth/callback
+# WORKOS_REDIRECT_URI=http://localhost:4111/api/auth/callback
 ```
+
+> **Note:** Ask Nik for the WorkOS credentials if you don't have them.
 
 ### 4. Build the monorepo
 
@@ -87,20 +99,16 @@ The main attraction. Shows:
 7. Open the agent → show the chat panel on the right, send a message
 8. Show **visibility toggle** (Private → Public badge change)
 
-## Auth (Optional)
+## Auth
 
-By default, auth is **disabled** (no login required). This is the simplest mode for demos.
+Auth is enabled via WorkOS (Google SSO). When you open the app, you'll be prompted to sign in with Google.
 
-To enable auth, set in `examples/agent/.env`:
+If you need to **disable auth** for a quicker demo (no login screen):
 
-```
-AUTH_PROVIDER=workos
-WORKOS_CLIENT_ID=<your-client-id>
-WORKOS_API_KEY=<your-api-key>
-WORKOS_ORGANIZATION_ID=<your-org-id>
-```
+1. Remove or comment out `AUTH_PROVIDER=workos` in `examples/agent/.env`
+2. Restart the server
 
-Then restart the server. The builder will require WorkOS login (Google SSO).
+Everything works the same without auth — you just won't have user identity (no `authorId` on created entities).
 
 ## Troubleshooting
 
