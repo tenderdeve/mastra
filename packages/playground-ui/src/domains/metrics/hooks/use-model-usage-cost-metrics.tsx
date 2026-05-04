@@ -33,7 +33,6 @@ export function useModelUsageCostMetrics() {
             name: [name],
             groupBy: ['model'],
             aggregation: 'sum',
-            orderBy: 'value',
             orderDirection: 'DESC',
             filters,
           }),

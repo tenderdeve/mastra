@@ -17,7 +17,6 @@ async function fetchVolume(
     name: [metricName],
     groupBy: ['entityName', 'status'],
     aggregation: 'count',
-    orderBy: 'value',
     orderDirection: 'DESC',
     filters,
   });

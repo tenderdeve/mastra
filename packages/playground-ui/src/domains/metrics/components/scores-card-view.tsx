@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import type { ReactNode } from 'react';
 import { MetricsCard } from '../../../ds/components/MetricsCard';
 import { MetricsDataTable } from '../../../ds/components/MetricsDataTable';
 import { MetricsLineChart } from '../../../ds/components/MetricsLineChart';
@@ -27,13 +26,9 @@ export interface ScoresCardViewProps {
     | undefined;
   isLoading: boolean;
   isError: boolean;
-  /** Optional drilldown for a row in the Summary table. */
-  getSummaryRowHref?: (row: ScorerSummary) => string | undefined;
-  /** Optional slot for top-bar action buttons. */
-  actions?: ReactNode;
 }
 
-export function ScoresCardView({ data, isLoading, isError, getSummaryRowHref, actions }: ScoresCardViewProps) {
+export function ScoresCardView({ data, isLoading, isError }: ScoresCardViewProps) {
   const hasData = !!data && (data.summaryData.length > 0 || data.overTimeData.length > 0);
 
   const series = useMemo(() => {
@@ -56,13 +51,6 @@ export function ScoresCardView({ data, isLoading, isError, getSummaryRowHref, ac
     <MetricsCard>
       <MetricsCard.TopBar>
         <MetricsCard.TitleAndDescription title="Scores" description="Evaluation scorer performance." />
-        {hasData && (
-          <MetricsCard.Summary
-            value={data?.avgScore != null ? `avg ${data.avgScore}` : '—'}
-            label="Across all scorers"
-          />
-        )}
-        {hasData && actions ? <MetricsCard.Actions>{actions}</MetricsCard.Actions> : null}
       </MetricsCard.TopBar>
       {isLoading ? (
         <MetricsCard.Loading />
@@ -95,7 +83,6 @@ export function ScoresCardView({ data, isLoading, isError, getSummaryRowHref, ac
                     { label: 'Count', value: row => row.count.toLocaleString() },
                   ]}
                   data={data.summaryData.map(row => ({ ...row, key: row.scorer }))}
-                  getRowHref={getSummaryRowHref}
                 />
               </TabContent>
             </Tabs>

@@ -17,7 +17,7 @@ export function useActiveThreadsKpiMetrics() {
       client.getMetricAggregate({
         name: ['mastra_agent_duration_ms'],
         aggregation: 'count_distinct',
-        distinctColumn: 'threadId',
+        distinctColumn: 'threadId' as never,
         filters,
         comparePeriod: 'previous_period',
       }),

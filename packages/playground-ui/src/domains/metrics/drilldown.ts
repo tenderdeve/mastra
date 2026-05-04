@@ -11,6 +11,7 @@ import {
   TRACE_DATE_FROM_PARAM,
   TRACE_DATE_PRESET_PARAM,
   TRACE_DATE_TO_PARAM,
+  TRACE_LIST_MODE_PARAM,
   TRACE_PROPERTY_FILTER_PARAM_BY_FIELD,
   TRACE_ROOT_ENTITY_TYPE_PARAM,
   TRACE_STATUS_PARAM,
@@ -134,6 +135,7 @@ function appendArray(params: URLSearchParams, key: string, values: string[] | un
  *  filters + per-card scope. */
 export function buildTracesDrilldownUrl({ preset, customRange, dashboardFilter, scope }: BuildArgs): string {
   const params = new URLSearchParams();
+  params.set(TRACE_LIST_MODE_PARAM, 'branches');
 
   applyDate(
     params,

@@ -139,7 +139,7 @@ export default function TracesPage() {
     hasNextPage,
     setEndOfListElement,
     error: tracesError,
-  } = useTraces({ filters: traceFilters });
+  } = useTraces({ filters: traceFilters, listMode: url.listMode });
 
   const traces = useMemo(() => tracesData?.spans ?? [], [tracesData?.spans]);
   const threadTitles = tracesData?.threadTitles ?? {};

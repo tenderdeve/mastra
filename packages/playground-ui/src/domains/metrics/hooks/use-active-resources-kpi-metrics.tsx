@@ -17,7 +17,7 @@ export function useActiveResourcesKpiMetrics() {
       client.getMetricAggregate({
         name: ['mastra_agent_duration_ms'],
         aggregation: 'count_distinct',
-        distinctColumn: 'resourceId',
+        distinctColumn: 'resourceId' as never,
         filters,
         comparePeriod: 'previous_period',
       }),

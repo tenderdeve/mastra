@@ -21,7 +21,6 @@ export function useTokenUsageByAgentMetrics() {
       const breakdownBase = {
         groupBy: ['entityName'],
         aggregation: 'sum' as const,
-        orderBy: 'value' as const,
         orderDirection: 'DESC' as const,
         filters,
       };

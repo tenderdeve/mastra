@@ -29,7 +29,6 @@ export function useTopActiveThreadsMetrics() {
     queryFn: async (): Promise<ActiveThreadRow[]> => {
       const breakdownBase = {
         groupBy: ['threadId', 'resourceId'],
-        orderBy: 'value' as const,
         orderDirection: 'DESC' as const,
         filters,
       };

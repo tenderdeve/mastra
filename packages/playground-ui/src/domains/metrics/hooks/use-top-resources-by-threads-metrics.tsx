@@ -28,7 +28,6 @@ export function useTopResourcesByThreadsMetrics() {
     queryFn: async (): Promise<ResourceThreadsRow[]> => {
       const breakdownBase = {
         groupBy: ['resourceId'],
-        orderBy: 'value' as const,
         orderDirection: 'DESC' as const,
         filters,
       };
@@ -38,7 +37,7 @@ export function useTopResourcesByThreadsMetrics() {
           ...breakdownBase,
           name: ['mastra_agent_duration_ms'],
           aggregation: 'count_distinct',
-          distinctColumn: 'threadId',
+          distinctColumn: 'threadId' as never,
           limit: TOP_N,
         }),
         // Token breakdowns use the same groupBy and a server-side TopK so the
