@@ -49,8 +49,8 @@ test.describe('Workspaces', () => {
     await expect(page.getByText('Test Workspace')).toBeVisible();
 
     // Files tab should be active by default
-    await expect(page.getByRole('button', { name: 'Files', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Skills', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Files' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Skills/ })).toBeVisible();
 
     // Toolbar buttons
     await expect(page.getByRole('button', { name: 'Refresh files' })).toBeVisible();
@@ -123,7 +123,7 @@ test.describe('Workspaces', () => {
     await page.goto('/workspaces');
 
     // Switch to Skills tab
-    await page.getByRole('button', { name: 'Skills', exact: true }).click();
+    await page.getByRole('tab', { name: /Skills/ }).click();
 
     // Should show Add Skill button
     await expect(page.getByRole('button', { name: 'Add Skill' })).toBeVisible();
@@ -166,7 +166,7 @@ test.describe('Workspaces', () => {
     );
 
     await page.goto('/workspaces');
-    await page.getByRole('button', { name: 'Skills', exact: true }).click();
+    await page.getByRole('tab', { name: /Skills/ }).click();
 
     // Open Add Skill dialog
     await page.getByRole('button', { name: 'Add Skill' }).click();
