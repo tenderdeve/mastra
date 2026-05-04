@@ -323,11 +323,15 @@ async function saveTaskAndMaybeSendPushNotification({
     return;
   }
 
-  await pushNotificationSender.sendNotifications({
-    agentId,
-    task: nextTask,
-    logger,
-  });
+  void pushNotificationSender
+    .sendNotifications({
+      agentId,
+      task: nextTask,
+      logger,
+    })
+    .catch(error => {
+      logger?.error('Failed to schedule A2A push notification', error);
+    });
 }
 
 function extractFullStreamTextDelta(value: unknown): string | null {

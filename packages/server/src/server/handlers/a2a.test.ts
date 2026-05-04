@@ -1088,7 +1088,9 @@ describe('A2A Handler', () => {
 
       expect(result.result?.status.state).toBe('completed');
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(logger.error).toHaveBeenCalledWith('Failed to deliver A2A push notification', expect.any(Error));
+      await vi.waitFor(() => {
+        expect(logger.error).toHaveBeenCalledWith('Failed to deliver A2A push notification', expect.any(Error));
+      });
     });
   });
 
