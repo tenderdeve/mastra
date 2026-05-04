@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { convertArrayToReadableStream } from '@internal/ai-sdk-v5/test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import { MastraLanguageModelV2Mock as MockLanguageModelV2 } from '../../loop/test-utils/MastraLanguageModelV2Mock';
 import { Mastra } from '../../mastra';
@@ -112,6 +112,7 @@ describe('Workflow tool MastraMemory isolation', () => {
     })
       .then(subAgentStep)
       .commit();
+    const createRunSpy = vi.spyOn(myWorkflow, 'createRun');
 
     const parentAgent = new Agent({
       id: 'parent-agent',
@@ -132,6 +133,8 @@ describe('Workflow tool MastraMemory isolation', () => {
       maxSteps: 5,
     });
     await stream.consumeStream();
+
+    expect(createRunSpy).toHaveBeenCalledWith(expect.objectContaining({ resourceId }));
 
     // After the workflow tool finishes, MastraMemory must point back
     // to the parent's thread — not the sub-agent's thread.
