@@ -754,6 +754,38 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
             });
           }
 
+          // Run `processLLMPrompt` for any input processors that implement it.
+          // This hook lets processors rewrite the outbound prompt transiently
+          // (without persisting changes back to the message list). We always
+          // run it because some compat fixes (e.g. Cerebras `reasoning_content`
+          // strip) auto-inject built-in processors based on the resolved model.
+          {
+            const promptStepRunner = new ProcessorRunner({
+              inputProcessors: inputProcessors || [],
+              outputProcessors: [],
+              logger: logger || new ConsoleLogger({ level: 'error' }),
+              agentName: agentId || 'unknown',
+              processorStates,
+            });
+            const promptStepWriter: ProcessorStreamWriter | undefined = outputWriter
+              ? {
+                  custom: async (data: { type: string }, options?: { messageId?: string }) =>
+                    outputWriter(data as ChunkType, { ...options, messageId: currentStep.messageId }),
+                }
+              : undefined;
+            const promptStepResult = await promptStepRunner.runProcessLLMPrompt({
+              prompt: inputMessages,
+              model: currentStep.model,
+              stepNumber: inputData.output?.steps?.length || 0,
+              steps: inputData.output?.steps || [],
+              requestContext,
+              tracingContext: modelSpanTracker?.getTracingContext() ?? tracingContext,
+              writer: promptStepWriter,
+              abortSignal: options?.abortSignal,
+            });
+            inputMessages = promptStepResult.prompt;
+          }
+
           if (isSupportedLanguageModel(currentStep.model)) {
             modelResult = executeWithContextSync({
               span: modelSpanTracker?.getTracingContext()?.currentSpan,

@@ -5,18 +5,6 @@ import { createDeepSeek } from '@ai-sdk/deepseek-v5';
 import { createGoogleGenerativeAI } from '@ai-sdk/google-v6';
 import { createGroq } from '@ai-sdk/groq-v6';
 import { createMistral } from '@ai-sdk/mistral-v6';
-// NOTE: @ai-sdk/openai-compatible-v5 is intentionally pinned to <1.0.32 in
-// packages/core/package.json (and via a pnpm.overrides entry in the root
-// package.json + a Renovate rule that disables updates). Starting in 1.0.32
-// (https://github.com/vercel/ai/pull/12049) the openai-compatible language
-// model serializes reasoning parts as a `reasoning_content` field on outbound
-// assistant messages. Cerebras and several other providers built on top of
-// @ai-sdk/openai-compatible (cerebras-v5, deepinfra-v5, togetherai-v5,
-// perplexity-v5, ...) reject that field as unsupported, breaking multi-turn
-// tool calls with reasoning enabled (e.g. cerebras/zai-glm-4.7 in mastracode).
-// Once https://github.com/vercel/ai/pull/11278 ships an opt-out and we adopt
-// it, unpin @ai-sdk/openai-compatible-v5, drop the pnpm.overrides entry, and
-// remove the matching Renovate rule.
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible-v5';
 import { createOpenAI } from '@ai-sdk/openai-v6';
 import { createPerplexity } from '@ai-sdk/perplexity-v5';

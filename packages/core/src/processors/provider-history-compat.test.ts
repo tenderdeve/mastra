@@ -1,8 +1,9 @@
+import type { LanguageModelV2Prompt } from '@ai-sdk/provider-v5';
 import { APICallError } from '@internal/ai-sdk-v5';
 import { describe, expect, it } from 'vitest';
 import { MessageList } from '../agent/message-list';
-import { ProviderHistoryCompat } from './provider-history-compat';
-import type { ProcessAPIErrorArgs } from './index';
+import { cerebrasStripReasoningContent, isMaybeCerebras, ProviderHistoryCompat } from './provider-history-compat';
+import type { ProcessAPIErrorArgs, ProcessLLMPromptArgs } from './index';
 
 function createUserMessage(content: string) {
   return {
@@ -273,5 +274,216 @@ describe('ProviderHistoryCompat', () => {
 
     expect(result).toBeUndefined();
     expect(JSON.stringify(messageList.get.all.db())).toBe(messagesBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isMaybeCerebras
+// ---------------------------------------------------------------------------
+
+describe('isMaybeCerebras', () => {
+  it('matches the gateway-prefixed model id string', () => {
+    expect(isMaybeCerebras('cerebras/zai-glm-4.7')).toBe(true);
+    expect(isMaybeCerebras('cerebras/llama3.1-8b')).toBe(true);
+  });
+
+  it('matches resolved language model objects with cerebras provider', () => {
+    expect(isMaybeCerebras({ provider: 'cerebras.chat', modelId: 'zai-glm-4.7' })).toBe(true);
+    expect(isMaybeCerebras({ provider: 'cerebras', modelId: 'whatever' })).toBe(true);
+    expect(isMaybeCerebras({ provider: 'cerebras-chat', modelId: 'whatever' })).toBe(true);
+  });
+
+  it('does not match non-cerebras providers', () => {
+    expect(isMaybeCerebras('openai/gpt-4o')).toBe(false);
+    expect(isMaybeCerebras('anthropic/claude-opus-4-6')).toBe(false);
+    expect(isMaybeCerebras({ provider: 'openai.chat', modelId: 'gpt-4o' })).toBe(false);
+    expect(isMaybeCerebras({ provider: 'zai', modelId: 'glm-4.7' })).toBe(false);
+    // Models prefixed `cerebras-` (e.g. an unrelated future model name) shouldn't match
+    expect(isMaybeCerebras('cerebras-foo')).toBe(false);
+  });
+
+  it('handles arrays by matching any element', () => {
+    expect(isMaybeCerebras([{ model: 'openai/gpt-4o' }, { model: 'cerebras/zai-glm-4.7' }])).toBe(true);
+    expect(isMaybeCerebras([{ model: 'openai/gpt-4o' }, { model: 'anthropic/claude-3' }])).toBe(false);
+  });
+
+  it('returns false for unknown shapes (functions, null, undefined)', () => {
+    expect(isMaybeCerebras(undefined)).toBe(false);
+    expect(isMaybeCerebras(null)).toBe(false);
+    expect(isMaybeCerebras(() => 'cerebras/foo')).toBe(false);
+    expect(isMaybeCerebras({ provider: undefined, modelId: 'x' })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cerebrasStripReasoningContent rule + ProviderHistoryCompat.processLLMPrompt
+// ---------------------------------------------------------------------------
+
+function promptWithReasoning(): LanguageModelV2Prompt {
+  return [
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+    {
+      role: 'assistant',
+      content: [
+        { type: 'reasoning', text: 'I should look this up' },
+        { type: 'text', text: 'final answer' },
+      ],
+    },
+    { role: 'user', content: [{ type: 'text', text: 'thanks' }] },
+  ];
+}
+
+function makePromptArgs(prompt: LanguageModelV2Prompt, model: unknown): ProcessLLMPromptArgs {
+  return {
+    prompt,
+    model: model as any,
+    stepNumber: 0,
+    steps: [],
+    state: {},
+    retryCount: 0,
+    abort: (() => {
+      throw new Error('abort');
+    }) as any,
+  };
+}
+
+describe('cerebrasStripReasoningContent', () => {
+  it('strips reasoning parts from assistant messages when model is cerebras', () => {
+    const prompt = promptWithReasoning();
+    const result = cerebrasStripReasoningContent.applyToPrompt!({
+      prompt,
+      model: { provider: 'cerebras.chat', modelId: 'zai-glm-4.7' },
+    });
+
+    expect(result).toBeDefined();
+    const assistant = result!.find(m => m.role === 'assistant')!;
+    expect(Array.isArray(assistant.content)).toBe(true);
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
+    // Original prompt is untouched (immutable rewrite).
+    const origAssistant = prompt.find(m => m.role === 'assistant')!;
+    expect((origAssistant.content as any[]).map(p => p.type)).toEqual(['reasoning', 'text']);
+  });
+
+  it('preserves text and tool-call parts on assistant messages', () => {
+    const prompt: LanguageModelV2Prompt = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'thinking' },
+          {
+            type: 'tool-call',
+            toolCallId: 'call_1',
+            toolName: 'search',
+            input: { q: 'x' },
+          },
+          { type: 'text', text: 'done' },
+        ],
+      },
+    ];
+    const result = cerebrasStripReasoningContent.applyToPrompt!({
+      prompt,
+      model: { provider: 'cerebras.chat', modelId: 'zai-glm-4.7' },
+    });
+
+    expect(result).toBeDefined();
+    const assistant = result![0]!;
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['tool-call', 'text']);
+  });
+
+  it('returns undefined when the model is not cerebras', () => {
+    const result = cerebrasStripReasoningContent.applyToPrompt!({
+      prompt: promptWithReasoning(),
+      model: { provider: 'openai.chat', modelId: 'gpt-4o' },
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined when no assistant message has a reasoning part', () => {
+    const prompt: LanguageModelV2Prompt = [
+      { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'call_1',
+            toolName: 'search',
+            input: {},
+          },
+        ],
+      },
+    ];
+    const result = cerebrasStripReasoningContent.applyToPrompt!({
+      prompt,
+      model: { provider: 'cerebras.chat', modelId: 'zai-glm-4.7' },
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it('does not touch user messages', () => {
+    // Real-world prompts won't have user reasoning parts, but the rule should
+    // remain assistant-scoped regardless.
+    const prompt: LanguageModelV2Prompt = [
+      { role: 'user', content: [{ type: 'text', text: 'ask' }] },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'thinking' },
+          { type: 'text', text: 'answer' },
+        ],
+      },
+    ];
+    const result = cerebrasStripReasoningContent.applyToPrompt!({
+      prompt,
+      model: { provider: 'cerebras.chat', modelId: 'zai-glm-4.7' },
+    });
+    expect(result).toBeDefined();
+    expect(result![0]).toEqual(prompt[0]);
+  });
+});
+
+describe('ProviderHistoryCompat.processLLMPrompt', () => {
+  it('strips reasoning parts from the prompt on cerebras', async () => {
+    const handler = new ProviderHistoryCompat();
+    const args = makePromptArgs(promptWithReasoning(), {
+      provider: 'cerebras.chat',
+      modelId: 'zai-glm-4.7',
+    });
+
+    const result = await handler.processLLMPrompt(args);
+
+    expect(Array.isArray(result)).toBe(true);
+    const assistant = (result as LanguageModelV2Prompt).find(m => m.role === 'assistant')!;
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
+  });
+
+  it('returns undefined when nothing needs to change', async () => {
+    const handler = new ProviderHistoryCompat();
+    const prompt: LanguageModelV2Prompt = [
+      { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'call_1',
+            toolName: 'search',
+            input: {},
+          },
+        ],
+      },
+    ];
+    const args = makePromptArgs(prompt, { provider: 'cerebras.chat', modelId: 'zai-glm-4.7' });
+    expect(await handler.processLLMPrompt(args)).toBeUndefined();
+  });
+
+  it('returns undefined for non-cerebras models even if reasoning is present', async () => {
+    const handler = new ProviderHistoryCompat();
+    const args = makePromptArgs(promptWithReasoning(), {
+      provider: 'openai.chat',
+      modelId: 'gpt-4o',
+    });
+    expect(await handler.processLLMPrompt(args)).toBeUndefined();
   });
 });

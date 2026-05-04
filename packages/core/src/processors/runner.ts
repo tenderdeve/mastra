@@ -1,3 +1,4 @@
+import type { LanguageModelV2Prompt } from '@ai-sdk/provider-v5';
 import type { StepResult } from '@internal/ai-sdk-v5';
 import type { MastraDBMessage, MessageInput } from '../agent/message-list';
 import { MessageList, messagesAreEqual } from '../agent/message-list';
@@ -9,10 +10,12 @@ import { resolveModelConfig } from '../llm';
 import type { IMastraLogger } from '../logger';
 import { EntityType, SpanType, createObservabilityContext, resolveObservabilityContext } from '../observability';
 import type { ObservabilityContext, Span } from '../observability';
+import type { TracingContext } from '../observability/types';
 import type { RequestContext } from '../request-context';
 import type { ChunkType } from '../stream';
 import type { MastraModelOutput } from '../stream/base/output';
 import type { LanguageModelUsage } from '../stream/types';
+import { isMaybeCerebras, ProviderHistoryCompat } from './provider-history-compat';
 import {
   summarizeActiveToolsForSpan,
   summarizeProcessorModelForSpan,
@@ -1240,6 +1243,93 @@ export class ProcessorRunner {
     }
 
     return stepInput;
+  }
+
+  /**
+   * Run processLLMPrompt for all processors that implement it.
+   *
+   * Called *after* `MessageList` has been converted to `LanguageModelV2Prompt`
+   * and immediately *before* the prompt is forwarded to the provider.
+   * Mutations are scoped to this single call — they do not affect the
+   * persisted message list, memory, UI, or future model swaps.
+   *
+   * Built-in `ProviderHistoryCompat` is auto-injected for Cerebras when the
+   * user hasn't already added one (so the cerebras `reasoning_content` strip
+   * applies out of the box). Other built-in compat rules (e.g. the Anthropic
+   * tool-id reactive fix) still require an explicit `ProviderHistoryCompat`
+   * instance in `inputProcessors`.
+   */
+  async runProcessLLMPrompt(args: {
+    prompt: LanguageModelV2Prompt;
+    model: unknown;
+    stepNumber: number;
+    steps: Array<StepResult<any>>;
+    requestContext?: RequestContext;
+    retryCount?: number;
+    abortSignal?: AbortSignal;
+    tracingContext?: TracingContext;
+    writer?: ProcessorStreamWriter;
+  }): Promise<{ prompt: LanguageModelV2Prompt }> {
+    const observabilityContext = resolveObservabilityContext({ tracingContext: args.tracingContext });
+
+    // Auto-inject ProviderHistoryCompat for Cerebras when the user hasn't
+    // already added one. The default ruleset includes the cerebras strip
+    // rule, so injection enables the fix without explicit configuration.
+    let processors = this.inputProcessors;
+    if (
+      args.model &&
+      isMaybeCerebras(args.model) &&
+      !this.inputProcessors.some(p => !isProcessorWorkflow(p) && p.id === 'provider-history-compat')
+    ) {
+      processors = [...this.inputProcessors, new ProviderHistoryCompat()];
+    }
+
+    let currentPrompt = args.prompt;
+
+    for (const processorOrWorkflow of processors) {
+      // Workflows do not currently participate in processLLMPrompt.
+      if (isProcessorWorkflow(processorOrWorkflow)) continue;
+      const processor = processorOrWorkflow;
+      const processMethod = processor.processLLMPrompt?.bind(processor);
+      if (!processMethod) continue;
+
+      const abort = <TMetadata = unknown>(reason?: string, options?: TripWireOptions<TMetadata>): never => {
+        throw new TripWire(reason || `Tripwire triggered by ${processor.id}`, options, processor.id);
+      };
+
+      try {
+        const processorState = this.getProcessorState(processor.id);
+
+        const result = await processMethod({
+          prompt: currentPrompt,
+          // The Processor interface types `model` as `MastraLanguageModel`, but
+          // the runner accepts the looser `unknown` to match other call paths
+          // (e.g. unresolved string ids or function-typed dynamic models).
+          model: args.model as never,
+          stepNumber: args.stepNumber,
+          steps: args.steps,
+          state: processorState.customState,
+          retryCount: args.retryCount ?? 0,
+          requestContext: args.requestContext,
+          abort,
+          abortSignal: args.abortSignal,
+          writer: args.writer,
+          ...createObservabilityContext(args.tracingContext),
+        });
+
+        if (Array.isArray(result)) {
+          currentPrompt = result;
+        }
+      } catch (error) {
+        if (error instanceof TripWire) {
+          await invokeOnViolation(processor, error);
+        }
+        throw error;
+      }
+    }
+
+    void observabilityContext;
+    return { prompt: currentPrompt };
   }
 
   /**
