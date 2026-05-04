@@ -373,7 +373,7 @@ export abstract class MastraServer<TApp, TRequest, TResponse> extends MastraServ
       /** Build framework-specific context for authorize() callback */
       buildAuthorizeContext?: () => unknown;
     },
-  ): Promise<{ status: number; error: string } | null> {
+  ): Promise<{ status: number; error: string; headers?: Record<string, string> } | null> {
     const authConfig = this.mastra.getServer()?.auth;
 
     // No auth config means no auth required
@@ -409,12 +409,16 @@ export abstract class MastraServer<TApp, TRequest, TResponse> extends MastraServ
     });
 
     if (result.action === 'next') {
+      // Pass through any refresh headers (e.g. Set-Cookie from transparent session refresh)
+      if (result.headers) {
+        return { status: 200, error: '', headers: result.headers };
+      }
       return null;
     }
 
     // Translate AuthResult error to the {status, error} format adapters expect
     const errorBody = result.body as { error?: string } | undefined;
-    return { status: result.status, error: errorBody?.error ?? 'Access denied' };
+    return { status: result.status, error: errorBody?.error ?? 'Access denied', headers: result.headers };
   }
 
   /**
@@ -525,6 +529,7 @@ export abstract class MastraServer<TApp, TRequest, TResponse> extends MastraServ
     const prefix = this.prefix ?? '';
     if (!prefix) return;
     for (const route of routes) {
+      if (route._mastraInternal) continue;
       if (route.path.startsWith(`${prefix}/`) || route.path === prefix) {
         throw new Error(
           `Custom API route "${route.path}" must not start with "${prefix}" — ` +
@@ -812,4 +817,88 @@ export abstract class MastraServer<TApp, TRequest, TResponse> extends MastraServ
       body: formatZodError(error, MastraServer.CONTEXT_LABELS[context]),
     };
   }
+}
+
+/**
+ * Check FGA authorization for an HTTP route.
+ * Returns null if authorized or FGA not configured, or an error object if denied.
+ */
+export async function checkRouteFGA(
+  mastra: any,
+  route: ServerRoute,
+  requestContext: RequestContext,
+  params: Record<string, unknown>,
+): Promise<{ status: number; error: string; message: string } | null> {
+  const fgaConfig = route.fga;
+  if (!fgaConfig) return null;
+
+  const fgaProvider = mastra?.getServer?.()?.fga;
+  if (!fgaProvider) return null;
+
+  const user = requestContext?.get('user');
+  if (!user) {
+    return {
+      status: 403,
+      error: 'Forbidden',
+      message: 'FGA authorization denied: authenticated user is required',
+    };
+  }
+
+  const resourceId =
+    typeof fgaConfig.resourceId === 'function'
+      ? fgaConfig.resourceId(params, { requestContext })
+      : fgaConfig.resourceId || (fgaConfig.resourceIdParam ? (params[fgaConfig.resourceIdParam] as string) : undefined);
+  if (!fgaConfig.resourceType || !resourceId) {
+    return {
+      status: 403,
+      error: 'Forbidden',
+      message: 'FGA authorization denied: route FGA metadata is incomplete',
+    };
+  }
+  const permission =
+    fgaConfig.permission ||
+    (route.path ? getEffectivePermission(route) : null) ||
+    `${getFGAResourcePermissionSlug(fgaConfig.resourceType)}:${deriveFGAAction(route.method)}`;
+
+  const authorized = await fgaProvider.check(user, {
+    resource: { type: fgaConfig.resourceType, id: resourceId },
+    permission,
+    context: { resourceId, requestContext },
+  });
+
+  if (!authorized) {
+    return {
+      status: 403,
+      error: 'Forbidden',
+      message: `FGA authorization denied: cannot ${permission} on ${fgaConfig.resourceType}:${resourceId}`,
+    };
+  }
+
+  return null;
+}
+
+function deriveFGAAction(method: string): string {
+  switch (method.toUpperCase()) {
+    case 'GET':
+      return 'read';
+    case 'DELETE':
+      return 'delete';
+    case 'POST':
+    case 'PUT':
+    case 'PATCH':
+      return 'write';
+    default:
+      return 'read';
+  }
+}
+
+function getFGAResourcePermissionSlug(resourceType: string): string {
+  const resourcePermissionSlugs: Record<string, string> = {
+    agent: 'agents',
+    workflow: 'workflows',
+    tool: 'tools',
+    thread: 'memory',
+  };
+
+  return resourcePermissionSlugs[resourceType] ?? resourceType;
 }
