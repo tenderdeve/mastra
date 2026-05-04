@@ -604,6 +604,39 @@ describe('BraintrustExporter', () => {
       });
     });
 
+    it('should prefer response model over requested model for cost estimation', async () => {
+      const traceId = 'trace-id';
+      const llmSpan = createMockSpan({
+        id: 'llm-span',
+        name: 'gateway-model-call',
+        type: SpanType.MODEL_GENERATION,
+        isRoot: true,
+        attributes: {
+          model: 'claude-sonnet-4.5',
+          responseModel: 'claude-sonnet-4-5-20250929',
+          provider: 'anthropic',
+        },
+        traceId,
+      });
+
+      await exporter.exportTracingEvent({
+        type: TracingEventType.SPAN_STARTED,
+        exportedSpan: llmSpan,
+      });
+
+      expect(mockLogger.startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: expect.objectContaining({
+            metadata: expect.objectContaining({
+              model: 'claude-sonnet-4-5-20250929',
+              provider: 'anthropic',
+              'mastra-trace-id': traceId,
+            }),
+          }),
+        }),
+      );
+    });
+
     it('should handle minimal LLM generation attributes', async () => {
       const traceId = 'trace-id';
 
