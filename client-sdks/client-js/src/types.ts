@@ -12,7 +12,7 @@ import type { MessageListInput } from '@mastra/core/agent/message-list';
 import type { BuilderModelPolicy, DefaultModelEntry, ProviderModelEntry } from '@mastra/core/agent-builder/ee';
 import type { MastraScorerEntry, ScoreRowData } from '@mastra/core/evals';
 import type { CoreMessage, Provider as ModelProviderId } from '@mastra/core/llm';
-import type { BaseLogMessage, LogLevel } from '@mastra/core/logger';
+import type { LogLevel } from '@mastra/core/logger';
 import type { MCPToolType, ServerInfo } from '@mastra/core/mcp';
 import type {
   AiMessageType,

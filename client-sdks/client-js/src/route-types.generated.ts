@@ -364,6 +364,11 @@ export type PostAgentsAgentIdClone_Response = {
         [key: string]: unknown;
       }
     | undefined;
+  visibility?: ('private' | 'public') | undefined;
+  /** Number of users who have starred this agent */
+  starCount?: number | undefined;
+  /** Whether the requesting user has starred this agent */
+  isStarred?: boolean | undefined;
   createdAt: Date;
   updatedAt: Date;
   /** Name of the agent */
@@ -4423,6 +4428,153 @@ export type PostAgentsAgentIdClone_Response = {
           }[]
       )
     | undefined;
+  /** Browser configuration — object config, true (apply default), false/null (disable) */
+  browser?:
+    | (
+        | (
+            | {
+                type: 'inline';
+                config: {
+                  /** Browser provider type (e.g., stagehand, playwright) */
+                  provider: string;
+                  /** Run browser in headless mode (default: true) */
+                  headless?: boolean | undefined;
+                  /** Browser viewport dimensions */
+                  viewport?:
+                    | {
+                        /** Viewport width in pixels */
+                        width: number;
+                        /** Viewport height in pixels */
+                        height: number;
+                      }
+                    | undefined;
+                  /** Default timeout in milliseconds (default: 10000) */
+                  timeout?: number | undefined;
+                  /** Screencast options for streaming browser frames */
+                  screencast?:
+                    | {
+                        /** Image format (default: jpeg) */
+                        format?: ('jpeg' | 'png') | undefined;
+                        /** JPEG quality 0-100 (default: 80) */
+                        quality?: number | undefined;
+                        /** Max width in pixels (default: 1280) */
+                        maxWidth?: number | undefined;
+                        /** Max height in pixels (default: 720) */
+                        maxHeight?: number | undefined;
+                        /** Capture every Nth frame (default: 1) */
+                        everyNthFrame?: number | undefined;
+                      }
+                    | undefined;
+                };
+              }
+            | {
+                value: {
+                  type: 'inline';
+                  config: {
+                    /** Browser provider type (e.g., stagehand, playwright) */
+                    provider: string;
+                    /** Run browser in headless mode (default: true) */
+                    headless?: boolean | undefined;
+                    /** Browser viewport dimensions */
+                    viewport?:
+                      | {
+                          /** Viewport width in pixels */
+                          width: number;
+                          /** Viewport height in pixels */
+                          height: number;
+                        }
+                      | undefined;
+                    /** Default timeout in milliseconds (default: 10000) */
+                    timeout?: number | undefined;
+                    /** Screencast options for streaming browser frames */
+                    screencast?:
+                      | {
+                          /** Image format (default: jpeg) */
+                          format?: ('jpeg' | 'png') | undefined;
+                          /** JPEG quality 0-100 (default: 80) */
+                          quality?: number | undefined;
+                          /** Max width in pixels (default: 1280) */
+                          maxWidth?: number | undefined;
+                          /** Max height in pixels (default: 720) */
+                          maxHeight?: number | undefined;
+                          /** Capture every Nth frame (default: 1) */
+                          everyNthFrame?: number | undefined;
+                        }
+                      | undefined;
+                  };
+                };
+                rules?:
+                  | {
+                      operator: 'AND' | 'OR';
+                      conditions: (
+                        | {
+                            field: string;
+                            operator:
+                              | 'equals'
+                              | 'not_equals'
+                              | 'contains'
+                              | 'not_contains'
+                              | 'greater_than'
+                              | 'less_than'
+                              | 'greater_than_or_equal'
+                              | 'less_than_or_equal'
+                              | 'in'
+                              | 'not_in'
+                              | 'exists'
+                              | 'not_exists';
+                            value?: unknown | undefined;
+                          }
+                        | {
+                            operator: 'AND' | 'OR';
+                            conditions: (
+                              | {
+                                  field: string;
+                                  operator:
+                                    | 'equals'
+                                    | 'not_equals'
+                                    | 'contains'
+                                    | 'not_contains'
+                                    | 'greater_than'
+                                    | 'less_than'
+                                    | 'greater_than_or_equal'
+                                    | 'less_than_or_equal'
+                                    | 'in'
+                                    | 'not_in'
+                                    | 'exists'
+                                    | 'not_exists';
+                                  value?: unknown | undefined;
+                                }
+                              | {
+                                  operator: 'AND' | 'OR';
+                                  conditions: {
+                                    field: string;
+                                    operator:
+                                      | 'equals'
+                                      | 'not_equals'
+                                      | 'contains'
+                                      | 'not_contains'
+                                      | 'greater_than'
+                                      | 'less_than'
+                                      | 'greater_than_or_equal'
+                                      | 'less_than_or_equal'
+                                      | 'in'
+                                      | 'not_in'
+                                      | 'exists'
+                                      | 'not_exists';
+                                    value?: unknown | undefined;
+                                  }[];
+                                }
+                            )[];
+                          }
+                      )[];
+                    }
+                  | undefined;
+              }[]
+          )
+        | boolean
+        | null
+      )
+    | undefined;
   /** JSON Schema defining valid request context variables */
   requestContextSchema?:
     | {
@@ -7234,6 +7386,33 @@ export interface PostAuthCredentialsSignUp_RouteContract {
   request: PostAuthCredentialsSignUp_Request;
   response: unknown;
   responseType: 'datastream-response';
+}
+
+// ============================================================================
+// Route: GET /auth/roles/:roleId/permissions
+// ============================================================================
+export type GetAuthRolesRoleIdPermissions_PathParams = {
+  roleId: string;
+};
+
+export type GetAuthRolesRoleIdPermissions_Response = {
+  roleId: string;
+  permissions: string[];
+};
+
+export type GetAuthRolesRoleIdPermissions_Request = Simplify<
+  (GetAuthRolesRoleIdPermissions_PathParams extends never ? {} : { params: GetAuthRolesRoleIdPermissions_PathParams }) &
+    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
+    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
+>;
+
+export interface GetAuthRolesRoleIdPermissions_RouteContract {
+  pathParams: GetAuthRolesRoleIdPermissions_PathParams;
+  queryParams: never;
+  body: never;
+  request: GetAuthRolesRoleIdPermissions_Request;
+  response: GetAuthRolesRoleIdPermissions_Response;
+  responseType: 'json';
 }
 
 // ============================================================================
@@ -19463,12 +19642,16 @@ export type GetStoredAgents_QueryParams = {
   status: ('draft' | 'published' | 'archived') | undefined;
   /** Filter agents by author identifier */
   authorId?: string | undefined;
+  /** Filter to only public agents */
+  visibility?: 'public' | undefined;
   /** Filter agents by metadata key-value pairs */
   metadata?:
     | {
         [key: string]: unknown;
       }
     | undefined;
+  /** When true, return only agents starred by the caller (requires the stars EE feature) */
+  starredOnly?: boolean | undefined;
 };
 
 export type GetStoredAgents_Response = {
@@ -19487,6 +19670,11 @@ export type GetStoredAgents_Response = {
           [key: string]: unknown;
         }
       | undefined;
+    visibility?: ('private' | 'public') | undefined;
+    /** Number of users who have starred this agent */
+    starCount?: number | undefined;
+    /** Whether the requesting user has starred this agent */
+    isStarred?: boolean | undefined;
     createdAt: Date;
     updatedAt: Date;
     /** Name of the agent */
@@ -23546,6 +23734,153 @@ export type GetStoredAgents_Response = {
             }[]
         )
       | undefined;
+    /** Browser configuration — object config, true (apply default), false/null (disable) */
+    browser?:
+      | (
+          | (
+              | {
+                  type: 'inline';
+                  config: {
+                    /** Browser provider type (e.g., stagehand, playwright) */
+                    provider: string;
+                    /** Run browser in headless mode (default: true) */
+                    headless?: boolean | undefined;
+                    /** Browser viewport dimensions */
+                    viewport?:
+                      | {
+                          /** Viewport width in pixels */
+                          width: number;
+                          /** Viewport height in pixels */
+                          height: number;
+                        }
+                      | undefined;
+                    /** Default timeout in milliseconds (default: 10000) */
+                    timeout?: number | undefined;
+                    /** Screencast options for streaming browser frames */
+                    screencast?:
+                      | {
+                          /** Image format (default: jpeg) */
+                          format?: ('jpeg' | 'png') | undefined;
+                          /** JPEG quality 0-100 (default: 80) */
+                          quality?: number | undefined;
+                          /** Max width in pixels (default: 1280) */
+                          maxWidth?: number | undefined;
+                          /** Max height in pixels (default: 720) */
+                          maxHeight?: number | undefined;
+                          /** Capture every Nth frame (default: 1) */
+                          everyNthFrame?: number | undefined;
+                        }
+                      | undefined;
+                  };
+                }
+              | {
+                  value: {
+                    type: 'inline';
+                    config: {
+                      /** Browser provider type (e.g., stagehand, playwright) */
+                      provider: string;
+                      /** Run browser in headless mode (default: true) */
+                      headless?: boolean | undefined;
+                      /** Browser viewport dimensions */
+                      viewport?:
+                        | {
+                            /** Viewport width in pixels */
+                            width: number;
+                            /** Viewport height in pixels */
+                            height: number;
+                          }
+                        | undefined;
+                      /** Default timeout in milliseconds (default: 10000) */
+                      timeout?: number | undefined;
+                      /** Screencast options for streaming browser frames */
+                      screencast?:
+                        | {
+                            /** Image format (default: jpeg) */
+                            format?: ('jpeg' | 'png') | undefined;
+                            /** JPEG quality 0-100 (default: 80) */
+                            quality?: number | undefined;
+                            /** Max width in pixels (default: 1280) */
+                            maxWidth?: number | undefined;
+                            /** Max height in pixels (default: 720) */
+                            maxHeight?: number | undefined;
+                            /** Capture every Nth frame (default: 1) */
+                            everyNthFrame?: number | undefined;
+                          }
+                        | undefined;
+                    };
+                  };
+                  rules?:
+                    | {
+                        operator: 'AND' | 'OR';
+                        conditions: (
+                          | {
+                              field: string;
+                              operator:
+                                | 'equals'
+                                | 'not_equals'
+                                | 'contains'
+                                | 'not_contains'
+                                | 'greater_than'
+                                | 'less_than'
+                                | 'greater_than_or_equal'
+                                | 'less_than_or_equal'
+                                | 'in'
+                                | 'not_in'
+                                | 'exists'
+                                | 'not_exists';
+                              value?: unknown | undefined;
+                            }
+                          | {
+                              operator: 'AND' | 'OR';
+                              conditions: (
+                                | {
+                                    field: string;
+                                    operator:
+                                      | 'equals'
+                                      | 'not_equals'
+                                      | 'contains'
+                                      | 'not_contains'
+                                      | 'greater_than'
+                                      | 'less_than'
+                                      | 'greater_than_or_equal'
+                                      | 'less_than_or_equal'
+                                      | 'in'
+                                      | 'not_in'
+                                      | 'exists'
+                                      | 'not_exists';
+                                    value?: unknown | undefined;
+                                  }
+                                | {
+                                    operator: 'AND' | 'OR';
+                                    conditions: {
+                                      field: string;
+                                      operator:
+                                        | 'equals'
+                                        | 'not_equals'
+                                        | 'contains'
+                                        | 'not_contains'
+                                        | 'greater_than'
+                                        | 'less_than'
+                                        | 'greater_than_or_equal'
+                                        | 'less_than_or_equal'
+                                        | 'in'
+                                        | 'not_in'
+                                        | 'exists'
+                                        | 'not_exists';
+                                      value?: unknown | undefined;
+                                    }[];
+                                  }
+                              )[];
+                            }
+                        )[];
+                      }
+                    | undefined;
+                }[]
+            )
+          | boolean
+          | null
+        )
+      | undefined;
     /** JSON Schema defining valid request context variables */
     requestContextSchema?:
       | {
@@ -23715,6 +24050,11 @@ export type GetStoredAgentsStoredAgentId_Response = {
         [key: string]: unknown;
       }
     | undefined;
+  visibility?: ('private' | 'public') | undefined;
+  /** Number of users who have starred this agent */
+  starCount?: number | undefined;
+  /** Whether the requesting user has starred this agent */
+  isStarred?: boolean | undefined;
   createdAt: Date;
   updatedAt: Date;
   /** Name of the agent */
@@ -27772,6 +28112,153 @@ export type GetStoredAgentsStoredAgentId_Response = {
                 }
               | undefined;
           }[]
+      )
+    | undefined;
+  /** Browser configuration — object config, true (apply default), false/null (disable) */
+  browser?:
+    | (
+        | (
+            | {
+                type: 'inline';
+                config: {
+                  /** Browser provider type (e.g., stagehand, playwright) */
+                  provider: string;
+                  /** Run browser in headless mode (default: true) */
+                  headless?: boolean | undefined;
+                  /** Browser viewport dimensions */
+                  viewport?:
+                    | {
+                        /** Viewport width in pixels */
+                        width: number;
+                        /** Viewport height in pixels */
+                        height: number;
+                      }
+                    | undefined;
+                  /** Default timeout in milliseconds (default: 10000) */
+                  timeout?: number | undefined;
+                  /** Screencast options for streaming browser frames */
+                  screencast?:
+                    | {
+                        /** Image format (default: jpeg) */
+                        format?: ('jpeg' | 'png') | undefined;
+                        /** JPEG quality 0-100 (default: 80) */
+                        quality?: number | undefined;
+                        /** Max width in pixels (default: 1280) */
+                        maxWidth?: number | undefined;
+                        /** Max height in pixels (default: 720) */
+                        maxHeight?: number | undefined;
+                        /** Capture every Nth frame (default: 1) */
+                        everyNthFrame?: number | undefined;
+                      }
+                    | undefined;
+                };
+              }
+            | {
+                value: {
+                  type: 'inline';
+                  config: {
+                    /** Browser provider type (e.g., stagehand, playwright) */
+                    provider: string;
+                    /** Run browser in headless mode (default: true) */
+                    headless?: boolean | undefined;
+                    /** Browser viewport dimensions */
+                    viewport?:
+                      | {
+                          /** Viewport width in pixels */
+                          width: number;
+                          /** Viewport height in pixels */
+                          height: number;
+                        }
+                      | undefined;
+                    /** Default timeout in milliseconds (default: 10000) */
+                    timeout?: number | undefined;
+                    /** Screencast options for streaming browser frames */
+                    screencast?:
+                      | {
+                          /** Image format (default: jpeg) */
+                          format?: ('jpeg' | 'png') | undefined;
+                          /** JPEG quality 0-100 (default: 80) */
+                          quality?: number | undefined;
+                          /** Max width in pixels (default: 1280) */
+                          maxWidth?: number | undefined;
+                          /** Max height in pixels (default: 720) */
+                          maxHeight?: number | undefined;
+                          /** Capture every Nth frame (default: 1) */
+                          everyNthFrame?: number | undefined;
+                        }
+                      | undefined;
+                  };
+                };
+                rules?:
+                  | {
+                      operator: 'AND' | 'OR';
+                      conditions: (
+                        | {
+                            field: string;
+                            operator:
+                              | 'equals'
+                              | 'not_equals'
+                              | 'contains'
+                              | 'not_contains'
+                              | 'greater_than'
+                              | 'less_than'
+                              | 'greater_than_or_equal'
+                              | 'less_than_or_equal'
+                              | 'in'
+                              | 'not_in'
+                              | 'exists'
+                              | 'not_exists';
+                            value?: unknown | undefined;
+                          }
+                        | {
+                            operator: 'AND' | 'OR';
+                            conditions: (
+                              | {
+                                  field: string;
+                                  operator:
+                                    | 'equals'
+                                    | 'not_equals'
+                                    | 'contains'
+                                    | 'not_contains'
+                                    | 'greater_than'
+                                    | 'less_than'
+                                    | 'greater_than_or_equal'
+                                    | 'less_than_or_equal'
+                                    | 'in'
+                                    | 'not_in'
+                                    | 'exists'
+                                    | 'not_exists';
+                                  value?: unknown | undefined;
+                                }
+                              | {
+                                  operator: 'AND' | 'OR';
+                                  conditions: {
+                                    field: string;
+                                    operator:
+                                      | 'equals'
+                                      | 'not_equals'
+                                      | 'contains'
+                                      | 'not_contains'
+                                      | 'greater_than'
+                                      | 'less_than'
+                                      | 'greater_than_or_equal'
+                                      | 'less_than_or_equal'
+                                      | 'in'
+                                      | 'not_in'
+                                      | 'exists'
+                                      | 'not_exists';
+                                    value?: unknown | undefined;
+                                  }[];
+                                }
+                            )[];
+                          }
+                      )[];
+                    }
+                  | undefined;
+              }[]
+          )
+        | boolean
+        | null
       )
     | undefined;
   /** JSON Schema defining valid request context variables */
@@ -27815,6 +28302,8 @@ export type PostStoredAgents_Body = {
         [key: string]: unknown;
       }
     | undefined;
+  /** Agent visibility: private (owner/admin only) or public (any reader) */
+  visibility?: ('private' | 'public') | undefined;
   /** Name of the agent */
   name: string;
   /** Description of the agent */
@@ -31872,6 +32361,153 @@ export type PostStoredAgents_Body = {
           }[]
       )
     | undefined;
+  /** Browser configuration — object config, true (apply default), false/null (disable) */
+  browser?:
+    | (
+        | (
+            | {
+                type: 'inline';
+                config: {
+                  /** Browser provider type (e.g., stagehand, playwright) */
+                  provider: string;
+                  /** Run browser in headless mode (default: true) */
+                  headless?: boolean | undefined;
+                  /** Browser viewport dimensions */
+                  viewport?:
+                    | {
+                        /** Viewport width in pixels */
+                        width: number;
+                        /** Viewport height in pixels */
+                        height: number;
+                      }
+                    | undefined;
+                  /** Default timeout in milliseconds (default: 10000) */
+                  timeout?: number | undefined;
+                  /** Screencast options for streaming browser frames */
+                  screencast?:
+                    | {
+                        /** Image format (default: jpeg) */
+                        format?: ('jpeg' | 'png') | undefined;
+                        /** JPEG quality 0-100 (default: 80) */
+                        quality?: number | undefined;
+                        /** Max width in pixels (default: 1280) */
+                        maxWidth?: number | undefined;
+                        /** Max height in pixels (default: 720) */
+                        maxHeight?: number | undefined;
+                        /** Capture every Nth frame (default: 1) */
+                        everyNthFrame?: number | undefined;
+                      }
+                    | undefined;
+                };
+              }
+            | {
+                value: {
+                  type: 'inline';
+                  config: {
+                    /** Browser provider type (e.g., stagehand, playwright) */
+                    provider: string;
+                    /** Run browser in headless mode (default: true) */
+                    headless?: boolean | undefined;
+                    /** Browser viewport dimensions */
+                    viewport?:
+                      | {
+                          /** Viewport width in pixels */
+                          width: number;
+                          /** Viewport height in pixels */
+                          height: number;
+                        }
+                      | undefined;
+                    /** Default timeout in milliseconds (default: 10000) */
+                    timeout?: number | undefined;
+                    /** Screencast options for streaming browser frames */
+                    screencast?:
+                      | {
+                          /** Image format (default: jpeg) */
+                          format?: ('jpeg' | 'png') | undefined;
+                          /** JPEG quality 0-100 (default: 80) */
+                          quality?: number | undefined;
+                          /** Max width in pixels (default: 1280) */
+                          maxWidth?: number | undefined;
+                          /** Max height in pixels (default: 720) */
+                          maxHeight?: number | undefined;
+                          /** Capture every Nth frame (default: 1) */
+                          everyNthFrame?: number | undefined;
+                        }
+                      | undefined;
+                  };
+                };
+                rules?:
+                  | {
+                      operator: 'AND' | 'OR';
+                      conditions: (
+                        | {
+                            field: string;
+                            operator:
+                              | 'equals'
+                              | 'not_equals'
+                              | 'contains'
+                              | 'not_contains'
+                              | 'greater_than'
+                              | 'less_than'
+                              | 'greater_than_or_equal'
+                              | 'less_than_or_equal'
+                              | 'in'
+                              | 'not_in'
+                              | 'exists'
+                              | 'not_exists';
+                            value?: unknown | undefined;
+                          }
+                        | {
+                            operator: 'AND' | 'OR';
+                            conditions: (
+                              | {
+                                  field: string;
+                                  operator:
+                                    | 'equals'
+                                    | 'not_equals'
+                                    | 'contains'
+                                    | 'not_contains'
+                                    | 'greater_than'
+                                    | 'less_than'
+                                    | 'greater_than_or_equal'
+                                    | 'less_than_or_equal'
+                                    | 'in'
+                                    | 'not_in'
+                                    | 'exists'
+                                    | 'not_exists';
+                                  value?: unknown | undefined;
+                                }
+                              | {
+                                  operator: 'AND' | 'OR';
+                                  conditions: {
+                                    field: string;
+                                    operator:
+                                      | 'equals'
+                                      | 'not_equals'
+                                      | 'contains'
+                                      | 'not_contains'
+                                      | 'greater_than'
+                                      | 'less_than'
+                                      | 'greater_than_or_equal'
+                                      | 'less_than_or_equal'
+                                      | 'in'
+                                      | 'not_in'
+                                      | 'exists'
+                                      | 'not_exists';
+                                    value?: unknown | undefined;
+                                  }[];
+                                }
+                            )[];
+                          }
+                      )[];
+                    }
+                  | undefined;
+              }[]
+          )
+        | boolean
+        | null
+      )
+    | undefined;
   /** JSON Schema defining valid request context variables for conditional rule evaluation */
   requestContextSchema?:
     | {
@@ -31891,6 +32527,11 @@ export type PostStoredAgents_Response = {
         [key: string]: unknown;
       }
     | undefined;
+  visibility?: ('private' | 'public') | undefined;
+  /** Number of users who have starred this agent */
+  starCount?: number | undefined;
+  /** Whether the requesting user has starred this agent */
+  isStarred?: boolean | undefined;
   createdAt: Date;
   updatedAt: Date;
   /** Name of the agent */
@@ -35948,6 +36589,153 @@ export type PostStoredAgents_Response = {
                 }
               | undefined;
           }[]
+      )
+    | undefined;
+  /** Browser configuration — object config, true (apply default), false/null (disable) */
+  browser?:
+    | (
+        | (
+            | {
+                type: 'inline';
+                config: {
+                  /** Browser provider type (e.g., stagehand, playwright) */
+                  provider: string;
+                  /** Run browser in headless mode (default: true) */
+                  headless?: boolean | undefined;
+                  /** Browser viewport dimensions */
+                  viewport?:
+                    | {
+                        /** Viewport width in pixels */
+                        width: number;
+                        /** Viewport height in pixels */
+                        height: number;
+                      }
+                    | undefined;
+                  /** Default timeout in milliseconds (default: 10000) */
+                  timeout?: number | undefined;
+                  /** Screencast options for streaming browser frames */
+                  screencast?:
+                    | {
+                        /** Image format (default: jpeg) */
+                        format?: ('jpeg' | 'png') | undefined;
+                        /** JPEG quality 0-100 (default: 80) */
+                        quality?: number | undefined;
+                        /** Max width in pixels (default: 1280) */
+                        maxWidth?: number | undefined;
+                        /** Max height in pixels (default: 720) */
+                        maxHeight?: number | undefined;
+                        /** Capture every Nth frame (default: 1) */
+                        everyNthFrame?: number | undefined;
+                      }
+                    | undefined;
+                };
+              }
+            | {
+                value: {
+                  type: 'inline';
+                  config: {
+                    /** Browser provider type (e.g., stagehand, playwright) */
+                    provider: string;
+                    /** Run browser in headless mode (default: true) */
+                    headless?: boolean | undefined;
+                    /** Browser viewport dimensions */
+                    viewport?:
+                      | {
+                          /** Viewport width in pixels */
+                          width: number;
+                          /** Viewport height in pixels */
+                          height: number;
+                        }
+                      | undefined;
+                    /** Default timeout in milliseconds (default: 10000) */
+                    timeout?: number | undefined;
+                    /** Screencast options for streaming browser frames */
+                    screencast?:
+                      | {
+                          /** Image format (default: jpeg) */
+                          format?: ('jpeg' | 'png') | undefined;
+                          /** JPEG quality 0-100 (default: 80) */
+                          quality?: number | undefined;
+                          /** Max width in pixels (default: 1280) */
+                          maxWidth?: number | undefined;
+                          /** Max height in pixels (default: 720) */
+                          maxHeight?: number | undefined;
+                          /** Capture every Nth frame (default: 1) */
+                          everyNthFrame?: number | undefined;
+                        }
+                      | undefined;
+                  };
+                };
+                rules?:
+                  | {
+                      operator: 'AND' | 'OR';
+                      conditions: (
+                        | {
+                            field: string;
+                            operator:
+                              | 'equals'
+                              | 'not_equals'
+                              | 'contains'
+                              | 'not_contains'
+                              | 'greater_than'
+                              | 'less_than'
+                              | 'greater_than_or_equal'
+                              | 'less_than_or_equal'
+                              | 'in'
+                              | 'not_in'
+                              | 'exists'
+                              | 'not_exists';
+                            value?: unknown | undefined;
+                          }
+                        | {
+                            operator: 'AND' | 'OR';
+                            conditions: (
+                              | {
+                                  field: string;
+                                  operator:
+                                    | 'equals'
+                                    | 'not_equals'
+                                    | 'contains'
+                                    | 'not_contains'
+                                    | 'greater_than'
+                                    | 'less_than'
+                                    | 'greater_than_or_equal'
+                                    | 'less_than_or_equal'
+                                    | 'in'
+                                    | 'not_in'
+                                    | 'exists'
+                                    | 'not_exists';
+                                  value?: unknown | undefined;
+                                }
+                              | {
+                                  operator: 'AND' | 'OR';
+                                  conditions: {
+                                    field: string;
+                                    operator:
+                                      | 'equals'
+                                      | 'not_equals'
+                                      | 'contains'
+                                      | 'not_contains'
+                                      | 'greater_than'
+                                      | 'less_than'
+                                      | 'greater_than_or_equal'
+                                      | 'less_than_or_equal'
+                                      | 'in'
+                                      | 'not_in'
+                                      | 'exists'
+                                      | 'not_exists';
+                                    value?: unknown | undefined;
+                                  }[];
+                                }
+                            )[];
+                          }
+                      )[];
+                    }
+                  | undefined;
+              }[]
+          )
+        | boolean
+        | null
       )
     | undefined;
   /** JSON Schema defining valid request context variables */
@@ -35995,6 +36783,7 @@ export type PatchStoredAgentsStoredAgentId_Body = {
         | undefined
       )
     | undefined;
+  visibility?: (('private' | 'public') | undefined) | undefined;
   name?: string | undefined;
   description?: (string | undefined) | undefined;
   instructions?:
@@ -40081,6 +40870,155 @@ export type PatchStoredAgentsStoredAgentId_Body = {
         | undefined
       )
     | undefined;
+  browser?:
+    | (
+        | (
+            | (
+                | {
+                    type: 'inline';
+                    config: {
+                      /** Browser provider type (e.g., stagehand, playwright) */
+                      provider: string;
+                      /** Run browser in headless mode (default: true) */
+                      headless?: boolean | undefined;
+                      /** Browser viewport dimensions */
+                      viewport?:
+                        | {
+                            /** Viewport width in pixels */
+                            width: number;
+                            /** Viewport height in pixels */
+                            height: number;
+                          }
+                        | undefined;
+                      /** Default timeout in milliseconds (default: 10000) */
+                      timeout?: number | undefined;
+                      /** Screencast options for streaming browser frames */
+                      screencast?:
+                        | {
+                            /** Image format (default: jpeg) */
+                            format?: ('jpeg' | 'png') | undefined;
+                            /** JPEG quality 0-100 (default: 80) */
+                            quality?: number | undefined;
+                            /** Max width in pixels (default: 1280) */
+                            maxWidth?: number | undefined;
+                            /** Max height in pixels (default: 720) */
+                            maxHeight?: number | undefined;
+                            /** Capture every Nth frame (default: 1) */
+                            everyNthFrame?: number | undefined;
+                          }
+                        | undefined;
+                    };
+                  }
+                | {
+                    value: {
+                      type: 'inline';
+                      config: {
+                        /** Browser provider type (e.g., stagehand, playwright) */
+                        provider: string;
+                        /** Run browser in headless mode (default: true) */
+                        headless?: boolean | undefined;
+                        /** Browser viewport dimensions */
+                        viewport?:
+                          | {
+                              /** Viewport width in pixels */
+                              width: number;
+                              /** Viewport height in pixels */
+                              height: number;
+                            }
+                          | undefined;
+                        /** Default timeout in milliseconds (default: 10000) */
+                        timeout?: number | undefined;
+                        /** Screencast options for streaming browser frames */
+                        screencast?:
+                          | {
+                              /** Image format (default: jpeg) */
+                              format?: ('jpeg' | 'png') | undefined;
+                              /** JPEG quality 0-100 (default: 80) */
+                              quality?: number | undefined;
+                              /** Max width in pixels (default: 1280) */
+                              maxWidth?: number | undefined;
+                              /** Max height in pixels (default: 720) */
+                              maxHeight?: number | undefined;
+                              /** Capture every Nth frame (default: 1) */
+                              everyNthFrame?: number | undefined;
+                            }
+                          | undefined;
+                      };
+                    };
+                    rules?:
+                      | {
+                          operator: 'AND' | 'OR';
+                          conditions: (
+                            | {
+                                field: string;
+                                operator:
+                                  | 'equals'
+                                  | 'not_equals'
+                                  | 'contains'
+                                  | 'not_contains'
+                                  | 'greater_than'
+                                  | 'less_than'
+                                  | 'greater_than_or_equal'
+                                  | 'less_than_or_equal'
+                                  | 'in'
+                                  | 'not_in'
+                                  | 'exists'
+                                  | 'not_exists';
+                                value?: unknown | undefined;
+                              }
+                            | {
+                                operator: 'AND' | 'OR';
+                                conditions: (
+                                  | {
+                                      field: string;
+                                      operator:
+                                        | 'equals'
+                                        | 'not_equals'
+                                        | 'contains'
+                                        | 'not_contains'
+                                        | 'greater_than'
+                                        | 'less_than'
+                                        | 'greater_than_or_equal'
+                                        | 'less_than_or_equal'
+                                        | 'in'
+                                        | 'not_in'
+                                        | 'exists'
+                                        | 'not_exists';
+                                      value?: unknown | undefined;
+                                    }
+                                  | {
+                                      operator: 'AND' | 'OR';
+                                      conditions: {
+                                        field: string;
+                                        operator:
+                                          | 'equals'
+                                          | 'not_equals'
+                                          | 'contains'
+                                          | 'not_contains'
+                                          | 'greater_than'
+                                          | 'less_than'
+                                          | 'greater_than_or_equal'
+                                          | 'less_than_or_equal'
+                                          | 'in'
+                                          | 'not_in'
+                                          | 'exists'
+                                          | 'not_exists';
+                                        value?: unknown | undefined;
+                                      }[];
+                                    }
+                                )[];
+                              }
+                          )[];
+                        }
+                      | undefined;
+                  }[]
+              )
+            | boolean
+            | null
+          )
+        | undefined
+      )
+    | undefined;
   requestContextSchema?:
     | (
         | {
@@ -40104,6 +41042,7 @@ export type PatchStoredAgentsStoredAgentId_Response =
             [key: string]: unknown;
           }
         | undefined;
+      visibility?: ('private' | 'public') | undefined;
       createdAt: Date;
       updatedAt: Date;
     }
@@ -40118,6 +41057,11 @@ export type PatchStoredAgentsStoredAgentId_Response =
             [key: string]: unknown;
           }
         | undefined;
+      visibility?: ('private' | 'public') | undefined;
+      /** Number of users who have starred this agent */
+      starCount?: number | undefined;
+      /** Whether the requesting user has starred this agent */
+      isStarred?: boolean | undefined;
       createdAt: Date;
       updatedAt: Date;
       /** Name of the agent */
@@ -44175,6 +45119,153 @@ export type PatchStoredAgentsStoredAgentId_Response =
                     }
                   | undefined;
               }[]
+          )
+        | undefined;
+      /** Browser configuration — object config, true (apply default), false/null (disable) */
+      browser?:
+        | (
+            | (
+                | {
+                    type: 'inline';
+                    config: {
+                      /** Browser provider type (e.g., stagehand, playwright) */
+                      provider: string;
+                      /** Run browser in headless mode (default: true) */
+                      headless?: boolean | undefined;
+                      /** Browser viewport dimensions */
+                      viewport?:
+                        | {
+                            /** Viewport width in pixels */
+                            width: number;
+                            /** Viewport height in pixels */
+                            height: number;
+                          }
+                        | undefined;
+                      /** Default timeout in milliseconds (default: 10000) */
+                      timeout?: number | undefined;
+                      /** Screencast options for streaming browser frames */
+                      screencast?:
+                        | {
+                            /** Image format (default: jpeg) */
+                            format?: ('jpeg' | 'png') | undefined;
+                            /** JPEG quality 0-100 (default: 80) */
+                            quality?: number | undefined;
+                            /** Max width in pixels (default: 1280) */
+                            maxWidth?: number | undefined;
+                            /** Max height in pixels (default: 720) */
+                            maxHeight?: number | undefined;
+                            /** Capture every Nth frame (default: 1) */
+                            everyNthFrame?: number | undefined;
+                          }
+                        | undefined;
+                    };
+                  }
+                | {
+                    value: {
+                      type: 'inline';
+                      config: {
+                        /** Browser provider type (e.g., stagehand, playwright) */
+                        provider: string;
+                        /** Run browser in headless mode (default: true) */
+                        headless?: boolean | undefined;
+                        /** Browser viewport dimensions */
+                        viewport?:
+                          | {
+                              /** Viewport width in pixels */
+                              width: number;
+                              /** Viewport height in pixels */
+                              height: number;
+                            }
+                          | undefined;
+                        /** Default timeout in milliseconds (default: 10000) */
+                        timeout?: number | undefined;
+                        /** Screencast options for streaming browser frames */
+                        screencast?:
+                          | {
+                              /** Image format (default: jpeg) */
+                              format?: ('jpeg' | 'png') | undefined;
+                              /** JPEG quality 0-100 (default: 80) */
+                              quality?: number | undefined;
+                              /** Max width in pixels (default: 1280) */
+                              maxWidth?: number | undefined;
+                              /** Max height in pixels (default: 720) */
+                              maxHeight?: number | undefined;
+                              /** Capture every Nth frame (default: 1) */
+                              everyNthFrame?: number | undefined;
+                            }
+                          | undefined;
+                      };
+                    };
+                    rules?:
+                      | {
+                          operator: 'AND' | 'OR';
+                          conditions: (
+                            | {
+                                field: string;
+                                operator:
+                                  | 'equals'
+                                  | 'not_equals'
+                                  | 'contains'
+                                  | 'not_contains'
+                                  | 'greater_than'
+                                  | 'less_than'
+                                  | 'greater_than_or_equal'
+                                  | 'less_than_or_equal'
+                                  | 'in'
+                                  | 'not_in'
+                                  | 'exists'
+                                  | 'not_exists';
+                                value?: unknown | undefined;
+                              }
+                            | {
+                                operator: 'AND' | 'OR';
+                                conditions: (
+                                  | {
+                                      field: string;
+                                      operator:
+                                        | 'equals'
+                                        | 'not_equals'
+                                        | 'contains'
+                                        | 'not_contains'
+                                        | 'greater_than'
+                                        | 'less_than'
+                                        | 'greater_than_or_equal'
+                                        | 'less_than_or_equal'
+                                        | 'in'
+                                        | 'not_in'
+                                        | 'exists'
+                                        | 'not_exists';
+                                      value?: unknown | undefined;
+                                    }
+                                  | {
+                                      operator: 'AND' | 'OR';
+                                      conditions: {
+                                        field: string;
+                                        operator:
+                                          | 'equals'
+                                          | 'not_equals'
+                                          | 'contains'
+                                          | 'not_contains'
+                                          | 'greater_than'
+                                          | 'less_than'
+                                          | 'greater_than_or_equal'
+                                          | 'less_than_or_equal'
+                                          | 'in'
+                                          | 'not_in'
+                                          | 'exists'
+                                          | 'not_exists';
+                                        value?: unknown | undefined;
+                                      }[];
+                                    }
+                                )[];
+                              }
+                          )[];
+                        }
+                      | undefined;
+                  }[]
+              )
+            | boolean
+            | null
           )
         | undefined;
       /** JSON Schema defining valid request context variables */
@@ -66628,6 +67719,70 @@ export interface DeleteStoredAgentsAgentIdVersionsVersionId_RouteContract {
 }
 
 // ============================================================================
+// Route: PUT /stored/agents/:storedAgentId/star
+// ============================================================================
+export type PutStoredAgentsStoredAgentIdStar_PathParams = {
+  /** Unique identifier for the stored agent */
+  storedAgentId: string;
+};
+
+export type PutStoredAgentsStoredAgentIdStar_Response = {
+  /** Whether the entity is currently starred by the caller */
+  starred: boolean;
+  /** Total number of users who have starred this entity */
+  starCount: number;
+};
+
+export type PutStoredAgentsStoredAgentIdStar_Request = Simplify<
+  (PutStoredAgentsStoredAgentIdStar_PathParams extends never
+    ? {}
+    : { params: PutStoredAgentsStoredAgentIdStar_PathParams }) &
+    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
+    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
+>;
+
+export interface PutStoredAgentsStoredAgentIdStar_RouteContract {
+  pathParams: PutStoredAgentsStoredAgentIdStar_PathParams;
+  queryParams: never;
+  body: never;
+  request: PutStoredAgentsStoredAgentIdStar_Request;
+  response: PutStoredAgentsStoredAgentIdStar_Response;
+  responseType: 'json';
+}
+
+// ============================================================================
+// Route: DELETE /stored/agents/:storedAgentId/star
+// ============================================================================
+export type DeleteStoredAgentsStoredAgentIdStar_PathParams = {
+  /** Unique identifier for the stored agent */
+  storedAgentId: string;
+};
+
+export type DeleteStoredAgentsStoredAgentIdStar_Response = {
+  /** Whether the entity is currently starred by the caller */
+  starred: boolean;
+  /** Total number of users who have starred this entity */
+  starCount: number;
+};
+
+export type DeleteStoredAgentsStoredAgentIdStar_Request = Simplify<
+  (DeleteStoredAgentsStoredAgentIdStar_PathParams extends never
+    ? {}
+    : { params: DeleteStoredAgentsStoredAgentIdStar_PathParams }) &
+    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
+    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
+>;
+
+export interface DeleteStoredAgentsStoredAgentIdStar_RouteContract {
+  pathParams: DeleteStoredAgentsStoredAgentIdStar_PathParams;
+  queryParams: never;
+  body: never;
+  request: DeleteStoredAgentsStoredAgentIdStar_Request;
+  response: DeleteStoredAgentsStoredAgentIdStar_Response;
+  responseType: 'json';
+}
+
+// ============================================================================
 // Route: GET /stored/mcp-clients
 // ============================================================================
 export type GetStoredMcpClients_QueryParams = {
@@ -70397,6 +71552,8 @@ export type GetStoredWorkspaces_Response = {
     autoSync?: boolean | undefined;
     /** Operation timeout in milliseconds */
     operationTimeout?: number | undefined;
+    /** Whether this workspace is registered at runtime */
+    runtimeRegistered?: boolean | undefined;
   }[];
 };
 
@@ -71146,14 +72303,28 @@ export type GetStoredSkills_QueryParams = {
         direction?: ('ASC' | 'DESC') | undefined;
       }
     | undefined;
+  /** Filter skills by status */
+  status?: ('draft' | 'published' | 'archived') | undefined;
   /** Filter skills by author identifier */
   authorId?: string | undefined;
+  /** Filter to only public skills */
+  visibility?: 'public' | undefined;
   /** Filter skills by metadata key-value pairs */
   metadata?:
     | {
         [key: string]: unknown;
       }
     | undefined;
+  /** When true, return only skills starred by the caller (requires the stars EE feature) */
+  starredOnly?: boolean | undefined;
+};
+
+type GetStoredSkills_Response_Auxiliary_5 = {
+  id?: string | undefined;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string | undefined;
+  children?: GetStoredSkills_Response_Auxiliary_5[] | undefined;
 };
 
 export type GetStoredSkills_Response = {
@@ -71167,6 +72338,11 @@ export type GetStoredSkills_Response = {
     status: string;
     activeVersionId?: string | undefined;
     authorId?: string | undefined;
+    visibility?: ('private' | 'public') | undefined;
+    /** Number of users who have starred this skill */
+    starCount?: number | undefined;
+    /** Whether the requesting user has starred this skill */
+    isStarred?: boolean | undefined;
     createdAt: Date;
     updatedAt: Date;
     /** Name of the skill */
@@ -71205,6 +72381,8 @@ export type GetStoredSkills_Response = {
     scripts?: string[] | undefined;
     /** List of asset file paths */
     assets?: string[] | undefined;
+    /** Full file tree structure for the skill */
+    files?: GetStoredSkills_Response_Auxiliary_5[] | undefined;
     /** Additional metadata for the skill */
     metadata?:
       | {
@@ -71241,12 +72419,25 @@ export type GetStoredSkillsStoredSkillId_PathParams = {
   storedSkillId: string;
 };
 
+type GetStoredSkillsStoredSkillId_Response_Auxiliary_4 = {
+  id?: string | undefined;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string | undefined;
+  children?: GetStoredSkillsStoredSkillId_Response_Auxiliary_4[] | undefined;
+};
+
 export type GetStoredSkillsStoredSkillId_Response = {
   id: string;
   /** Skill status: draft, published, or archived */
   status: string;
   activeVersionId?: string | undefined;
   authorId?: string | undefined;
+  visibility?: ('private' | 'public') | undefined;
+  /** Number of users who have starred this skill */
+  starCount?: number | undefined;
+  /** Whether the requesting user has starred this skill */
+  isStarred?: boolean | undefined;
   createdAt: Date;
   updatedAt: Date;
   /** Name of the skill */
@@ -71285,6 +72476,8 @@ export type GetStoredSkillsStoredSkillId_Response = {
   scripts?: string[] | undefined;
   /** List of asset file paths */
   assets?: string[] | undefined;
+  /** Full file tree structure for the skill */
+  files?: GetStoredSkillsStoredSkillId_Response_Auxiliary_4[] | undefined;
   /** Additional metadata for the skill */
   metadata?:
     | {
@@ -71311,11 +72504,21 @@ export interface GetStoredSkillsStoredSkillId_RouteContract {
 // ============================================================================
 // Route: POST /stored/skills
 // ============================================================================
+type PostStoredSkills_Body_Auxiliary_4 = {
+  id?: string | undefined;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string | undefined;
+  children?: PostStoredSkills_Body_Auxiliary_4[] | undefined;
+};
+
 export type PostStoredSkills_Body = {
   /** Unique identifier. If not provided, derived from name. */
   id?: string | undefined;
   /** Author identifier for multi-tenant filtering */
   authorId?: string | undefined;
+  /** Skill visibility: private (owner/admin only) or public (any reader) */
+  visibility?: ('private' | 'public') | undefined;
   /** Name of the skill */
   name: string;
   /** Description of what the skill does and when to use it */
@@ -71352,6 +72555,8 @@ export type PostStoredSkills_Body = {
   scripts?: string[] | undefined;
   /** List of asset file paths */
   assets?: string[] | undefined;
+  /** Full file tree structure for the skill */
+  files?: PostStoredSkills_Body_Auxiliary_4[] | undefined;
   /** Additional metadata for the skill */
   metadata?:
     | {
@@ -71360,12 +72565,25 @@ export type PostStoredSkills_Body = {
     | undefined;
 };
 
+type PostStoredSkills_Response_Auxiliary_4 = {
+  id?: string | undefined;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string | undefined;
+  children?: PostStoredSkills_Response_Auxiliary_4[] | undefined;
+};
+
 export type PostStoredSkills_Response = {
   id: string;
   /** Skill status: draft, published, or archived */
   status: string;
   activeVersionId?: string | undefined;
   authorId?: string | undefined;
+  visibility?: ('private' | 'public') | undefined;
+  /** Number of users who have starred this skill */
+  starCount?: number | undefined;
+  /** Whether the requesting user has starred this skill */
+  isStarred?: boolean | undefined;
   createdAt: Date;
   updatedAt: Date;
   /** Name of the skill */
@@ -71404,6 +72622,8 @@ export type PostStoredSkills_Response = {
   scripts?: string[] | undefined;
   /** List of asset file paths */
   assets?: string[] | undefined;
+  /** Full file tree structure for the skill */
+  files?: PostStoredSkills_Response_Auxiliary_4[] | undefined;
   /** Additional metadata for the skill */
   metadata?:
     | {
@@ -71439,8 +72659,17 @@ export type PatchStoredSkillsStoredSkillId_PathParams = {
   storedSkillId: string;
 };
 
+type PatchStoredSkillsStoredSkillId_Body_Auxiliary_4 = {
+  id?: string | undefined;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string | undefined;
+  children?: PatchStoredSkillsStoredSkillId_Body_Auxiliary_4[] | undefined;
+};
+
 export type PatchStoredSkillsStoredSkillId_Body = {
   authorId?: (string | undefined) | undefined;
+  visibility?: (('private' | 'public') | undefined) | undefined;
   name?: string | undefined;
   description?: string | undefined;
   instructions?: string | undefined;
@@ -71471,6 +72700,7 @@ export type PatchStoredSkillsStoredSkillId_Body = {
   references?: (string[] | undefined) | undefined;
   scripts?: (string[] | undefined) | undefined;
   assets?: (string[] | undefined) | undefined;
+  files?: (PatchStoredSkillsStoredSkillId_Body_Auxiliary_4[] | undefined) | undefined;
   metadata?:
     | (
         | {
@@ -71481,12 +72711,21 @@ export type PatchStoredSkillsStoredSkillId_Body = {
     | undefined;
 };
 
+type PatchStoredSkillsStoredSkillId_Response_Auxiliary_5 = {
+  id?: string | undefined;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string | undefined;
+  children?: PatchStoredSkillsStoredSkillId_Response_Auxiliary_5[] | undefined;
+};
+
 export type PatchStoredSkillsStoredSkillId_Response =
   | {
       id: string;
       status: string;
       activeVersionId?: string | undefined;
       authorId?: string | undefined;
+      visibility?: ('private' | 'public') | undefined;
       createdAt: Date;
       updatedAt: Date;
     }
@@ -71496,6 +72735,11 @@ export type PatchStoredSkillsStoredSkillId_Response =
       status: string;
       activeVersionId?: string | undefined;
       authorId?: string | undefined;
+      visibility?: ('private' | 'public') | undefined;
+      /** Number of users who have starred this skill */
+      starCount?: number | undefined;
+      /** Whether the requesting user has starred this skill */
+      isStarred?: boolean | undefined;
       createdAt: Date;
       updatedAt: Date;
       /** Name of the skill */
@@ -71534,6 +72778,8 @@ export type PatchStoredSkillsStoredSkillId_Response =
       scripts?: string[] | undefined;
       /** List of asset file paths */
       assets?: string[] | undefined;
+      /** Full file tree structure for the skill */
+      files?: PatchStoredSkillsStoredSkillId_Response_Auxiliary_5[] | undefined;
       /** Additional metadata for the skill */
       metadata?:
         | {
@@ -71606,12 +72852,25 @@ export type PostStoredSkillsStoredSkillIdPublish_Body = {
   skillPath: string;
 };
 
+type PostStoredSkillsStoredSkillIdPublish_Response_Auxiliary_4 = {
+  id?: string | undefined;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string | undefined;
+  children?: PostStoredSkillsStoredSkillIdPublish_Response_Auxiliary_4[] | undefined;
+};
+
 export type PostStoredSkillsStoredSkillIdPublish_Response = {
   id: string;
   /** Skill status: draft, published, or archived */
   status: string;
   activeVersionId?: string | undefined;
   authorId?: string | undefined;
+  visibility?: ('private' | 'public') | undefined;
+  /** Number of users who have starred this skill */
+  starCount?: number | undefined;
+  /** Whether the requesting user has starred this skill */
+  isStarred?: boolean | undefined;
   createdAt: Date;
   updatedAt: Date;
   /** Name of the skill */
@@ -71650,6 +72909,8 @@ export type PostStoredSkillsStoredSkillIdPublish_Response = {
   scripts?: string[] | undefined;
   /** List of asset file paths */
   assets?: string[] | undefined;
+  /** Full file tree structure for the skill */
+  files?: PostStoredSkillsStoredSkillIdPublish_Response_Auxiliary_4[] | undefined;
   /** Additional metadata for the skill */
   metadata?:
     | {
@@ -71676,6 +72937,70 @@ export interface PostStoredSkillsStoredSkillIdPublish_RouteContract {
   body: PostStoredSkillsStoredSkillIdPublish_Body;
   request: PostStoredSkillsStoredSkillIdPublish_Request;
   response: PostStoredSkillsStoredSkillIdPublish_Response;
+  responseType: 'json';
+}
+
+// ============================================================================
+// Route: PUT /stored/skills/:storedSkillId/star
+// ============================================================================
+export type PutStoredSkillsStoredSkillIdStar_PathParams = {
+  /** Unique identifier for the stored skill */
+  storedSkillId: string;
+};
+
+export type PutStoredSkillsStoredSkillIdStar_Response = {
+  /** Whether the entity is currently starred by the caller */
+  starred: boolean;
+  /** Total number of users who have starred this entity */
+  starCount: number;
+};
+
+export type PutStoredSkillsStoredSkillIdStar_Request = Simplify<
+  (PutStoredSkillsStoredSkillIdStar_PathParams extends never
+    ? {}
+    : { params: PutStoredSkillsStoredSkillIdStar_PathParams }) &
+    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
+    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
+>;
+
+export interface PutStoredSkillsStoredSkillIdStar_RouteContract {
+  pathParams: PutStoredSkillsStoredSkillIdStar_PathParams;
+  queryParams: never;
+  body: never;
+  request: PutStoredSkillsStoredSkillIdStar_Request;
+  response: PutStoredSkillsStoredSkillIdStar_Response;
+  responseType: 'json';
+}
+
+// ============================================================================
+// Route: DELETE /stored/skills/:storedSkillId/star
+// ============================================================================
+export type DeleteStoredSkillsStoredSkillIdStar_PathParams = {
+  /** Unique identifier for the stored skill */
+  storedSkillId: string;
+};
+
+export type DeleteStoredSkillsStoredSkillIdStar_Response = {
+  /** Whether the entity is currently starred by the caller */
+  starred: boolean;
+  /** Total number of users who have starred this entity */
+  starCount: number;
+};
+
+export type DeleteStoredSkillsStoredSkillIdStar_Request = Simplify<
+  (DeleteStoredSkillsStoredSkillIdStar_PathParams extends never
+    ? {}
+    : { params: DeleteStoredSkillsStoredSkillIdStar_PathParams }) &
+    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
+    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
+>;
+
+export interface DeleteStoredSkillsStoredSkillIdStar_RouteContract {
+  pathParams: DeleteStoredSkillsStoredSkillIdStar_PathParams;
+  queryParams: never;
+  body: never;
+  request: DeleteStoredSkillsStoredSkillIdStar_Request;
+  response: DeleteStoredSkillsStoredSkillIdStar_Response;
   responseType: 'json';
 }
 
@@ -74406,6 +75731,141 @@ export interface GetBackgroundTasksBackgroundTaskId_RouteContract {
 }
 
 // ============================================================================
+// Route: GET /editor/builder/settings
+// ============================================================================
+export type GetEditorBuilderSettings_Response = {
+  enabled: boolean;
+  features?:
+    | {
+        agent?:
+          | {
+              tools?: boolean | undefined;
+              agents?: boolean | undefined;
+              workflows?: boolean | undefined;
+              scorers?: boolean | undefined;
+              skills?: boolean | undefined;
+              memory?: boolean | undefined;
+              variables?: boolean | undefined;
+              stars?: boolean | undefined;
+              avatarUpload?: boolean | undefined;
+              browser?: boolean | undefined;
+              model?: boolean | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+  configuration?:
+    | {
+        agent?:
+          | {
+              models?:
+                | {
+                    allowed?:
+                      | (
+                          | {
+                              kind: 'custom';
+                              provider: string;
+                              modelId?: string | undefined;
+                            }
+                          | {
+                              provider: string;
+                              modelId?: string | undefined;
+                            }
+                        )[]
+                      | undefined;
+                    default?:
+                      | (
+                          | {
+                              kind: 'custom';
+                              provider: string;
+                              modelId: string;
+                            }
+                          | {
+                              provider: string;
+                              modelId: string;
+                            }
+                        )
+                      | undefined;
+                  }
+                | undefined;
+              tools?:
+                | {
+                    allowed?: string[] | undefined;
+                  }
+                | undefined;
+              agents?:
+                | {
+                    allowed?: string[] | undefined;
+                  }
+                | undefined;
+              workflows?:
+                | {
+                    allowed?: string[] | undefined;
+                  }
+                | undefined;
+              [x: string]: unknown;
+            }
+          | undefined;
+      }
+    | undefined;
+  modelPolicy?:
+    | {
+        active: boolean;
+        pickerVisible?: boolean | undefined;
+        allowed?:
+          | (
+              | {
+                  kind: 'custom';
+                  provider: string;
+                  modelId?: string | undefined;
+                }
+              | {
+                  provider: string;
+                  modelId?: string | undefined;
+                }
+            )[]
+          | undefined;
+        default?:
+          | (
+              | {
+                  kind: 'custom';
+                  provider: string;
+                  modelId: string;
+                }
+              | {
+                  provider: string;
+                  modelId: string;
+                }
+            )
+          | undefined;
+      }
+    | undefined;
+  picker?:
+    | {
+        visibleTools: string[] | null;
+        visibleAgents: string[] | null;
+        visibleWorkflows: string[] | null;
+      }
+    | undefined;
+  modelPolicyWarnings?: string[] | undefined;
+};
+
+export type GetEditorBuilderSettings_Request = Simplify<
+  (never extends never ? {} : { params: never }) &
+    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
+    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
+>;
+
+export interface GetEditorBuilderSettings_RouteContract {
+  pathParams: never;
+  queryParams: never;
+  body: never;
+  request: GetEditorBuilderSettings_Request;
+  response: GetEditorBuilderSettings_Response;
+  responseType: 'json';
+}
+
+// ============================================================================
 // Route: GET /schedules
 // ============================================================================
 export type GetSchedules_QueryParams = {
@@ -74994,6 +76454,7 @@ export interface RouteTypes {
   'POST /auth/refresh': PostAuthRefresh_RouteContract;
   'POST /auth/credentials/sign-in': PostAuthCredentialsSignIn_RouteContract;
   'POST /auth/credentials/sign-up': PostAuthCredentialsSignUp_RouteContract;
+  'GET /auth/roles/:roleId/permissions': GetAuthRolesRoleIdPermissions_RouteContract;
   'GET /workflows': GetWorkflows_RouteContract;
   'GET /workflows/:workflowId': GetWorkflowsWorkflowId_RouteContract;
   'GET /workflows/:workflowId/runs': GetWorkflowsWorkflowIdRuns_RouteContract;
@@ -75170,6 +76631,8 @@ export interface RouteTypes {
   'POST /stored/agents/:agentId/versions/:versionId/activate': PostStoredAgentsAgentIdVersionsVersionIdActivate_RouteContract;
   'POST /stored/agents/:agentId/versions/:versionId/restore': PostStoredAgentsAgentIdVersionsVersionIdRestore_RouteContract;
   'DELETE /stored/agents/:agentId/versions/:versionId': DeleteStoredAgentsAgentIdVersionsVersionId_RouteContract;
+  'PUT /stored/agents/:storedAgentId/star': PutStoredAgentsStoredAgentIdStar_RouteContract;
+  'DELETE /stored/agents/:storedAgentId/star': DeleteStoredAgentsStoredAgentIdStar_RouteContract;
   'GET /stored/mcp-clients': GetStoredMcpClients_RouteContract;
   'GET /stored/mcp-clients/:storedMCPClientId': GetStoredMcpClientsStoredMCPClientId_RouteContract;
   'POST /stored/mcp-clients': PostStoredMcpClients_RouteContract;
@@ -75217,6 +76680,8 @@ export interface RouteTypes {
   'PATCH /stored/skills/:storedSkillId': PatchStoredSkillsStoredSkillId_RouteContract;
   'DELETE /stored/skills/:storedSkillId': DeleteStoredSkillsStoredSkillId_RouteContract;
   'POST /stored/skills/:storedSkillId/publish': PostStoredSkillsStoredSkillIdPublish_RouteContract;
+  'PUT /stored/skills/:storedSkillId/star': PutStoredSkillsStoredSkillIdStar_RouteContract;
+  'DELETE /stored/skills/:storedSkillId/star': DeleteStoredSkillsStoredSkillIdStar_RouteContract;
   'GET /tool-providers': GetToolProviders_RouteContract;
   'GET /tool-providers/:providerId/toolkits': GetToolProvidersProviderIdToolkits_RouteContract;
   'GET /tool-providers/:providerId/tools': GetToolProvidersProviderIdTools_RouteContract;
@@ -75252,6 +76717,7 @@ export interface RouteTypes {
   'GET /background-tasks/stream': GetBackgroundTasksStream_RouteContract;
   'GET /background-tasks': GetBackgroundTasks_RouteContract;
   'GET /background-tasks/:backgroundTaskId': GetBackgroundTasksBackgroundTaskId_RouteContract;
+  'GET /editor/builder/settings': GetEditorBuilderSettings_RouteContract;
   'GET /schedules': GetSchedules_RouteContract;
   'GET /schedules/:scheduleId': GetSchedulesScheduleId_RouteContract;
   'GET /schedules/:scheduleId/triggers': GetSchedulesScheduleIdTriggers_RouteContract;
@@ -75458,6 +76924,9 @@ export interface Client {
   '/auth/refresh': {
     POST: PostAuthRefresh_RouteContract;
   };
+  '/auth/roles/:roleId/permissions': {
+    GET: GetAuthRolesRoleIdPermissions_RouteContract;
+  };
   '/auth/sso/callback': {
     GET: GetAuthSsoCallback_RouteContract;
   };
@@ -75537,6 +77006,9 @@ export interface Client {
   };
   '/datasets/cluster-failures': {
     POST: PostDatasetsClusterFailures_RouteContract;
+  };
+  '/editor/builder/settings': {
+    GET: GetEditorBuilderSettings_RouteContract;
   };
   '/embedders': {
     GET: GetEmbedders_RouteContract;
@@ -75822,6 +77294,10 @@ export interface Client {
     GET: GetStoredAgentsStoredAgentId_RouteContract;
     PATCH: PatchStoredAgentsStoredAgentId_RouteContract;
   };
+  '/stored/agents/:storedAgentId/star': {
+    DELETE: DeleteStoredAgentsStoredAgentIdStar_RouteContract;
+    PUT: PutStoredAgentsStoredAgentIdStar_RouteContract;
+  };
   '/stored/agents/preview-instructions': {
     POST: PostStoredAgentsPreviewInstructions_RouteContract;
   };
@@ -75914,6 +77390,10 @@ export interface Client {
   };
   '/stored/skills/:storedSkillId/publish': {
     POST: PostStoredSkillsStoredSkillIdPublish_RouteContract;
+  };
+  '/stored/skills/:storedSkillId/star': {
+    DELETE: DeleteStoredSkillsStoredSkillIdStar_RouteContract;
+    PUT: PutStoredSkillsStoredSkillIdStar_RouteContract;
   };
   '/stored/workspaces': {
     GET: GetStoredWorkspaces_RouteContract;
