@@ -8,9 +8,10 @@ import { DisplayConditionsDialog, SectionHeader } from '@/domains/cms';
 
 interface PromptBlockEditMainProps {
   form: UseFormReturn<PromptBlockFormValues>;
+  formResetKey?: number;
 }
 
-export function PromptBlockEditMain({ form }: PromptBlockEditMainProps) {
+export function PromptBlockEditMain({ form, formResetKey = 0 }: PromptBlockEditMainProps) {
   const { control, setValue } = form;
 
   const schema = useWatch({ control, name: 'variables' }) as JsonSchema | undefined;
@@ -40,6 +41,7 @@ export function PromptBlockEditMain({ form }: PromptBlockEditMainProps) {
         render={({ field }) => (
           <div className="flex-1 flex flex-col">
             <CodeEditor
+              key={formResetKey}
               value={field.value ?? ''}
               onChange={field.onChange}
               language="markdown"

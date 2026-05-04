@@ -210,7 +210,7 @@ function CmsPromptBlocksEditForm({
         </Notice>
       )}
       <form className="h-full">
-        <PromptBlockEditMain form={form} />
+        <PromptBlockEditMain form={form} formResetKey={formResetKey} />
       </form>
     </AgentEditLayout>
   );
