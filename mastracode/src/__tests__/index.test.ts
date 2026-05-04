@@ -181,6 +181,10 @@ vi.mock('./providers/openai-codex.js', () => ({
   setAuthStorage: vi.fn(),
 }));
 
+vi.mock('./providers/github-copilot.js', () => ({
+  setAuthStorage: vi.fn(),
+}));
+
 vi.mock('./tools/index.js', () => ({
   defaultTools: {},
 }));
@@ -280,5 +284,18 @@ describe('createMastraCode', () => {
       | { errorProcessors?: Array<{ id?: string }> }
       | undefined;
     expect(agentConfig?.errorProcessors?.map(processor => processor.id)).toContain('stream-error-retry-processor');
+  });
+
+  it('wires the AuthStorage singleton for every OAuth-capable provider', async () => {
+    const claudeMax = await import('../providers/claude-max.js');
+    const openaiCodex = await import('../providers/openai-codex.js');
+    const githubCopilot = await import('../providers/github-copilot.js');
+    const { createAuthStorage } = await import('../index.js');
+
+    const authStorage = createAuthStorage();
+
+    expect(claudeMax.setAuthStorage).toHaveBeenCalledWith(authStorage);
+    expect(openaiCodex.setAuthStorage).toHaveBeenCalledWith(authStorage);
+    expect(githubCopilot.setAuthStorage).toHaveBeenCalledWith(authStorage);
   });
 });

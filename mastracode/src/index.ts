@@ -53,6 +53,7 @@ import {
 } from './onboarding/settings.js';
 import { getToolCategory } from './permissions.js';
 import { setAuthStorage } from './providers/claude-max.js';
+import { setAuthStorage as setGitHubCopilotAuthStorage } from './providers/github-copilot.js';
 import { setAuthStorage as setOpenAIAuthStorage } from './providers/openai-codex.js';
 
 import { stateSchema } from './schema.js';
@@ -122,6 +123,7 @@ export function createAuthStorage() {
   const authStorage = new AuthStorage();
   setAuthStorage(authStorage);
   setOpenAIAuthStorage(authStorage);
+  setGitHubCopilotAuthStorage(authStorage);
   return authStorage;
 }
 
