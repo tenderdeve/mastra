@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import { getAnalytics } from '../../analytics/index.js';
 import { requestApi } from './client.js';
 import { API_COMMANDS } from './commands.js';
 import type { ApiCommandDescriptor } from './commands.js';
@@ -10,6 +11,8 @@ import { normalizeResponse } from './response-normalizer.js';
 import { buildCommandExamples, getCommandSchema } from './schema.js';
 import { resolveTarget } from './target.js';
 import type { ApiGlobalOptions } from './target.js';
+
+const API_ANALYTICS_SHUTDOWN_TIMEOUT_MS = 1000;
 
 export function registerApiCommand(program: Command): void {
   const api = program
@@ -106,9 +109,38 @@ function addAction(parent: Command, name: string, descriptor: ApiCommandDescript
     const positionalValues = args.slice(0, -1).filter(value => typeof value === 'string') as string[];
     const identityValues = positionalValues.slice(0, descriptor.positionals.length);
     const maybeInput = descriptor.acceptsInput ? positionalValues[descriptor.positionals.length] : undefined;
+    const analytics = getAnalytics();
+    const startedAt = process.hrtime();
 
-    await executeDescriptor(descriptor, identityValues, maybeInput, command.optsWithGlobals() as ApiGlobalOptions);
+    try {
+      await executeDescriptor(descriptor, identityValues, maybeInput, command.optsWithGlobals() as ApiGlobalOptions);
+      const [seconds, nanoseconds] = process.hrtime(startedAt);
+      analytics?.trackCommand({
+        command: `api-${descriptor.name}`,
+        args: { positionals: identityValues, hasInput: maybeInput !== undefined },
+        durationMs: seconds * 1000 + nanoseconds / 1_000_000,
+        status: process.exitCode ? 'error' : 'success',
+      });
+    } finally {
+      await shutdownApiAnalytics(analytics);
+    }
   });
+}
+
+async function shutdownApiAnalytics(analytics: ReturnType<typeof getAnalytics>): Promise<void> {
+  if (!analytics) {
+    return;
+  }
+
+  const exitTimer = setTimeout(() => {
+    process.exit(process.exitCode ?? 0);
+  }, API_ANALYTICS_SHUTDOWN_TIMEOUT_MS);
+
+  try {
+    await analytics.shutdown();
+  } finally {
+    clearTimeout(exitTimer);
+  }
 }
 
 /** Executes an API command descriptor by resolving the target, handling schema output, and normalizing JSON responses or errors. */
