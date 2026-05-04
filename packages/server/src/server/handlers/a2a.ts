@@ -6,12 +6,19 @@ import type {
   AgentCard,
   TaskStatus,
   TaskState,
+  Task,
+  TaskPushNotificationConfig,
+  GetTaskPushNotificationConfigParams,
+  ListTaskPushNotificationConfigParams,
+  DeleteTaskPushNotificationConfigParams,
 } from '@mastra/core/a2a';
 import type { Agent } from '@mastra/core/agent';
 import type { IMastraLogger } from '@mastra/core/logger';
 import type { RequestContext } from '@mastra/core/request-context';
 import { z } from 'zod/v4';
 import { convertToCoreMessage, normalizeError, createSuccessResponse } from '../a2a/protocol';
+import { DefaultPushNotificationSender } from '../a2a/push-notification-sender';
+import { InMemoryPushNotificationStore } from '../a2a/push-notification-store';
 import type { InMemoryTaskStore } from '../a2a/store';
 import { applyUpdateToTask, createTaskContext, loadOrCreateTask } from '../a2a/tasks';
 import {
@@ -43,9 +50,36 @@ const messageSendParamsSchema = z.object({
     extensions: z.array(z.string()).optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }),
+  configuration: z
+    .object({
+      acceptedOutputModes: z.array(z.string()).optional(),
+      blocking: z.boolean().optional(),
+      historyLength: z.number().optional(),
+      pushNotificationConfig: z
+        .object({
+          url: z.string(),
+          id: z.string().optional(),
+          token: z.string().optional(),
+          authentication: z
+            .object({
+              schemes: z.array(z.string()),
+              credentials: z.string().optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
-function createAgentCardDefaults(): Pick<
+const defaultPushNotificationStore = new InMemoryPushNotificationStore();
+const defaultPushNotificationSender = new DefaultPushNotificationSender(defaultPushNotificationStore);
+
+function createAgentCardDefaults({
+  pushNotifications = false,
+}: {
+  pushNotifications?: boolean;
+} = {}): Pick<
   AgentCard,
   | 'protocolVersion'
   | 'additionalInterfaces'
@@ -64,7 +98,7 @@ function createAgentCardDefaults(): Pick<
     securitySchemes: {},
     capabilities: {
       streaming: true,
-      pushNotifications: false,
+      pushNotifications,
       stateTransitionHistory: false,
       extensions: [],
     },
@@ -82,6 +116,7 @@ export async function getAgentCardByIdHandler({
     url: 'https://mastra.ai',
   },
   version = '1.0',
+  pushNotifications = false,
   requestContext,
 }: Context & {
   requestContext: RequestContext;
@@ -92,6 +127,7 @@ export async function getAgentCardByIdHandler({
     organization: string;
     url: string;
   };
+  pushNotifications?: boolean;
 }): Promise<AgentCard> {
   const agent = await getAgentFromSystem({ mastra, agentId: agentId as string });
 
@@ -107,7 +143,7 @@ export async function getAgentCardByIdHandler({
     url: executionUrl,
     provider,
     version,
-    ...createAgentCardDefaults(),
+    ...createAgentCardDefaults({ pushNotifications }),
     // Convert agent tools to skills format for A2A protocol
     skills: Object.entries(tools).map(([toolId, tool]) => ({
       id: toolId,
@@ -235,6 +271,65 @@ function createDataArtifactUpdate({
   };
 }
 
+function resolvePushNotificationStore(pushNotificationStore?: InMemoryPushNotificationStore) {
+  return pushNotificationStore ?? defaultPushNotificationStore;
+}
+
+function resolvePushNotificationSender(pushNotificationSender?: DefaultPushNotificationSender) {
+  return pushNotificationSender ?? defaultPushNotificationSender;
+}
+
+function createTaskPushNotificationConfig(
+  taskId: string,
+  pushNotificationConfig: TaskPushNotificationConfig['pushNotificationConfig'],
+): TaskPushNotificationConfig {
+  return {
+    taskId,
+    pushNotificationConfig: {
+      ...pushNotificationConfig,
+      id: pushNotificationConfig.id ?? taskId,
+    },
+  };
+}
+
+function shouldSendPushNotification(previousTask: Task | undefined, nextTask: Task) {
+  const pushTriggerStates: TaskState[] = ['completed', 'failed', 'canceled', 'input-required'];
+
+  if (!pushTriggerStates.includes(nextTask.status.state)) {
+    return false;
+  }
+
+  return previousTask?.status.state !== nextTask.status.state;
+}
+
+async function saveTaskAndMaybeSendPushNotification({
+  taskStore,
+  pushNotificationSender,
+  previousTask,
+  nextTask,
+  agentId,
+  logger,
+}: {
+  taskStore: InMemoryTaskStore;
+  pushNotificationSender: DefaultPushNotificationSender;
+  previousTask?: Task;
+  nextTask: Task;
+  agentId: string;
+  logger?: IMastraLogger;
+}) {
+  await taskStore.save({ agentId, data: nextTask });
+
+  if (!shouldSendPushNotification(previousTask, nextTask)) {
+    return;
+  }
+
+  await pushNotificationSender.sendNotifications({
+    agentId,
+    task: nextTask,
+    logger,
+  });
+}
+
 function extractFullStreamTextDelta(value: unknown): string | null {
   if (typeof value !== 'object' || value === null || !('type' in value)) {
     return null;
@@ -299,6 +394,8 @@ export async function handleMessageSend({
   requestId,
   params,
   taskStore,
+  pushNotificationStore,
+  pushNotificationSender,
   agent,
   agentId,
   logger,
@@ -307,6 +404,8 @@ export async function handleMessageSend({
   requestId: number | string;
   params: MessageSendParams;
   taskStore: InMemoryTaskStore;
+  pushNotificationStore?: InMemoryPushNotificationStore;
+  pushNotificationSender?: DefaultPushNotificationSender;
   agent: Agent;
   agentId: string;
   logger?: IMastraLogger;
@@ -317,6 +416,8 @@ export async function handleMessageSend({
   const { message, metadata } = params;
   const { contextId } = message;
   const taskId = message.taskId || crypto.randomUUID();
+  const resolvedPushNotificationStore = resolvePushNotificationStore(pushNotificationStore);
+  const resolvedPushNotificationSender = resolvePushNotificationSender(pushNotificationSender);
 
   // Load or create task
   let currentData = await loadOrCreateTask({
@@ -327,6 +428,13 @@ export async function handleMessageSend({
     contextId,
     metadata,
   });
+
+  if (params.configuration?.pushNotificationConfig) {
+    resolvedPushNotificationStore.set({
+      agentId,
+      config: createTaskPushNotificationConfig(taskId, params.configuration.pushNotificationConfig),
+    });
+  }
 
   // Use the new TaskContext definition, passing history
   const context = createTaskContext({
@@ -373,7 +481,14 @@ export async function handleMessageSend({
       },
     };
 
-    await taskStore.save({ agentId, data: currentData });
+    await saveTaskAndMaybeSendPushNotification({
+      taskStore,
+      pushNotificationSender: resolvedPushNotificationSender,
+      previousTask: context.task,
+      nextTask: currentData,
+      agentId,
+      logger,
+    });
     context.task = currentData;
   } catch (handlerError) {
     // If handler throws, apply 'failed' status, save, and rethrow
@@ -394,7 +509,14 @@ export async function handleMessageSend({
     currentData = applyUpdateToTask(currentData, failureStatusUpdate);
 
     try {
-      await taskStore.save({ agentId, data: currentData });
+      await saveTaskAndMaybeSendPushNotification({
+        taskStore,
+        pushNotificationSender: resolvedPushNotificationSender,
+        previousTask: context.task,
+        nextTask: currentData,
+        agentId,
+        logger,
+      });
     } catch (saveError) {
       // @ts-expect-error saveError is an unknown error
       logger?.error(`Failed to save task ${currentData.id} after handler error:`, saveError?.message);
@@ -427,10 +549,148 @@ export async function handleTaskGet({
   return createSuccessResponse(requestId, task);
 }
 
+async function loadTaskOrThrow({
+  taskStore,
+  agentId,
+  taskId,
+}: {
+  taskStore: InMemoryTaskStore;
+  agentId: string;
+  taskId: string;
+}) {
+  const task = await taskStore.load({ agentId, taskId });
+
+  if (!task) {
+    throw MastraA2AError.taskNotFound(taskId);
+  }
+
+  return task;
+}
+
+export async function handleSetTaskPushNotificationConfig({
+  requestId,
+  taskStore,
+  pushNotificationStore,
+  agentId,
+  params,
+}: {
+  requestId: number | string;
+  taskStore: InMemoryTaskStore;
+  pushNotificationStore?: InMemoryPushNotificationStore;
+  agentId: string;
+  params: TaskPushNotificationConfig;
+}) {
+  await loadTaskOrThrow({
+    taskStore,
+    agentId,
+    taskId: params.taskId,
+  });
+
+  const config = resolvePushNotificationStore(pushNotificationStore).set({
+    agentId,
+    config: createTaskPushNotificationConfig(params.taskId, params.pushNotificationConfig),
+  });
+
+  return createSuccessResponse(requestId, config);
+}
+
+export async function handleGetTaskPushNotificationConfig({
+  requestId,
+  taskStore,
+  pushNotificationStore,
+  agentId,
+  params,
+}: {
+  requestId: number | string;
+  taskStore: InMemoryTaskStore;
+  pushNotificationStore?: InMemoryPushNotificationStore;
+  agentId: string;
+  params: GetTaskPushNotificationConfigParams;
+}) {
+  await loadTaskOrThrow({
+    taskStore,
+    agentId,
+    taskId: params.id,
+  });
+
+  const config = resolvePushNotificationStore(pushNotificationStore).get({
+    agentId,
+    params,
+  });
+
+  if (!config) {
+    throw MastraA2AError.invalidParams(
+      `Push notification config not found: ${params.pushNotificationConfigId ?? params.id}`,
+    );
+  }
+
+  return createSuccessResponse(requestId, config);
+}
+
+export async function handleListTaskPushNotificationConfig({
+  requestId,
+  taskStore,
+  pushNotificationStore,
+  agentId,
+  params,
+}: {
+  requestId: number | string;
+  taskStore: InMemoryTaskStore;
+  pushNotificationStore?: InMemoryPushNotificationStore;
+  agentId: string;
+  params: ListTaskPushNotificationConfigParams;
+}) {
+  await loadTaskOrThrow({
+    taskStore,
+    agentId,
+    taskId: params.id,
+  });
+
+  const configs = resolvePushNotificationStore(pushNotificationStore).list({
+    agentId,
+    params,
+  });
+
+  return createSuccessResponse(requestId, configs);
+}
+
+export async function handleDeleteTaskPushNotificationConfig({
+  requestId,
+  taskStore,
+  pushNotificationStore,
+  agentId,
+  params,
+}: {
+  requestId: number | string;
+  taskStore: InMemoryTaskStore;
+  pushNotificationStore?: InMemoryPushNotificationStore;
+  agentId: string;
+  params: DeleteTaskPushNotificationConfigParams;
+}) {
+  await loadTaskOrThrow({
+    taskStore,
+    agentId,
+    taskId: params.id,
+  });
+
+  const deleted = resolvePushNotificationStore(pushNotificationStore).delete({
+    agentId,
+    params,
+  });
+
+  if (!deleted) {
+    throw MastraA2AError.invalidParams(`Push notification config not found: ${params.pushNotificationConfigId}`);
+  }
+
+  return createSuccessResponse(requestId, null);
+}
+
 export async function* handleMessageStream({
   requestId,
   params,
   taskStore,
+  pushNotificationStore,
+  pushNotificationSender,
   agent,
   agentId,
   logger,
@@ -439,6 +699,8 @@ export async function* handleMessageStream({
   requestId: number | string;
   params: MessageSendParams;
   taskStore: InMemoryTaskStore;
+  pushNotificationStore?: InMemoryPushNotificationStore;
+  pushNotificationSender?: DefaultPushNotificationSender;
   agent: Agent;
   agentId: string;
   logger?: IMastraLogger;
@@ -449,6 +711,8 @@ export async function* handleMessageStream({
   const { message, metadata } = params;
   const { contextId } = message;
   const taskId = message.taskId || crypto.randomUUID();
+  const resolvedPushNotificationStore = resolvePushNotificationStore(pushNotificationStore);
+  const resolvedPushNotificationSender = resolvePushNotificationSender(pushNotificationSender);
 
   let currentData = await loadOrCreateTask({
     taskId,
@@ -458,6 +722,13 @@ export async function* handleMessageStream({
     contextId,
     metadata,
   });
+
+  if (params.configuration?.pushNotificationConfig) {
+    resolvedPushNotificationStore.set({
+      agentId,
+      config: createTaskPushNotificationConfig(taskId, params.configuration.pushNotificationConfig),
+    });
+  }
 
   currentData = applyUpdateToTask(currentData, {
     state: 'working',
@@ -469,7 +740,13 @@ export async function* handleMessageStream({
     },
   });
 
-  await taskStore.save({ agentId, data: currentData });
+  await saveTaskAndMaybeSendPushNotification({
+    taskStore,
+    pushNotificationSender: resolvedPushNotificationSender,
+    nextTask: currentData,
+    agentId,
+    logger,
+  });
 
   yield createSuccessResponse(requestId, currentData);
 
@@ -501,7 +778,13 @@ export async function* handleMessageStream({
         });
 
         currentData = applyUpdateToTask(currentData, textUpdate);
-        await taskStore.save({ agentId, data: currentData });
+        await saveTaskAndMaybeSendPushNotification({
+          taskStore,
+          pushNotificationSender: resolvedPushNotificationSender,
+          nextTask: currentData,
+          agentId,
+          logger,
+        });
         yield createSuccessResponse(requestId, textUpdate);
 
         sawTextArtifact = true;
@@ -534,7 +817,13 @@ export async function* handleMessageStream({
       });
 
       currentData = applyUpdateToTask(currentData, textUpdate);
-      await taskStore.save({ agentId, data: currentData });
+      await saveTaskAndMaybeSendPushNotification({
+        taskStore,
+        pushNotificationSender: resolvedPushNotificationSender,
+        nextTask: currentData,
+        agentId,
+        logger,
+      });
       yield createSuccessResponse(requestId, textUpdate);
 
       sawTextArtifact = true;
@@ -550,17 +839,24 @@ export async function* handleMessageStream({
       });
 
       currentData = applyUpdateToTask(currentData, dataUpdate);
-      await taskStore.save({ agentId, data: currentData });
+      await saveTaskAndMaybeSendPushNotification({
+        taskStore,
+        pushNotificationSender: resolvedPushNotificationSender,
+        nextTask: currentData,
+        agentId,
+        logger,
+      });
       yield createSuccessResponse(requestId, dataUpdate);
     }
 
-    currentData = applyUpdateToTask(currentData, {
+    const previousTask = currentData;
+    const completedTask = applyUpdateToTask(currentData, {
       state: 'completed',
       message: undefined,
     });
 
-    currentData.metadata = {
-      ...currentData.metadata,
+    completedTask.metadata = {
+      ...completedTask.metadata,
       execution: {
         toolCalls: await result.toolCalls,
         toolResults: await result.toolResults,
@@ -569,8 +865,18 @@ export async function* handleMessageStream({
       },
     };
 
-    await taskStore.save({ agentId, data: currentData });
+    currentData = completedTask;
+
+    await saveTaskAndMaybeSendPushNotification({
+      taskStore,
+      pushNotificationSender: resolvedPushNotificationSender,
+      previousTask,
+      nextTask: currentData,
+      agentId,
+      logger,
+    });
   } catch (handlerError) {
+    const previousTask = currentData;
     currentData = applyUpdateToTask(currentData, {
       state: 'failed',
       message: {
@@ -587,7 +893,14 @@ export async function* handleMessageStream({
     });
 
     try {
-      await taskStore.save({ agentId, data: currentData });
+      await saveTaskAndMaybeSendPushNotification({
+        taskStore,
+        pushNotificationSender: resolvedPushNotificationSender,
+        previousTask,
+        nextTask: currentData,
+        agentId,
+        logger,
+      });
     } catch (saveError) {
       // @ts-expect-error saveError is an unknown error
       logger?.error(`Failed to save task ${currentData.id} after handler error:`, saveError?.message);
@@ -717,12 +1030,14 @@ function createA2ASSEResponse(payload: AsyncIterable<unknown> | unknown): Respon
 export async function handleTaskCancel({
   requestId,
   taskStore,
+  pushNotificationSender,
   agentId,
   taskId,
   logger,
 }: {
   requestId: number | string;
   taskStore: InMemoryTaskStore;
+  pushNotificationSender?: DefaultPushNotificationSender;
   agentId: string;
   taskId: string;
   logger?: IMastraLogger;
@@ -759,10 +1074,18 @@ export async function handleTaskCancel({
     },
   };
 
+  const previousTask = data;
   data = applyUpdateToTask(data, cancelUpdate);
 
   // Save the updated state
-  await taskStore.save({ agentId, data });
+  await saveTaskAndMaybeSendPushNotification({
+    taskStore,
+    pushNotificationSender: resolvePushNotificationSender(pushNotificationSender),
+    previousTask,
+    nextTask: data,
+    agentId,
+    logger,
+  });
 
   // Remove from active cancellations *after* saving
   taskStore.activeCancellations.delete(taskId);
@@ -779,6 +1102,8 @@ export async function getAgentExecutionHandler({
   method,
   params,
   taskStore,
+  pushNotificationStore,
+  pushNotificationSender,
   logger,
   abortSignal,
 }: Context & {
@@ -798,10 +1123,14 @@ export async function getAgentExecutionHandler({
     | 'agent/getAuthenticatedExtendedCard';
   params?: MessageSendParams | TaskQueryParams | TaskIdParams | Record<string, unknown>;
   taskStore: InMemoryTaskStore;
+  pushNotificationStore?: InMemoryPushNotificationStore;
+  pushNotificationSender?: DefaultPushNotificationSender;
   logger?: IMastraLogger;
   abortSignal?: AbortSignal;
 }): Promise<any> {
   const agent = await getAgentFromSystem({ mastra, agentId });
+  const resolvedPushNotificationStore = resolvePushNotificationStore(pushNotificationStore);
+  const resolvedPushNotificationSender = resolvePushNotificationSender(pushNotificationSender);
 
   let taskId: string | undefined; // For error context
 
@@ -815,8 +1144,11 @@ export async function getAgentExecutionHandler({
           requestId,
           params: params as MessageSendParams,
           taskStore,
+          pushNotificationStore: resolvedPushNotificationStore,
+          pushNotificationSender: resolvedPushNotificationSender,
           agent,
           agentId,
+          logger,
           requestContext,
         });
         return result;
@@ -826,8 +1158,11 @@ export async function getAgentExecutionHandler({
           requestId,
           taskStore,
           params: params as MessageSendParams,
+          pushNotificationStore: resolvedPushNotificationStore,
+          pushNotificationSender: resolvedPushNotificationSender,
           agent,
           agentId,
+          logger,
           requestContext,
         });
         return result;
@@ -847,8 +1182,10 @@ export async function getAgentExecutionHandler({
         const result = await handleTaskCancel({
           requestId,
           taskStore,
+          pushNotificationSender: resolvedPushNotificationSender,
           agentId,
           taskId: taskId || 'No task ID provided',
+          logger,
         });
 
         return result;
@@ -862,10 +1199,37 @@ export async function getAgentExecutionHandler({
           abortSignal,
         });
       case 'tasks/pushNotificationConfig/set':
+        return await handleSetTaskPushNotificationConfig({
+          requestId,
+          taskStore,
+          pushNotificationStore: resolvedPushNotificationStore,
+          agentId,
+          params: params as unknown as TaskPushNotificationConfig,
+        });
       case 'tasks/pushNotificationConfig/get':
+        return await handleGetTaskPushNotificationConfig({
+          requestId,
+          taskStore,
+          pushNotificationStore: resolvedPushNotificationStore,
+          agentId,
+          params: params as GetTaskPushNotificationConfigParams,
+        });
       case 'tasks/pushNotificationConfig/list':
+        return await handleListTaskPushNotificationConfig({
+          requestId,
+          taskStore,
+          pushNotificationStore: resolvedPushNotificationStore,
+          agentId,
+          params: params as ListTaskPushNotificationConfigParams,
+        });
       case 'tasks/pushNotificationConfig/delete':
-        throw MastraA2AError.pushNotificationNotSupported();
+        return await handleDeleteTaskPushNotificationConfig({
+          requestId,
+          taskStore,
+          pushNotificationStore: resolvedPushNotificationStore,
+          agentId,
+          params: params as DeleteTaskPushNotificationConfigParams,
+        });
       case 'agent/getAuthenticatedExtendedCard':
         throw MastraA2AError.extendedAgentCardNotConfigured();
       default:
@@ -906,6 +1270,7 @@ export const GET_AGENT_CARD_ROUTE = createRoute({
       requestContext: ctx.requestContext,
       agentId: ctx.agentId,
       executionUrl,
+      pushNotifications: true,
     });
   },
 });
