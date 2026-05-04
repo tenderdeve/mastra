@@ -780,6 +780,176 @@ describe('createLLMExecutionStep gateway provider tools', () => {
     });
   });
 
+  it('runs processLLMPrompt before invoking the model without persisting prompt changes', async () => {
+    const processLLMPrompt = vi.fn(async ({ prompt }: any) =>
+      prompt.map((message: any) =>
+        message.role === 'user'
+          ? {
+              ...message,
+              content: [{ type: 'text' as const, text: 'rewritten outbound prompt' }],
+            }
+          : message,
+      ),
+    );
+    const doStream = vi.fn(async () => ({
+      stream: convertArrayToReadableStream([
+        {
+          type: 'finish',
+          finishReason: 'stop',
+          usage: testUsage,
+        },
+      ]),
+      request: {},
+      response: { headers: undefined },
+      warnings: [],
+    }));
+
+    const llmExecutionStep = createLLMExecutionStep({
+      agentId: 'test-agent',
+      messageId: 'msg-0',
+      runId: 'test-run',
+      startTimestamp: Date.now(),
+      methodType: 'stream',
+      controller,
+      outputWriter: vi.fn(),
+      messageList,
+      models: [
+        {
+          id: 'test-model',
+          maxRetries: 0,
+          model: {
+            specificationVersion: 'v2' as const,
+            provider: 'mock-provider',
+            modelId: 'mock-model-id',
+            supportedUrls: {},
+            doGenerate: vi.fn(),
+            doStream,
+          } as any,
+        },
+      ],
+      inputProcessors: [{ id: 'rewrite-prompt', processLLMPrompt }],
+      tools: {},
+      streamState: {
+        serialize: vi.fn(),
+        deserialize: vi.fn(),
+      },
+      _internal: {
+        generateId: () => 'generated-id',
+        threadId: 'thread-123',
+        resourceId: 'resource-456',
+      },
+      logger: {
+        error: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      } as any,
+    } as unknown as OuterLLMRun<{}>);
+
+    await llmExecutionStep.execute(createExecuteParams(createIterationInput()));
+
+    expect(processLLMPrompt).toHaveBeenCalledOnce();
+    expect(doStream).toHaveBeenCalledOnce();
+    expect(doStream.mock.calls[0]?.[0]?.prompt).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: [{ type: 'text', text: 'rewritten outbound prompt' }],
+        }),
+      ]),
+    );
+    expect(messageList.get.input.aiV5.model()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: expect.arrayContaining([
+            expect.objectContaining({ type: 'text', text: 'Find the latest AI agent news' }),
+          ]),
+        }),
+      ]),
+    );
+  });
+
+  it('bails with a tripwire response when processLLMPrompt aborts', async () => {
+    const doStream = vi.fn(async () => ({
+      stream: convertArrayToReadableStream([
+        {
+          type: 'finish',
+          finishReason: 'stop',
+          usage: testUsage,
+        },
+      ]),
+      request: {},
+      response: { headers: undefined },
+      warnings: [],
+    }));
+
+    const llmExecutionStep = createLLMExecutionStep({
+      agentId: 'test-agent',
+      messageId: 'msg-0',
+      runId: 'test-run',
+      startTimestamp: Date.now(),
+      methodType: 'stream',
+      controller,
+      outputWriter: vi.fn(),
+      messageList,
+      models: [
+        {
+          id: 'test-model',
+          maxRetries: 0,
+          model: {
+            specificationVersion: 'v2' as const,
+            provider: 'mock-provider',
+            modelId: 'mock-model-id',
+            supportedUrls: {},
+            doGenerate: vi.fn(),
+            doStream,
+          } as any,
+        },
+      ],
+      inputProcessors: [
+        {
+          id: 'prompt-abort',
+          processLLMPrompt: vi.fn(async ({ abort }) => {
+            abort('Prompt aborted', { metadata: { phase: 'prompt' } });
+          }),
+        },
+      ],
+      tools: {},
+      streamState: {
+        serialize: vi.fn(),
+        deserialize: vi.fn(),
+      },
+      _internal: {
+        generateId: () => 'generated-id',
+        threadId: 'thread-123',
+        resourceId: 'resource-456',
+      },
+      logger: {
+        error: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      } as any,
+    } as unknown as OuterLLMRun<{}>);
+
+    const result = await llmExecutionStep.execute(createExecuteParams(createIterationInput()));
+
+    expect(doStream).not.toHaveBeenCalled();
+    expect(controller.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'tripwire',
+        payload: expect.objectContaining({
+          reason: 'Prompt aborted',
+          metadata: { phase: 'prompt' },
+          processorId: 'prompt-abort',
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      stepResult: { reason: 'tripwire', isContinued: false },
+      output: { text: '' },
+    });
+  });
+
   it('preserves fallback model index when processAPIError requests a retry', async () => {
     const firstModelStream = vi.fn(async () => {
       throw new APICallError({

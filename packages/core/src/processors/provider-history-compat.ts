@@ -194,12 +194,16 @@ export function isMaybeCerebras(
     return /^cerebras[/:]/i.test(model);
   }
 
-  if (typeof model === 'object' && 'provider' in model) {
-    const provider = (model as { provider?: unknown }).provider;
+  if (typeof model === 'object') {
+    const { provider, modelId } = model as { provider?: unknown; modelId?: unknown };
     if (typeof provider === 'string') {
       // `@ai-sdk/cerebras` sets provider to 'cerebras.chat'. mastra gateway
       // resolution preserves the upstream SDK provider id.
-      return /^cerebras($|[.\-])/i.test(provider);
+      if (/^cerebras($|[.\-])/i.test(provider)) return true;
+    }
+
+    if (typeof modelId === 'string') {
+      return /^cerebras[/:]/i.test(modelId);
     }
   }
 

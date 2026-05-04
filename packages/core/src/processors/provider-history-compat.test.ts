@@ -3,6 +3,7 @@ import { APICallError } from '@internal/ai-sdk-v5';
 import { describe, expect, it } from 'vitest';
 import { MessageList } from '../agent/message-list';
 import { cerebrasStripReasoningContent, isMaybeCerebras, ProviderHistoryCompat } from './provider-history-compat';
+import { ProcessorRunner } from './runner';
 import type { ProcessAPIErrorArgs, ProcessLLMPromptArgs } from './index';
 
 function createUserMessage(content: string) {
@@ -302,6 +303,11 @@ describe('isMaybeCerebras', () => {
     expect(isMaybeCerebras('cerebras-foo')).toBe(false);
   });
 
+  it('matches object-shaped models with generic providers and cerebras-prefixed model IDs', () => {
+    expect(isMaybeCerebras({ provider: 'openai-compatible.chat', modelId: 'cerebras/zai-glm-4.7' })).toBe(true);
+    expect(isMaybeCerebras({ provider: 'openai-compatible.chat', modelId: 'cerebras:zai-glm-4.7' })).toBe(true);
+  });
+
   it('handles arrays by matching any element', () => {
     expect(isMaybeCerebras([{ model: 'openai/gpt-4o' }, { model: 'cerebras/zai-glm-4.7' }])).toBe(true);
     expect(isMaybeCerebras([{ model: 'openai/gpt-4o' }, { model: 'anthropic/claude-3' }])).toBe(false);
@@ -347,6 +353,14 @@ function makePromptArgs(prompt: LanguageModelV2Prompt, model: unknown): ProcessL
     }) as any,
   };
 }
+
+const mockLogger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  trackException: () => {},
+} as any;
 
 describe('cerebrasStripReasoningContent', () => {
   it('strips reasoning parts from assistant messages when model is cerebras', () => {
@@ -485,5 +499,40 @@ describe('ProviderHistoryCompat.processLLMPrompt', () => {
       modelId: 'gpt-4o',
     });
     expect(await handler.processLLMPrompt(args)).toBeUndefined();
+  });
+
+  it('strips reasoning when a generic provider object has a cerebras-prefixed modelId', async () => {
+    const handler = new ProviderHistoryCompat();
+    const args = makePromptArgs(promptWithReasoning(), {
+      provider: 'openai-compatible.chat',
+      modelId: 'cerebras/zai-glm-4.7',
+    });
+
+    const result = await handler.processLLMPrompt(args);
+
+    expect(Array.isArray(result)).toBe(true);
+    const assistant = (result as LanguageModelV2Prompt).find(m => m.role === 'assistant')!;
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
+  });
+});
+
+describe('ProcessorRunner.runProcessLLMPrompt', () => {
+  it('auto-injects ProviderHistoryCompat for generic provider objects with cerebras-prefixed model IDs', async () => {
+    const runner = new ProcessorRunner({
+      inputProcessors: [],
+      outputProcessors: [],
+      logger: mockLogger,
+      agentName: 'test-agent',
+    });
+
+    const result = await runner.runProcessLLMPrompt({
+      prompt: promptWithReasoning(),
+      model: { provider: 'openai-compatible.chat', modelId: 'cerebras/zai-glm-4.7' },
+      stepNumber: 0,
+      steps: [],
+    });
+
+    const assistant = result.prompt.find(m => m.role === 'assistant')!;
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
   });
 });

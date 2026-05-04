@@ -218,6 +218,22 @@ The method receives the current `stepNumber`, `model`, `tools`, `toolChoice`, `m
 
 See the [`Processor` reference](/reference/processors/processor-interface#processinputstep) for all available arguments and return types.
 
+### Rewrite the LLM prompt before the provider call
+
+Use `processLLMPrompt()` when you need to rewrite the final prompt that Mastra sends to the model. This hook runs after Mastra converts the `MessageList` into the LLM prompt format (`LanguageModelV2Prompt`) and immediately before the provider call.
+
+Use the message-based hooks for conversation changes:
+
+- `processInput()`: Change the conversation once before the agentic loop starts.
+- `processInputStep()`: Change messages or step configuration before each LLM call.
+- `processLLMPrompt()`: Change only the outbound prompt for the current provider call.
+
+Changes returned from `processLLMPrompt()` are transient. They do not persist back to `MessageList`, memory, UI history, or future provider calls. This makes the hook a good fit for provider compatibility rewrites, role/content normalization, or other model-specific prompt changes that should not alter stored conversation history.
+
+The method receives `prompt`, `model`, `stepNumber`, `steps`, `state`, and the shared processor context. Calling `abort()` from `processLLMPrompt()` emits the normal tripwire response and stops the call.
+
+See the [`Processor` reference](/reference/processors/processor-interface#processllmprompt) for all available arguments and return types.
+
 ### Use the `prepareStep()` callback
 
 The `prepareStep()` callback on `generate()` or `stream()` is a shorthand for `processInputStep()`. Internally, Mastra wraps it in a processor that calls your function at each step. It accepts the same arguments and return type as `processInputStep()`, but doesn't require creating a class:
