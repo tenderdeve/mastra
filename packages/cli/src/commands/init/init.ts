@@ -36,6 +36,7 @@ export const init = async ({
   initGit = false,
   observe,
   observeProject,
+  observeMode = 'pick',
 }: {
   directory?: string;
   components: Component[];
@@ -48,6 +49,12 @@ export const init = async ({
   initGit?: boolean;
   observe?: boolean;
   observeProject?: string;
+  /**
+   * `'create'` skips the picker and always provisions a new platform project
+   * named after the local one (used by `create-mastra`). `'pick'` shows the
+   * existing-or-new picker (used by `mastra init`).
+   */
+  observeMode?: 'create' | 'pick';
 }) => {
   s.start('Initializing Mastra');
   const packageVersionTag = versionTag ? `@${versionTag}` : '';
@@ -191,7 +198,7 @@ export const init = async ({
     if (observe) {
       try {
         const defaultProjectName = await readPackageName();
-        const result = await provisionObserveProject({ defaultProjectName, observeProject });
+        const result = await provisionObserveProject({ defaultProjectName, observeProject, mode: observeMode });
         await writeObserveEnv({
           token: result.token,
           projectId: result.projectId,

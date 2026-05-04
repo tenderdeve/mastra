@@ -278,4 +278,37 @@ describe('provisionObserveProject', () => {
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'fresh-app' }) }),
     );
   });
+
+  test('mode "create" provisions a new project named after the local one without prompting', async () => {
+    platformFetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          project: { id: 'p1', slug: 'my-app', name: 'my-app', organizationId: 'org_test' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ token: { id: 'k1', name: 'mastra observe – my-app' }, secret: 'sk_my_app' }),
+      );
+
+    const result = await provisionObserveProject({ defaultProjectName: 'my-app', mode: 'create' });
+
+    expect(result.projectId).toBe('p1');
+    expect(result.projectName).toBe('my-app');
+    expect(result.token).toBe('sk_my_app');
+
+    // No picker, no name re-prompt, no list call.
+    expect(selectMock).not.toHaveBeenCalled();
+    expect(textMock).not.toHaveBeenCalled();
+    expect(platformFetchMock).toHaveBeenCalledTimes(2);
+    expect(platformFetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://platform.test/v1/studio/projects',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'my-app' }) }),
+    );
+  });
+
+  test('mode "create" throws when defaultProjectName is missing', async () => {
+    await expect(provisionObserveProject({ mode: 'create' })).rejects.toThrow(/defaultProjectName is required/);
+    expect(platformFetchMock).not.toHaveBeenCalled();
+  });
 });

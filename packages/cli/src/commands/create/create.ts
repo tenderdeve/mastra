@@ -94,6 +94,7 @@ export const create = async (args: {
       versionTag: args.createVersionTag,
       observe: args.observe ?? result?.observe,
       observeProject: args.observeProject,
+      observeMode: 'create',
     });
     postCreate({ projectName });
     return;
@@ -130,6 +131,7 @@ export const create = async (args: {
     versionTag: args.createVersionTag,
     observe: args.observe,
     observeProject: args.observeProject,
+    observeMode: 'create',
   });
 
   postCreate({ projectName });

@@ -48,6 +48,7 @@ const DEFAULT_PLATFORM_API_URL = 'https://platform.mastra.ai';
 export async function provisionObserveProject({
   defaultProjectName,
   observeProject,
+  mode = 'pick',
 }: {
   defaultProjectName?: string;
   /**
@@ -56,39 +57,54 @@ export async function provisionObserveProject({
    * `create` / `init` commands run fully non-interactively.
    */
   observeProject?: string;
+  /**
+   * `'create'` (used by `create-mastra`) always provisions a new platform
+   * project named after the local one — no picker, no extra name prompt.
+   * `'pick'` (used by `mastra init` in an existing project) lets the user
+   * attach to an existing project or create a new one.
+   */
+  mode?: 'create' | 'pick';
 } = {}): Promise<ObserveProvisionResult> {
   const token = await getToken();
   const { orgId, orgName } = await resolveCurrentOrg(token);
 
-  const projects = await listProjects(token, orgId);
-
   let project: ObserveProject;
   if (observeProject) {
+    const projects = await listProjects(token, orgId);
     const match = projects.find(proj => proj.name === observeProject || proj.slug === observeProject);
     if (match) {
       project = match;
     } else {
       project = await createProjectByName({ token, orgId, name: observeProject });
     }
-  } else if (projects.length === 0) {
-    project = await createProject({ token, orgId, defaultName: defaultProjectName, orgName });
-  } else {
-    const choice = await p.select({
-      message: `Select a project (in ${orgName})`,
-      options: [
-        ...projects.map(proj => ({ value: proj.id, label: proj.name, hint: proj.slug })),
-        { value: '__new__', label: '+ Create new project' },
-      ],
-    });
-
-    if (p.isCancel(choice)) {
-      throw new Error('Cancelled');
+  } else if (mode === 'create') {
+    // Fresh scaffold: reuse the local project name; no picker, no re-prompt.
+    if (!defaultProjectName) {
+      throw new Error('defaultProjectName is required when mode is "create"');
     }
-
-    if (choice === '__new__') {
+    project = await createProjectByName({ token, orgId, name: defaultProjectName });
+  } else {
+    const projects = await listProjects(token, orgId);
+    if (projects.length === 0) {
       project = await createProject({ token, orgId, defaultName: defaultProjectName, orgName });
     } else {
-      project = projects.find(proj => proj.id === choice)!;
+      const choice = await p.select({
+        message: `Select a project (in ${orgName})`,
+        options: [
+          ...projects.map(proj => ({ value: proj.id, label: proj.name, hint: proj.slug })),
+          { value: '__new__', label: '+ Create new project' },
+        ],
+      });
+
+      if (p.isCancel(choice)) {
+        throw new Error('Cancelled');
+      }
+
+      if (choice === '__new__') {
+        project = await createProject({ token, orgId, defaultName: defaultProjectName, orgName });
+      } else {
+        project = projects.find(proj => proj.id === choice)!;
+      }
     }
   }
 
