@@ -32,6 +32,7 @@ export const create = async (args: {
   template?: string | boolean;
   analytics?: PosthogAnalytics;
   observe?: boolean;
+  observeProject?: string;
 }) => {
   if (args.template !== undefined) {
     await createFromTemplate({
@@ -92,6 +93,7 @@ export const create = async (args: {
       mcpServer: result?.mcpServer || args.mcpServer,
       versionTag: args.createVersionTag,
       observe: args.observe ?? result?.observe,
+      observeProject: args.observeProject,
     });
     postCreate({ projectName });
     return;
@@ -127,6 +129,7 @@ export const create = async (args: {
     mcpServer: args.mcpServer,
     versionTag: args.createVersionTag,
     observe: args.observe,
+    observeProject: args.observeProject,
   });
 
   postCreate({ projectName });

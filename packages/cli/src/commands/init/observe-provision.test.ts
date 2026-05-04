@@ -210,4 +210,72 @@ describe('provisionObserveProject', () => {
     await expect(provisionObserveProject()).rejects.toThrow(/Not logged in/);
     expect(platformFetchMock).not.toHaveBeenCalled();
   });
+
+  test('observeProject matches an existing project by name and skips the picker', async () => {
+    platformFetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          projects: [
+            { id: 'p1', slug: 'alpha', name: 'Alpha', organizationId: 'org_test' },
+            { id: 'p2', slug: 'beta', name: 'Beta', organizationId: 'org_test' },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          token: { id: 'k1', name: 'mastra observe – Beta' },
+          secret: 'sk_beta',
+        }),
+      );
+
+    const result = await provisionObserveProject({ observeProject: 'Beta' });
+
+    expect(result.projectId).toBe('p2');
+    expect(result.token).toBe('sk_beta');
+    expect(selectMock).not.toHaveBeenCalled();
+    expect(textMock).not.toHaveBeenCalled();
+    expect(platformFetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('observeProject matches an existing project by slug', async () => {
+    platformFetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          projects: [{ id: 'p1', slug: 'alpha', name: 'Alpha', organizationId: 'org_test' }],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ token: { id: 'k1', name: 'mastra observe – Alpha' }, secret: 'sk_a' }));
+
+    const result = await provisionObserveProject({ observeProject: 'alpha' });
+
+    expect(result.projectId).toBe('p1');
+    expect(platformFetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('observeProject creates a new project when name does not match', async () => {
+    platformFetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          projects: [{ id: 'p1', slug: 'alpha', name: 'Alpha', organizationId: 'org_test' }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          project: { id: 'p9', slug: 'fresh-app', name: 'fresh-app', organizationId: 'org_test' },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ token: { id: 'k1', name: 'mastra observe – fresh-app' }, secret: 'sk_f' }));
+
+    const result = await provisionObserveProject({ observeProject: 'fresh-app' });
+
+    expect(result.projectId).toBe('p9');
+    expect(result.token).toBe('sk_f');
+    expect(selectMock).not.toHaveBeenCalled();
+    expect(textMock).not.toHaveBeenCalled();
+    expect(platformFetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://platform.test/v1/studio/projects',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'fresh-app' }) }),
+    );
+  });
 });

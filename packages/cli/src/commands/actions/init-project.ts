@@ -17,6 +17,7 @@ interface InitArgs {
   example?: boolean;
   mcp?: Editor;
   observe?: boolean;
+  observeProject?: string;
 }
 
 export const initProject = async (args: InitArgs) => {
@@ -56,6 +57,7 @@ export const initProject = async (args: InitArgs) => {
           mcpServer: args.mcp,
           versionTag,
           observe: args.observe,
+          observeProject: args.observeProject,
         });
         return;
       }
@@ -69,6 +71,7 @@ export const initProject = async (args: InitArgs) => {
         mcpServer: args.mcp,
         versionTag,
         observe: args.observe,
+        observeProject: args.observeProject,
       });
       return;
     },

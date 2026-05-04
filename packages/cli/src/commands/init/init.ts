@@ -35,6 +35,7 @@ export const init = async ({
   versionTag,
   initGit = false,
   observe,
+  observeProject,
 }: {
   directory?: string;
   components: Component[];
@@ -46,6 +47,7 @@ export const init = async ({
   versionTag?: string;
   initGit?: boolean;
   observe?: boolean;
+  observeProject?: string;
 }) => {
   s.start('Initializing Mastra');
   const packageVersionTag = versionTag ? `@${versionTag}` : '';
@@ -189,7 +191,7 @@ export const init = async ({
     if (observe) {
       try {
         const defaultProjectName = await readPackageName();
-        const result = await provisionObserveProject({ defaultProjectName });
+        const result = await provisionObserveProject({ defaultProjectName, observeProject });
         await writeObserveEnv({
           token: result.token,
           projectId: result.projectId,

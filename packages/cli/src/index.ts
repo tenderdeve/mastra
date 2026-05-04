@@ -99,6 +99,10 @@ program
   )
   .option('--observe', 'Enable Mastra Observe (writes MASTRA_CLOUD_ACCESS_TOKEN placeholder to .env)')
   .option('--no-observe', 'Do not enable Mastra Observe')
+  .option(
+    '--observe-project <name>',
+    'Existing platform project name/slug to attach Observe to, or a name to create. Skips the interactive picker.',
+  )
   .action(createProject);
 
 program
@@ -122,6 +126,10 @@ program
   )
   .option('--observe', 'Enable Mastra Observe (writes MASTRA_CLOUD_ACCESS_TOKEN placeholder to .env)')
   .option('--no-observe', 'Do not enable Mastra Observe')
+  .option(
+    '--observe-project <name>',
+    'Existing platform project name/slug to attach Observe to, or a name to create. Skips the interactive picker.',
+  )
   .action(initProject);
 
 program

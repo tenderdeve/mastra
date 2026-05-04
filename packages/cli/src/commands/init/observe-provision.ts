@@ -47,8 +47,15 @@ const DEFAULT_PLATFORM_API_URL = 'https://platform.mastra.ai';
  */
 export async function provisionObserveProject({
   defaultProjectName,
+  observeProject,
 }: {
   defaultProjectName?: string;
+  /**
+   * If supplied, skip the interactive picker. Matches an existing project by
+   * name or slug; if no match, creates a new project with this name. Lets the
+   * `create` / `init` commands run fully non-interactively.
+   */
+  observeProject?: string;
 } = {}): Promise<ObserveProvisionResult> {
   const token = await getToken();
   const { orgId, orgName } = await resolveCurrentOrg(token);
@@ -56,7 +63,14 @@ export async function provisionObserveProject({
   const projects = await listProjects(token, orgId);
 
   let project: ObserveProject;
-  if (projects.length === 0) {
+  if (observeProject) {
+    const match = projects.find(proj => proj.name === observeProject || proj.slug === observeProject);
+    if (match) {
+      project = match;
+    } else {
+      project = await createProjectByName({ token, orgId, name: observeProject });
+    }
+  } else if (projects.length === 0) {
     project = await createProject({ token, orgId, defaultName: defaultProjectName, orgName });
   } else {
     const choice = await p.select({
@@ -135,10 +149,22 @@ async function createProject({
     throw new Error('Cancelled');
   }
 
+  return createProjectByName({ token, orgId, name: name as string });
+}
+
+async function createProjectByName({
+  token,
+  orgId,
+  name,
+}: {
+  token: string;
+  orgId: string;
+  name: string;
+}): Promise<ObserveProject> {
   const res = await platformFetch(`${MASTRA_PLATFORM_API_URL}/v1/studio/projects`, {
     method: 'POST',
     headers: { ...authHeaders(token, orgId), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: name as string }),
+    body: JSON.stringify({ name }),
   });
   if (!res.ok) {
     throw new Error(`Failed to create project (${res.status})`);

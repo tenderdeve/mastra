@@ -19,6 +19,7 @@ interface CreateProjectArgs {
   skills?: string[];
   template?: string | boolean;
   observe?: boolean;
+  observeProject?: string;
 }
 
 export const createProject = async (projectNameArg: string | undefined, args: CreateProjectArgs) => {
@@ -40,6 +41,7 @@ export const createProject = async (projectNameArg: string | undefined, args: Cr
           skills: args.skills,
           template: args.template,
           observe: args.observe,
+          observeProject: args.observeProject,
         });
         return;
       }
@@ -55,6 +57,7 @@ export const createProject = async (projectNameArg: string | undefined, args: Cr
         skills: args.skills,
         template: args.template,
         observe: args.observe,
+        observeProject: args.observeProject,
       });
     },
     origin,
