@@ -1,6 +1,8 @@
 import type { StepResult } from '@internal/ai-sdk-v5';
 import type { MastraDBMessage, MessageInput } from '../agent/message-list';
 import { MessageList, messagesAreEqual } from '../agent/message-list';
+import { createSignal } from '../agent/signals';
+import type { AgentSignalInput, CreatedAgentSignal } from '../agent/signals';
 import { TripWire } from '../agent/trip-wire';
 import type { TripWireOptions } from '../agent/trip-wire';
 import { isSupportedLanguageModel, supportedLanguageModelSpecifications } from '../agent/utils';
@@ -153,6 +155,20 @@ function areProcessorMessageArraysEqual(before: unknown[] | undefined, after: un
     before.length === after.length &&
     before.every((message, index) => messagesAreEqual(message as MessageInput, after[index] as MessageInput))
   );
+}
+
+function createProcessorSendSignal(args: {
+  messageList: MessageList;
+  writer?: ProcessorStreamWriter;
+  rotateResponseMessageId?: () => string;
+}): (signalInput: AgentSignalInput) => Promise<CreatedAgentSignal> {
+  return async signalInput => {
+    const signal = createSignal(signalInput);
+    args.rotateResponseMessageId?.();
+    args.messageList.add(signal.toDBMessage(), 'input');
+    await args.writer?.custom(signal.toDataPart());
+    return signal;
+  };
 }
 
 function buildProcessInputStepSpanInput(args: {
@@ -480,6 +496,7 @@ export class ProcessorRunner {
           requestContext,
           retryCount,
           writer,
+          sendSignal: createProcessorSendSignal({ messageList, writer }),
         });
 
         // Stop recording and get mutations for this processor
@@ -874,6 +891,7 @@ export class ProcessorRunner {
           messageList,
           requestContext,
           retryCount,
+          sendSignal: createProcessorSendSignal({ messageList }),
         });
 
         // Handle MessageList, MastraDBMessage[], or { messages, systemMessages } return types
@@ -1163,24 +1181,25 @@ export class ProcessorRunner {
           activeTools: inputData.activeTools,
         };
 
+        const rotateResponseMessageId = args.rotateResponseMessageId
+          ? () => {
+              const nextMessageId = args.rotateResponseMessageId!();
+              stepInput.messageId = nextMessageId;
+              return nextMessageId;
+            }
+          : undefined;
+
         const processMethodArgs = {
           messageList,
           ...inputData,
           state: processorState.customState,
           abort,
-          ...(args.rotateResponseMessageId
-            ? {
-                rotateResponseMessageId: () => {
-                  const nextMessageId = args.rotateResponseMessageId!();
-                  stepInput.messageId = nextMessageId;
-                  return nextMessageId;
-                },
-              }
-            : {}),
+          ...(rotateResponseMessageId ? { rotateResponseMessageId } : {}),
           ...createObservabilityContext({ currentSpan: processorSpan }),
           retryCount: args.retryCount ?? 0,
           writer,
           abortSignal: args.abortSignal,
+          sendSignal: createProcessorSendSignal({ messageList, writer, rotateResponseMessageId }),
         };
 
         const result = await ProcessorRunner.validateAndFormatProcessInputStepResult(
@@ -1401,6 +1420,7 @@ export class ProcessorRunner {
           requestContext,
           retryCount,
           writer,
+          sendSignal: createProcessorSendSignal({ messageList, writer }),
         });
 
         // Stop recording and get mutations for this processor
@@ -1559,6 +1579,14 @@ export class ProcessorRunner {
       const processorState = this.getProcessorState(processor.id);
 
       try {
+        const rotateResponseMessageId = args.rotateResponseMessageId
+          ? () => {
+              const nextMessageId = args.rotateResponseMessageId!();
+              messageIdAfter = nextMessageId;
+              return nextMessageId;
+            }
+          : undefined;
+
         const result = await processMethod({
           messages: processableMessages,
           messageList,
@@ -1573,15 +1601,8 @@ export class ProcessorRunner {
           writer,
           abortSignal,
           messageId: args.messageId,
-          ...(args.rotateResponseMessageId
-            ? {
-                rotateResponseMessageId: () => {
-                  const nextMessageId = args.rotateResponseMessageId!();
-                  messageIdAfter = nextMessageId;
-                  return nextMessageId;
-                },
-              }
-            : {}),
+          ...(rotateResponseMessageId ? { rotateResponseMessageId } : {}),
+          sendSignal: createProcessorSendSignal({ messageList, writer, rotateResponseMessageId }),
         });
 
         // Stop recording and get mutations for this processor
