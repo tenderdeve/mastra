@@ -1107,7 +1107,7 @@ export class Agent extends BaseResource {
           }
 
           case 'finish': {
-            finishReason = chunk.payload?.stepResult?.reason;
+            finishReason = chunk.payload?.stepResult?.reason ?? finishReason;
             if (chunk.payload?.usage != null) {
               // usage = calculateLanguageModelUsage(value.usage);
               usage = chunk.payload.usage;
