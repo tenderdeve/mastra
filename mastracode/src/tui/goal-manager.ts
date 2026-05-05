@@ -192,8 +192,13 @@ export class GoalManager {
       return { continuation: null, judgeResult: null };
     }
 
+    const evaluatedGoalId = this.goal.id;
+
     // Get recent context, including the latest user message when available.
     const context = await this.getRecentConversationContext(state);
+    if (!this.goal || this.goal.id !== evaluatedGoalId || this.goal.status !== 'active') {
+      return { continuation: null, judgeResult: null };
+    }
     if (!context.lastAssistantContent) {
       // No assistant message to judge — continue anyway (but check budget)
       if (this.goal.turnsUsed >= this.goal.maxTurns) {
@@ -211,6 +216,9 @@ export class GoalManager {
       assistantStepsSinceLastUser: context.assistantStepsSinceLastUser,
       lastAssistantContent: context.lastAssistantContent,
     });
+    if (!this.goal || this.goal.id !== evaluatedGoalId || this.goal.status !== 'active') {
+      return { continuation: null, judgeResult: null };
+    }
     if (result.decision === 'continue' || result.decision === 'done') {
       this.goal.turnsUsed++;
     }

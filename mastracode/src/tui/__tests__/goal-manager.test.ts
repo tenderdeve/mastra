@@ -268,4 +268,88 @@ describe('GoalManager', () => {
     expect(result.continuation).toContain('The judge is the continuation signal; provide the second fact now.');
     expect(result.judgeResult?.decision).toBe('continue');
   });
+
+  it('ignores a judge result when the evaluated goal is paused before the judge returns', async () => {
+    let resolveOutput: ((value: { object: { decision: 'done'; reason: string } }) => void) | undefined;
+    mocks.stream.mockResolvedValue({
+      consumeStream: vi.fn().mockResolvedValue(undefined),
+      getFullOutput: vi.fn(
+        () =>
+          new Promise(resolve => {
+            resolveOutput = resolve;
+          }),
+      ),
+    });
+    mocks.agentConstructor.mockImplementation(function () {
+      return { stream: mocks.stream };
+    });
+
+    const manager = new GoalManager();
+    manager.setGoal('finish the task', 'openai/gpt-5.4-mini');
+
+    const evaluation = manager.evaluateAfterTurn(createState());
+    await vi.waitFor(() => expect(resolveOutput).toBeDefined());
+    manager.pause();
+    resolveOutput?.({ object: { decision: 'done', reason: 'Looks complete.' } });
+
+    await expect(evaluation).resolves.toEqual({ continuation: null, judgeResult: null });
+    expect(manager.getGoal()?.status).toBe('paused');
+    expect(manager.getGoal()?.turnsUsed).toBe(0);
+  });
+
+  it('ignores a judge result when the evaluated goal is cleared before the judge returns', async () => {
+    let resolveOutput: ((value: { object: { decision: 'continue'; reason: string } }) => void) | undefined;
+    mocks.stream.mockResolvedValue({
+      consumeStream: vi.fn().mockResolvedValue(undefined),
+      getFullOutput: vi.fn(
+        () =>
+          new Promise(resolve => {
+            resolveOutput = resolve;
+          }),
+      ),
+    });
+    mocks.agentConstructor.mockImplementation(function () {
+      return { stream: mocks.stream };
+    });
+
+    const manager = new GoalManager();
+    manager.setGoal('finish the task', 'openai/gpt-5.4-mini');
+
+    const evaluation = manager.evaluateAfterTurn(createState());
+    await vi.waitFor(() => expect(resolveOutput).toBeDefined());
+    manager.clear();
+    resolveOutput?.({ object: { decision: 'continue', reason: 'Keep going.' } });
+
+    await expect(evaluation).resolves.toEqual({ continuation: null, judgeResult: null });
+    expect(manager.getGoal()).toBeNull();
+  });
+
+  it('ignores a judge result when a different goal replaces the evaluated goal before the judge returns', async () => {
+    let resolveOutput: ((value: { object: { decision: 'done'; reason: string } }) => void) | undefined;
+    mocks.stream.mockResolvedValue({
+      consumeStream: vi.fn().mockResolvedValue(undefined),
+      getFullOutput: vi.fn(
+        () =>
+          new Promise(resolve => {
+            resolveOutput = resolve;
+          }),
+      ),
+    });
+    mocks.agentConstructor.mockImplementation(function () {
+      return { stream: mocks.stream };
+    });
+
+    const manager = new GoalManager();
+    manager.setGoal('old goal', 'openai/gpt-5.4-mini');
+
+    const evaluation = manager.evaluateAfterTurn(createState());
+    await vi.waitFor(() => expect(resolveOutput).toBeDefined());
+    const newGoal = manager.setGoal('new goal', 'openai/gpt-5.4-mini');
+    resolveOutput?.({ object: { decision: 'done', reason: 'Old goal done.' } });
+
+    await expect(evaluation).resolves.toEqual({ continuation: null, judgeResult: null });
+    expect(manager.getGoal()).toEqual(newGoal);
+    expect(manager.getGoal()?.status).toBe('active');
+    expect(manager.getGoal()?.turnsUsed).toBe(0);
+  });
 });
