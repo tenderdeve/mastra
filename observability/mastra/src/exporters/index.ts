@@ -14,4 +14,5 @@ export * from './cloud';
 export * from './console';
 export * from './default';
 export * from './mastra-observe';
+export * from './mastra-storage';
 export * from './test';

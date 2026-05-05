@@ -1,37 +1,43 @@
 ---
-title: "Reference: DefaultExporter | Observability"
-description: API reference for the DefaultExporter
+title: "Reference: MastraStorageExporter | Observability"
+description: API reference for the MastraStorageExporter (formerly DefaultExporter)
 packages:
   - "@mastra/observability"
 ---
 
 import PropertiesTable from "@site/src/components/PropertiesTable";
 
-# DefaultExporter
+# MastraStorageExporter
 
 Persists traces to Mastra's configured storage with automatic batching and retry logic.
+
+:::note
+
+`MastraStorageExporter` was previously called `DefaultExporter`. The original `DefaultExporter` class is still exported from `@mastra/observability` so existing imports keep working, but it is deprecated and will be removed in a future major version. New code should use `MastraStorageExporter`.
+
+:::
 
 ## Constructor
 
 ```typescript prettier:false
-new DefaultExporter(config?: DefaultExporterConfig)
+new MastraStorageExporter(config?: MastraStorageExporterConfig)
 ```
 
 <PropertiesTable
   props={[
   {
     name: 'config',
-    type: 'DefaultExporterConfig',
+    type: 'MastraStorageExporterConfig',
     description: 'Batching and configuration options',
     required: false,
   },
 ]}
 />
 
-## `DefaultExporterConfig`
+## `MastraStorageExporterConfig`
 
 ```typescript
-interface DefaultExporterConfig extends BaseExporterConfig {
+interface MastraStorageExporterConfig extends BaseExporterConfig {
   /** Maximum number of spans per batch. Default: 1000 */
   maxBatchSize?: number
 
@@ -72,8 +78,10 @@ type TracingStorageStrategy = 'realtime' | 'batch-with-updates' | 'insert-only'
 ## Properties
 
 ```typescript prettier:false
-readonly name = 'mastra-default-observability-exporter';
+readonly name = 'mastra-storage-exporter';
 ```
+
+The deprecated `DefaultExporter` class continues to use `'mastra-default-observability-exporter'` as its `name` for backward compatibility.
 
 ## Methods
 
@@ -182,19 +190,35 @@ For `batch-with-updates` strategy:
 ## Usage
 
 ```typescript
-import { DefaultExporter } from '@mastra/observability'
+import { MastraStorageExporter } from '@mastra/observability'
 
 // Default configuration
-const exporter = new DefaultExporter()
+const exporter = new MastraStorageExporter()
 
 // Custom batching configuration
-const customExporter = new DefaultExporter({
+const customExporter = new MastraStorageExporter({
   maxBatchSize: 500,
   maxBatchWaitMs: 2000,
   strategy: 'batch-with-updates',
   logLevel: 'debug',
 })
 ```
+
+## Migrating from `DefaultExporter`
+
+The two classes share the same constructor signature and behavior. To migrate, replace the import and constructor:
+
+```typescript
+// Before
+import { DefaultExporter } from '@mastra/observability'
+const exporter = new DefaultExporter()
+
+// After
+import { MastraStorageExporter } from '@mastra/observability'
+const exporter = new MastraStorageExporter()
+```
+
+The original `DefaultExporter` is preserved unchanged so dashboards or alert rules that match the previous `mastra-default-observability-exporter` exporter name keep working until you migrate.
 
 ## See also
 

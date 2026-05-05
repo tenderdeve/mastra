@@ -149,13 +149,13 @@ Visit [MastraObserveExporter reference](/reference/observability/tracing/exporte
 
 ## Recommended configuration
 
-Include `DefaultExporter` if you also want to inspect local traces in Studio or persist observability data to your configured storage.
+Include `MastraStorageExporter` if you also want to inspect local traces in Studio or persist observability data to your configured storage.
 
 ```ts title="src/mastra/index.ts"
 import { Mastra } from '@mastra/core'
 import {
   Observability,
-  DefaultExporter,
+  MastraStorageExporter,
   MastraObserveExporter,
   SensitiveDataFilter,
 } from '@mastra/observability'
@@ -165,7 +165,7 @@ export const mastra = new Mastra({
     configs: {
       default: {
         serviceName: 'mastra',
-        exporters: [new DefaultExporter(), new MastraObserveExporter()],
+        exporters: [new MastraStorageExporter(), new MastraObserveExporter()],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
     },
@@ -221,4 +221,4 @@ MastraObserveExporter uses batching to optimize network usage. Events are buffer
 ## Related
 
 - [Tracing Overview](/docs/observability/tracing/overview)
-- [DefaultExporter](/docs/observability/tracing/exporters/default)
+- [MastraStorageExporter](/docs/observability/tracing/exporters/default)

@@ -48,6 +48,7 @@ const EXPORT_TO_SUBPATH: Record<string, string> = {
 
   // Tracing
   DefaultExporter: '@mastra/observability',
+  MastraStorageExporter: '@mastra/observability',
   CloudExporter: '@mastra/observability',
   MastraObserveExporter: '@mastra/observability',
 

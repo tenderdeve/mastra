@@ -566,7 +566,7 @@ For detailed information about flow control options and their behavior, see the 
 This example uses `@mastra/observability` to trace workflow execution. The configuration is in `index.ts`:
 
 ```ts
-import { Observability, ConsoleExporter, DefaultExporter } from '@mastra/observability';
+import { Observability, ConsoleExporter, MastraStorageExporter } from '@mastra/observability';
 
 const observability = new Observability({
   configs: {
@@ -575,7 +575,7 @@ const observability = new Observability({
       sampling: { type: 'always' }, // Sample all traces
       exporters: [
         new ConsoleExporter(), // Logs traces to console
-        new DefaultExporter(), // Persists traces to storage
+        new MastraStorageExporter(), // Persists traces to storage
       ],
     },
   },

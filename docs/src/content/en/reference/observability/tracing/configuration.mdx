@@ -24,7 +24,7 @@ interface ObservabilityRegistryConfig {
   {
     name: 'default',
     type: '{ enabled?: boolean }',
-    description: 'Enable default configuration with DefaultExporter and MastraObserveExporter',
+    description: 'Enable default configuration with MastraStorageExporter and MastraObserveExporter',
     required: false,
   },
   {
@@ -318,7 +318,7 @@ Shuts down all observability instances and clears the registry.
 
 ### Exporters
 
-- [DefaultExporter](/reference/observability/tracing/exporters/default-exporter): Storage configuration
+- [MastraStorageExporter](/reference/observability/tracing/exporters/default-exporter): Storage configuration
 - [MastraObserveExporter](/reference/observability/tracing/exporters/cloud-exporter): Mastra Observe setup
 - [Braintrust](/reference/observability/tracing/exporters/braintrust): Braintrust integration
 - [Langfuse](/reference/observability/tracing/exporters/langfuse): Langfuse integration

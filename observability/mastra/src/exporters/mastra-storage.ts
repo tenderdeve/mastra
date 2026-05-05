@@ -23,8 +23,8 @@ import { BaseExporter } from './base';
 import { EventBuffer } from './event-buffer';
 import type { BufferedEvent, RetryCount, UpdateSpanPartial } from './event-buffer';
 
-/** Configuration for the DefaultExporter's batching, retry, and strategy behavior. */
-interface DefaultExporterConfig extends BaseExporterConfig {
+/** Configuration for the MastraStorageExporter's batching, retry, and strategy behavior. */
+export interface MastraStorageExporterConfig extends BaseExporterConfig {
   maxBatchSize?: number; // Default: 1000 spans
   maxBufferSize?: number; // Default: 10000 spans
   maxBatchWaitMs?: number; // Default: 5000ms
@@ -39,7 +39,7 @@ interface DefaultExporterConfig extends BaseExporterConfig {
  * Resolves the final tracing storage strategy based on config and observability store hints
  */
 function resolveTracingStorageStrategy(
-  config: DefaultExporterConfig,
+  config: MastraStorageExporterConfig,
   observabilityStorage: ObservabilityStorage,
   storageName: string,
   logger: IMastraLogger,
@@ -63,18 +63,13 @@ function resolveTracingStorageStrategy(
 type Resolve = (value: void | PromiseLike<void>) => void;
 
 /**
- * @deprecated Use `MastraStorageExporter` from `@mastra/observability` instead.
- * This class is preserved unchanged so existing integrations (including code
- * that matches on the `mastra-default-observability-exporter` exporter name)
- * keep working. It will be removed in a future major version.
- *
- * Default storage-backed exporter. Buffers observability events and flushes them
- * in batches to the configured ObservabilityStorage backend with retry support.
+ * Storage-backed exporter. Buffers observability events and flushes them in
+ * batches to the configured ObservabilityStorage backend with retry support.
  */
-export class DefaultExporter extends BaseExporter {
-  name = 'mastra-default-observability-exporter';
+export class MastraStorageExporter extends BaseExporter {
+  name = 'mastra-storage-exporter';
 
-  #config: DefaultExporterConfig;
+  #config: MastraStorageExporterConfig;
   #isInitializing = false;
   #initPromises: Set<Resolve> = new Set();
   #eventBuffer: EventBuffer;
@@ -87,7 +82,7 @@ export class DefaultExporter extends BaseExporter {
   // Signals whose storage methods threw "not implemented" — skip on future flushes
   #unsupportedSignals: Set<string> = new Set();
 
-  constructor(config: DefaultExporterConfig = {}) {
+  constructor(config: MastraStorageExporterConfig = {}) {
     super(config);
 
     // Set default configuration
@@ -113,14 +108,14 @@ export class DefaultExporter extends BaseExporter {
 
       this.#storage = options.mastra?.getStorage();
       if (!this.#storage) {
-        this.logger.warn('DefaultExporter disabled: Storage not available. Traces will not be persisted.');
+        this.logger.warn('MastraStorageExporter disabled: Storage not available. Traces will not be persisted.');
         return;
       }
 
       this.#observabilityStorage = await this.#storage.getStore('observability');
       if (!this.#observabilityStorage) {
         this.logger.warn(
-          'DefaultExporter disabled: Observability storage not available. Traces will not be persisted.',
+          'MastraStorageExporter disabled: Observability storage not available. Traces will not be persisted.',
         );
         return;
       }
@@ -499,6 +494,6 @@ export class DefaultExporter extends BaseExporter {
     // Flush any remaining events
     await this.flush();
 
-    this.logger.info('DefaultExporter shutdown complete');
+    this.logger.info('MastraStorageExporter shutdown complete');
   }
 }

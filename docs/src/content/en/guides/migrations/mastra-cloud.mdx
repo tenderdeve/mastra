@@ -233,7 +233,7 @@ export const mastra = new Mastra({
 import { Mastra } from '@mastra/core/mastra'
 import {
   Observability,
-  DefaultExporter,
+  MastraStorageExporter,
   MastraObserveExporter,
   SensitiveDataFilter,
 } from '@mastra/observability'
@@ -243,7 +243,7 @@ export const mastra = new Mastra({
     configs: {
       default: {
         serviceName: 'my-app',
-        exporters: [new DefaultExporter(), new MastraObserveExporter()],
+        exporters: [new MastraStorageExporter(), new MastraObserveExporter()],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
     },
@@ -251,7 +251,7 @@ export const mastra = new Mastra({
 })
 ```
 
-- `DefaultExporter` persists traces to your storage backend for [Studio](/docs/studio/observability).
+- `MastraStorageExporter` persists traces to your storage backend for [Studio](/docs/studio/observability).
 - `MastraObserveExporter` Sends observability data to hosted Mastra Studio when `MASTRA_CLOUD_ACCESS_TOKEN` is set.
 - `SensitiveDataFilter` redacts passwords, tokens, and keys from span data before export.
 
