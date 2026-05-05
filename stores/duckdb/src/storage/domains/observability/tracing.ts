@@ -19,7 +19,7 @@ import type {
   SpanRecord,
   LiveCursor,
 } from '@mastra/core/storage';
-import { BRANCH_SPAN_TYPES, listBranchesArgsSchema, listTracesArgsSchema, toTraceSpans } from '@mastra/core/storage';
+import { BRANCH_SPAN_TYPES, toTraceSpans } from '@mastra/core/storage';
 import type { DuckDBConnection } from '../../db/index';
 import { buildWhereClause, buildOrderByClause, buildPaginationClause } from './filters';
 import {
@@ -29,6 +29,7 @@ import {
   jsonV,
   parseJson,
   parseJsonArray,
+  normalizeObservabilityListArgs,
   toDate,
   toDateOrNull,
   v,
@@ -465,7 +466,9 @@ export async function getTraceLight(db: DuckDBConnection, args: GetTraceArgs): P
 
 /** List root spans (traces) with filtering, ordering, and pagination. */
 export async function listTraces(db: DuckDBConnection, args: ListTracesArgs): Promise<ListTracesResponse> {
-  const parsed = listTracesArgsSchema.parse(args);
+  const parsed = normalizeObservabilityListArgs(args, {
+    orderBy: { field: 'startedAt', direction: 'DESC' } as const,
+  });
   const filters = parsed.filters ?? {};
   const { clause: filterClause, params: filterParams } = buildWhereClause(filters as Record<string, unknown>);
 
@@ -637,7 +640,9 @@ export async function getSpans(db: DuckDBConnection, args: GetSpansArgs): Promis
  * (MODEL_STEP, MODEL_CHUNK, etc.) that are never anchors.
  */
 export async function listBranches(db: DuckDBConnection, args: ListBranchesArgs): Promise<ListBranchesResponse> {
-  const parsed = listBranchesArgsSchema.parse(args);
+  const parsed = normalizeObservabilityListArgs(args, {
+    orderBy: { field: 'startedAt', direction: 'DESC' } as const,
+  });
   const filters = parsed.filters ?? {};
 
   const { spanType, ...passthroughFilters } = filters as Record<string, unknown>;

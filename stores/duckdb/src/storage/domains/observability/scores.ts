@@ -15,11 +15,20 @@ import type {
   AggregationType,
   LiveCursor,
 } from '@mastra/core/storage';
-import { listScoresArgsSchema } from '@mastra/core/storage';
 import { parseFieldKey } from '@mastra/core/utils';
 import type { DuckDBConnection } from '../../db/index';
 import { buildWhereClause, buildOrderByClause, buildPaginationClause } from './filters';
-import { createIngestedAt, createLiveCursor, createSyntheticNowCursor, v, jsonV, toDate, parseJson, parseJsonArray } from './helpers';
+import {
+  createIngestedAt,
+  createLiveCursor,
+  createSyntheticNowCursor,
+  normalizeObservabilityListArgs,
+  v,
+  jsonV,
+  toDate,
+  parseJson,
+  parseJsonArray,
+} from './helpers';
 
 type LegacyScoreRecord = CreateScoreArgs['score'] & {
   source?: string | null;
@@ -371,7 +380,9 @@ export async function batchCreateScores(db: DuckDBConnection, args: BatchCreateS
 
 /** Query score events with filtering, ordering, and pagination. */
 export async function listScores(db: DuckDBConnection, args: ListScoresArgs): Promise<ListScoresResponse> {
-  const parsed = listScoresArgsSchema.parse(args);
+  const parsed = normalizeObservabilityListArgs(args, {
+    orderBy: { field: 'timestamp', direction: 'DESC' } as const,
+  });
   const filters = parsed.filters ?? {};
   const filter = buildWhereClause(filters as Record<string, unknown>, {
     source: 'scoreSource',
