@@ -28,7 +28,8 @@ describe('workspace skill path definitions', () => {
     const fs = await import('node:fs');
     const source = fs.readFileSync(path.join(cwd, 'src/agents/workspace.ts'), 'utf-8');
 
-    expect(source).toContain('const allowedPaths = [...allowedSkillPaths');
+    expect(source).toContain('const allowedPaths = [');
+    expect(source).toContain('...allowedSkillPaths,');
     expect(source).toContain('...(skillPaths.length > 0 ? { skills: skillPaths } : {}),');
   });
 
