@@ -2,6 +2,7 @@ import { Container } from '@mariozechner/pi-tui';
 import type { HarnessMessage } from '@mastra/core/harness';
 import { describe, expect, it, vi } from 'vitest';
 
+import { SlashCommandComponent } from '../components/slash-command.js';
 import { SubagentExecutionComponent } from '../components/subagent-execution.js';
 import { TemporalGapComponent } from '../components/temporal-gap.js';
 import { UserMessageComponent } from '../components/user-message.js';
@@ -48,6 +49,18 @@ function createReminderMessage(
 }
 
 describe('addUserMessage', () => {
+  it('dedupes echoed slash command messages against the optimistic slash component', () => {
+    const state = createState();
+    const slashComp = new SlashCommandComponent('deploy', 'custom output');
+    state.allSlashCommandComponents.push(slashComp);
+    state.chatContainer.addChild(slashComp);
+
+    addUserMessage(state, createUserMessage('<slash-command name="deploy">\ncustom output\n</slash-command>', 'signal-slash'));
+
+    expect(state.chatContainer.children).toEqual([slashComp]);
+    expect(state.messageComponentsById.get('signal-slash')).toBe(slashComp);
+  });
+
   it('renders a persisted temporal-gap marker from canonical system reminder content', () => {
     const state = createState();
 
