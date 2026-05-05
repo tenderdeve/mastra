@@ -2,30 +2,60 @@ import * as p from '@clack/prompts';
 import { fetchOrgs } from './api.js';
 import { getToken, getCurrentOrgId, setCurrentOrgId } from './credentials.js';
 
+export interface ResolveCurrentOrgOptions {
+  /**
+   * If true and the user belongs to multiple orgs, always show the picker
+   * (with the persisted current org pre-selected) instead of silently
+   * reusing the persisted choice. Useful for "create a new project"-style
+   * flows where the user should consciously choose the target org.
+   *
+   * Ignored if MASTRA_ORG_ID is set or the user only belongs to one org.
+   */
+  forcePrompt?: boolean;
+}
+
 /**
  * Resolve the current org, auto-selecting if only one exists.
  * If multiple orgs exist and none is currently set, prompts the user.
+ * Pass `{ forcePrompt: true }` to always prompt when there's more than one
+ * org, even if a current org is persisted.
  */
-export async function resolveCurrentOrg(token: string): Promise<{ orgId: string; orgName: string }> {
-  const currentOrgId = await getCurrentOrgId();
+export async function resolveCurrentOrg(
+  token: string,
+  opts: ResolveCurrentOrgOptions = {},
+): Promise<{ orgId: string; orgName: string }> {
   const orgs = await fetchOrgs(token);
 
-  if (currentOrgId) {
-    const match = orgs.find(o => o.id === currentOrgId);
-    if (match) return { orgId: match.id, orgName: match.name };
+  if (orgs.length === 0) {
+    throw new Error('No organizations found.');
   }
 
   if (orgs.length === 1) {
     return { orgId: orgs[0]!.id, orgName: orgs[0]!.name };
   }
 
-  if (orgs.length === 0) {
-    throw new Error('No organizations found.');
+  // MASTRA_ORG_ID always wins; never prompt in headless/CI mode.
+  const envOrgId = process.env.MASTRA_ORG_ID;
+  if (envOrgId) {
+    const match = orgs.find(o => o.id === envOrgId);
+    if (match) return { orgId: match.id, orgName: match.name };
+  }
+
+  const currentOrgId = await getCurrentOrgId();
+
+  if (!opts.forcePrompt && currentOrgId) {
+    const match = orgs.find(o => o.id === currentOrgId);
+    if (match) return { orgId: match.id, orgName: match.name };
   }
 
   const selected = await p.select({
     message: 'Select an organization',
-    options: orgs.map(o => ({ value: o.id, label: `${o.name} (${o.id})` })),
+    initialValue: currentOrgId ?? undefined,
+    options: orgs.map(o => ({
+      value: o.id,
+      label: `${o.name}${o.id === currentOrgId ? ' (current)' : ''}`,
+      hint: o.id,
+    })),
   });
 
   if (p.isCancel(selected)) {
@@ -34,6 +64,12 @@ export async function resolveCurrentOrg(token: string): Promise<{ orgId: string;
   }
 
   const org = orgs.find(o => o.id === selected)!;
+
+  // Persist the choice so subsequent CLI commands stay in the same org.
+  if (org.id !== currentOrgId) {
+    await setCurrentOrgId(org.id);
+  }
+
   return { orgId: org.id, orgName: org.name };
 }
 

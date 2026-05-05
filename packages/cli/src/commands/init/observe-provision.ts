@@ -66,7 +66,7 @@ export async function provisionObserveProject({
   mode?: 'create' | 'pick';
 } = {}): Promise<ObserveProvisionResult> {
   const token = await getToken();
-  const { orgId, orgName } = await resolveCurrentOrg(token);
+  const { orgId, orgName } = await resolveCurrentOrg(token, { forcePrompt: true });
 
   let project: ObserveProject;
   if (observeProject) {
