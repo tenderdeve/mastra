@@ -123,6 +123,7 @@
     "@mastra/agent-builder": "workspace:*",
     "@mastra/core": "workspace:*",
     "@mastra/schema-compat": "workspace:*",
+    "@types/jws": "^3.2.11",
     "@types/node": "22.19.15",
     "@vitest/coverage-v8": "catalog:",
     "@vitest/ui": "catalog:",
@@ -147,6 +148,8 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
-    "hono": "^4.12.8"
+    "canonicalize": "^1.0.8",
+    "hono": "^4.12.8",
+    "jws": "^4.0.1"
   }
 }

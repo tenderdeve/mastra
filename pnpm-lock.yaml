@@ -4678,9 +4678,15 @@ importers:
 
   packages/server:
     dependencies:
+      canonicalize:
+        specifier: ^1.0.8
+        version: 1.0.8
       hono:
         specifier: ^4.12.8
         version: 4.12.14
+      jws:
+        specifier: ^4.0.1
+        version: 4.0.1
     devDependencies:
       '@ai-sdk/openai':
         specifier: ^1.3.24
@@ -4712,6 +4718,9 @@ importers:
       '@mastra/schema-compat':
         specifier: workspace:*
         version: link:../schema-compat
+      '@types/jws':
+        specifier: ^3.2.11
+        version: 3.2.11
       '@types/node':
         specifier: 22.19.15
         version: 22.19.15
@@ -16269,6 +16278,9 @@ packages:
 
   '@types/jsonwebtoken@9.0.10':
     resolution: {integrity: sha512-asx5hIG9Qmf/1oStypjanR7iKTv0gXQ1Ov/jfrX6kS/EO0OFni8orbmGCn0672NHR3kXHwpAwR+B368ZGN/2rA==}
+
+  '@types/jws@3.2.11':
+    resolution: {integrity: sha512-OOaTrLV6XdF1XvBgMeH1MjNuOaGCrRZWNSIds1AQaRgLdOWlAk2yMsfrJn+ekLgUow3xksWIM231lyFab7mHHw==}
 
   '@types/katex@0.16.8':
     resolution: {integrity: sha512-trgaNyfU+Xh2Tc+ABIb44a5AYUpicB3uwirOioeOkNPPbmgRNtcWyDeeFRzjPZENO9Vq8gvVqfhaaXWLlevVwg==}
@@ -38315,6 +38327,10 @@ snapshots:
   '@types/jsonwebtoken@9.0.10':
     dependencies:
       '@types/ms': 2.1.0
+      '@types/node': 22.19.15
+
+  '@types/jws@3.2.11':
+    dependencies:
       '@types/node': 22.19.15
 
   '@types/katex@0.16.8': {}
