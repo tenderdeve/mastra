@@ -25,7 +25,12 @@ import { z } from 'zod/v4';
 import { HTTPException } from '../http-exception';
 import { createRoute, pickParams, wrapSchemaForQueryParams } from '../server-adapter/routes/route-builder';
 import { handleError } from './error';
-import { createObservabilityListQuerySchema, getObservabilityStore, getStorage } from './observability-shared';
+import {
+  assertObservabilityDeltaSupported,
+  createObservabilityListQuerySchema,
+  getObservabilityStore,
+  getStorage,
+} from './observability-shared';
 
 export * from './observability-new-endpoints';
 
@@ -121,6 +126,7 @@ export const LIST_TRACES_ROUTE = createRoute({
       const filters = pickParams(tracesFilterSchema, transformedParams);
       const observabilityStore = await getObservabilityStore(mastra);
       if (mode === 'delta') {
+        assertObservabilityDeltaSupported(observabilityStore, 'traces');
         return await observabilityStore.listTraces({
           mode,
           filters,
@@ -131,7 +137,9 @@ export const LIST_TRACES_ROUTE = createRoute({
 
       const pagination = pickParams(paginationArgsSchema, transformedParams);
       const orderBy = pickParams(tracesOrderBySchema, transformedParams);
-      return await observabilityStore.listTraces(mode === 'page' ? { mode, filters, pagination, orderBy } : { filters, pagination, orderBy });
+      return await observabilityStore.listTraces(
+        mode === 'page' ? { mode, filters, pagination, orderBy } : { filters, pagination, orderBy },
+      );
     } catch (error) {
       return handleError(error, 'Error listing traces');
     }
@@ -154,6 +162,7 @@ export const LIST_BRANCHES_ROUTE = createRoute({
       const filters = pickParams(branchesFilterSchema, params);
       const observabilityStore = await getObservabilityStore(mastra);
       if (mode === 'delta') {
+        assertObservabilityDeltaSupported(observabilityStore, 'branches');
         return await observabilityStore.listBranches({
           mode,
           filters,
