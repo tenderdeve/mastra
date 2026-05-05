@@ -14,6 +14,7 @@ import type { Agent } from '@mastra/core/agent';
 import type { IMastraLogger } from '@mastra/core/logger';
 import type { RequestContext } from '@mastra/core/request-context';
 import { z } from 'zod/v4';
+import { signAgentCard } from '../a2a/agent-card-signing';
 import { convertToCoreMessage, normalizeError, createSuccessResponse } from '../a2a/protocol';
 import type { InMemoryTaskStore } from '../a2a/store';
 import { applyUpdateToTask, createTaskContext, loadOrCreateTask } from '../a2a/tasks';
@@ -121,7 +122,15 @@ export async function getAgentCardByIdHandler({
     })),
   };
 
-  return agentCard;
+  const signing = mastra.getServer?.()?.a2a?.agentCardSigning;
+  if (!signing) {
+    return agentCard;
+  }
+
+  return signAgentCard({
+    agentCard,
+    signing,
+  });
 }
 
 function getA2AExecutionUrl({

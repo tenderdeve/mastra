@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { openai } from '@ai-sdk/openai';
 import type { Task, MessageSendParams } from '@mastra/core/a2a';
 import { MastraA2AError } from '@mastra/core/a2a';
@@ -6,6 +7,8 @@ import { Agent } from '@mastra/core/agent';
 import { Mastra } from '@mastra/core/mastra';
 import { RequestContext } from '@mastra/core/request-context';
 import type { MastraStorage } from '@mastra/core/storage';
+import canonicalize from 'canonicalize';
+import jws from 'jws';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryTaskStore } from '../a2a/store';
 import {
@@ -208,6 +211,59 @@ describe('A2A Handler', () => {
       } as any);
 
       expect(response.url).toBe('http://localhost:4111/api/a2a/test-agent');
+    });
+
+    it('should sign the agent card when A2A signing is configured', async () => {
+      const { privateKey, publicKey } = generateKeyPairSync('ec', {
+        namedCurve: 'P-256',
+      });
+      const privateJwk = privateKey.export({ format: 'jwk' });
+      mockMastra.setServer({
+        a2a: {
+          agentCardSigning: {
+            privateKey: privateJwk,
+            protectedHeader: {
+              alg: 'ES256',
+              kid: 'test-key',
+            },
+            header: {
+              issuer: 'mastra-test',
+            },
+          },
+        },
+      } as any);
+
+      const agentCard = await getAgentCardByIdHandler({
+        mastra: mockMastra,
+        requestContext: new RequestContext(),
+        agentId: 'test-agent',
+      });
+
+      expect(agentCard.signatures).toHaveLength(1);
+
+      const [signature] = agentCard.signatures!;
+      const unsignedCard = structuredClone(agentCard) as typeof agentCard & {
+        signatures?: typeof agentCard.signatures;
+      };
+      delete unsignedCard.signatures;
+      const canonicalPayload = canonicalize(unsignedCard);
+
+      expect(canonicalPayload).toBeTruthy();
+
+      const verification = jws.verify(
+        `${signature.protected}.${Buffer.from(canonicalPayload!).toString('base64url')}.${signature.signature}`,
+        'ES256',
+        publicKey,
+      );
+
+      expect(verification).toBe(true);
+      expect(JSON.parse(Buffer.from(signature.protected, 'base64url').toString('utf8'))).toMatchObject({
+        alg: 'ES256',
+        kid: 'test-key',
+      });
+      expect(signature.header).toEqual({
+        issuer: 'mastra-test',
+      });
     });
   });
 
