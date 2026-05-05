@@ -869,6 +869,91 @@ describe('createLLMExecutionStep gateway provider tools', () => {
     );
   });
 
+  it('runs processLLMPrompt from both prompt-specific and direct input processor lists', async () => {
+    const appendToUserPrompt =
+      (suffix: string) =>
+      async ({ prompt }: any) =>
+        prompt.map((message: any) => {
+          if (message.role !== 'user') return message;
+          const text = Array.isArray(message.content)
+            ? message.content.find((part: any) => part.type === 'text')?.text
+            : message.content;
+          return {
+            ...message,
+            content: [{ type: 'text' as const, text: `${text} ${suffix}` }],
+          };
+        });
+    const llmPromptProcessor = vi.fn(appendToUserPrompt('from prompt list'));
+    const inputProcessor = vi.fn(appendToUserPrompt('from input list'));
+    const doStream = vi.fn(async () => ({
+      stream: convertArrayToReadableStream([
+        {
+          type: 'finish',
+          finishReason: 'stop',
+          usage: testUsage,
+        },
+      ]),
+      request: {},
+      response: { headers: undefined },
+      warnings: [],
+    }));
+
+    const llmExecutionStep = createLLMExecutionStep({
+      agentId: 'test-agent',
+      messageId: 'msg-0',
+      runId: 'test-run',
+      startTimestamp: Date.now(),
+      methodType: 'stream',
+      controller,
+      outputWriter: vi.fn(),
+      messageList,
+      models: [
+        {
+          id: 'test-model',
+          maxRetries: 0,
+          model: {
+            specificationVersion: 'v2' as const,
+            provider: 'mock-provider',
+            modelId: 'mock-model-id',
+            supportedUrls: {},
+            doGenerate: vi.fn(),
+            doStream,
+          } as any,
+        },
+      ],
+      llmPromptInputProcessors: [{ id: 'llm-prompt-processor', processLLMPrompt: llmPromptProcessor }],
+      inputProcessors: [{ id: 'input-prompt-processor', processLLMPrompt: inputProcessor }],
+      tools: {},
+      streamState: {
+        serialize: vi.fn(),
+        deserialize: vi.fn(),
+      },
+      _internal: {
+        generateId: () => 'generated-id',
+        threadId: 'thread-123',
+        resourceId: 'resource-456',
+      },
+      logger: {
+        error: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      } as any,
+    } as unknown as OuterLLMRun<{}>);
+
+    await llmExecutionStep.execute(createExecuteParams(createIterationInput()));
+
+    expect(llmPromptProcessor).toHaveBeenCalledOnce();
+    expect(inputProcessor).toHaveBeenCalledOnce();
+    expect(doStream.mock.calls[0]?.[0]?.prompt).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: [{ type: 'text', text: 'Find the latest AI agent news from prompt list from input list' }],
+        }),
+      ]),
+    );
+  });
+
   it('strips foreign reasoning history before sending prompts to Anthropic models', async () => {
     messageList.add(
       {

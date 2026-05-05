@@ -37,6 +37,12 @@ export type AgentCapabilities = {
         requestContext: RequestContext;
         overrides?: InputProcessorOrWorkflow[];
       }) => Promise<InputProcessorOrWorkflow[]> | InputProcessorOrWorkflow[]);
+  llmPromptInputProcessors?:
+    | InputProcessorOrWorkflow[]
+    | ((args: {
+        requestContext: RequestContext;
+        overrides?: InputProcessorOrWorkflow[];
+      }) => Promise<InputProcessorOrWorkflow[]> | InputProcessorOrWorkflow[]);
   errorProcessors?:
     | ErrorProcessorOrWorkflow[]
     | ((args: {

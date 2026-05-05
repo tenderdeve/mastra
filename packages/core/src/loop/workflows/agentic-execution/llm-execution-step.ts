@@ -16,7 +16,8 @@ import type { IMastraLogger } from '../../../logger';
 import { ConsoleLogger } from '../../../logger';
 import { createObservabilityContext, SpanType } from '../../../observability';
 import { executeWithContextSync } from '../../../observability/utils';
-import type { ProcessorStreamWriter } from '../../../processors/index';
+import type { InputProcessorOrWorkflow, ProcessorStreamWriter } from '../../../processors/index';
+import { isProcessorWorkflow } from '../../../processors/index';
 import { PrepareStepProcessor } from '../../../processors/processors/prepare-step';
 import { ProcessorRunner } from '../../../processors/runner';
 import { RequestContext } from '../../../request-context';
@@ -45,6 +46,33 @@ import { buildMessagesFromChunks } from './build-messages-from-chunks';
 import type { CollectedChunk } from './build-messages-from-chunks';
 import { resolveConfiguredToolCallConcurrency, updateToolCallForeachConcurrency } from './tool-call-concurrency';
 import type { ToolCallForeachOptions } from './tool-call-concurrency';
+
+function getPromptInputProcessors({
+  inputProcessors,
+  llmPromptInputProcessors,
+}: {
+  inputProcessors?: InputProcessorOrWorkflow[];
+  llmPromptInputProcessors?: InputProcessorOrWorkflow[];
+}): InputProcessorOrWorkflow[] {
+  if (!llmPromptInputProcessors?.length) {
+    return inputProcessors || [];
+  }
+
+  if (!inputProcessors?.length) {
+    return llmPromptInputProcessors;
+  }
+
+  const promptProcessorIds = new Set(
+    llmPromptInputProcessors.filter(processor => !isProcessorWorkflow(processor)).map(processor => processor.id),
+  );
+  const additionalInputProcessors = inputProcessors.filter(
+    processor => !isProcessorWorkflow(processor) && !promptProcessorIds.has(processor.id),
+  );
+
+  return additionalInputProcessors.length
+    ? [...llmPromptInputProcessors, ...additionalInputProcessors]
+    : llmPromptInputProcessors;
+}
 
 type ProcessOutputStreamOptions<OUTPUT = undefined> = {
   tools?: ToolSet;
@@ -408,6 +436,7 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
   structuredOutput,
   outputProcessors,
   inputProcessors,
+  llmPromptInputProcessors,
   errorProcessors,
   logger,
   agentId,
@@ -787,12 +816,10 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
 
           // Run `processLLMPrompt` for any input processors that implement it.
           // This hook lets processors rewrite the outbound prompt transiently
-          // (without persisting changes back to the message list). We always
-          // run it because some compat fixes (e.g. Cerebras `reasoning_content`
-          // strip) auto-inject built-in processors based on the resolved model.
+          // without persisting changes back to the message list.
           {
             const promptStepRunner = new ProcessorRunner({
-              inputProcessors: inputProcessors || [],
+              inputProcessors: getPromptInputProcessors({ inputProcessors, llmPromptInputProcessors }),
               outputProcessors: [],
               logger: logger || new ConsoleLogger({ level: 'error' }),
               agentName: agentId || 'unknown',
