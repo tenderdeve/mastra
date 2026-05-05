@@ -501,6 +501,7 @@ export interface ActiveToolState {
  */
 export interface ActiveSubagentState {
   agentType: string;
+  displayName?: string;
   task: string;
   modelId?: string;
   forked?: boolean;
@@ -510,6 +511,8 @@ export interface ActiveSubagentState {
   durationMs?: number;
   result?: string;
 }
+
+export type HarnessSubagentHistoryEntry = Omit<ActiveSubagentState, 'status'>;
 
 /**
  * Controls whether an `ask_user` prompt accepts one choice or multiple choices.
