@@ -98,6 +98,7 @@ import type {
 import { MessageList } from './message-list';
 import type { MessageInput, MessageListInput, UIMessageWithMetadata, MastraDBMessage } from './message-list';
 import { SaveQueueManager } from './save-queue';
+import type { CreatedAgentSignal } from './signals';
 import { runStreamUntilIdle } from './stream-until-idle';
 import { AgentThreadStreamRuntime } from './thread-stream-runtime';
 import { TripWire } from './trip-wire';
@@ -5296,6 +5297,8 @@ export class Agent<
             agentBackgroundConfig: this.#backgroundTasks,
           }),
       skipBgTaskWait: options._skipBgTaskWait,
+      drainPendingSignals: this.#getThreadStreamRuntime().drainPendingSignals.bind(this.#getThreadStreamRuntime()),
+      initialSignalEchoes: options._initialSignalEchoes,
     });
 
     const run = await executionWorkflow.createRun();
@@ -5841,7 +5844,7 @@ export class Agent<
   sendSignal<OUTPUT = TOutput>(
     signal: AgentSignal,
     target: SendAgentSignalOptions<OUTPUT>,
-  ): { accepted: true; runId: string } {
+  ): { accepted: true; runId: string; signal: CreatedAgentSignal } {
     return this.#getThreadStreamRuntime().sendSignal(this as Agent<any, any, any, any>, signal, target);
   }
 
@@ -5930,8 +5933,16 @@ export class Agent<
 
     await this.#getThreadStreamRuntime().waitForCrossAgentThreadRun(this as Agent<any, any, any, any>, mergedOptions);
 
+    mergedOptions.runId ??=
+      this.#mastra?.generateId({
+        idType: 'run',
+        source: 'agent',
+        entityId: this.id,
+      }) ?? randomUUID();
+    const preparedOptions = this.#getThreadStreamRuntime().prepareRunOptions(mergedOptions);
+
     const executeOptions = {
-      ...mergedOptions,
+      ...preparedOptions,
       structuredOutput: mergedOptions.structuredOutput
         ? {
             ...mergedOptions.structuredOutput,
@@ -5971,7 +5982,7 @@ export class Agent<
     this.#getThreadStreamRuntime().registerRun(
       this as Agent<any, any, any, any>,
       result.result,
-      mergedOptions as AgentExecutionOptions<OUTPUT>,
+      preparedOptions as AgentExecutionOptions<OUTPUT>,
     );
 
     return result.result;
