@@ -71,6 +71,26 @@ describe('api command executor', () => {
     expect(process.exitCode).toBeUndefined();
   });
 
+  it('forwards --header values to API requests', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([{ id: 'agent-1' }]));
+
+    await executeDescriptor(API_COMMANDS.agentList, [], undefined, {
+      url: 'https://example.com',
+      header: ['Authorization: Bearer cli-test-token', 'X-Test-Run: auth-smoke'],
+      pretty: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('https://example.com/api/agents', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer cli-test-token', 'X-Test-Run': 'auth-smoke' },
+      signal: expect.any(AbortSignal),
+    });
+    expect(JSON.parse(stdout)).toEqual({
+      data: [{ id: 'agent-1' }],
+      page: { total: 1, page: 0, perPage: 1, hasMore: false },
+    });
+  });
+
   it('runs an agent with JSON body and writes concise normalized output', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
