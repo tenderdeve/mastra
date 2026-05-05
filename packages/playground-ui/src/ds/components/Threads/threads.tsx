@@ -1,6 +1,6 @@
 import type { ElementType } from 'react';
 import { X } from 'lucide-react';
-import { IconButton } from '@/ds/components/IconButton';
+import { Button } from '@/ds/components/Button';
 import { transitions } from '@/ds/primitives/transitions';
 import { cn } from '@/lib/utils';
 
@@ -80,10 +80,10 @@ export const ThreadDeleteButton = ({
   className,
 }: ThreadDeleteButtonProps) => {
   return (
-    <IconButton
+    <Button
       tooltip={tooltip}
       variant="ghost"
-      size="sm"
+      size="icon-sm"
       className={cn(
         'shrink-0 opacity-0',
         transitions.all,
@@ -94,6 +94,6 @@ export const ThreadDeleteButton = ({
       onClick={onClick}
     >
       <X aria-label="delete thread" className="text-neutral3 hover:text-accent2 transition-colors" />
-    </IconButton>
+    </Button>
   );
 };
