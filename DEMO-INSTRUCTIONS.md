@@ -78,7 +78,7 @@ git checkout demo/agent-builder-brandon
 
 ```bash
 pnpm install
-cd examples/agent
+cd examples/agent-builder
 pnpm install --ignore-workspace
 ```
 
@@ -88,7 +88,7 @@ pnpm install --ignore-workspace
 cp .env.example .env
 ```
 
-Edit `examples/agent/.env`:
+Edit `examples/agent-builder/.env`:
 
 ```bash
 # Required — server won't start without this (OpenAIVoice needs it at startup)
@@ -118,7 +118,7 @@ cd ../..
 pnpm build
 
 # Start the dev server
-cd examples/agent
+cd examples/agent-builder
 pnpm mastra:dev
 ```
 
@@ -250,7 +250,7 @@ With `AUTH_PROVIDER=workos`, login is via Google SSO. The current role mapping:
 To wipe everything and start fresh:
 
 ```bash
-cd examples/agent
+cd examples/agent-builder
 pnpm clean
 rm -f mastra.db   # pnpm clean doesn't remove this
 pnpm mastra:dev
