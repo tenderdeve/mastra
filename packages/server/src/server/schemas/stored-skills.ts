@@ -98,6 +98,10 @@ export const updateStoredSkillBodySchema = z
       .enum(['private', 'public'])
       .optional()
       .describe('Skill visibility: private (owner/admin only) or public (any reader)'),
+    status: z
+      .enum(['draft', 'published'])
+      .optional()
+      .describe('Skill status: draft (not live, owner-only) or published (live, visibility applies)'),
   })
   .partial()
   .merge(snapshotConfigSchema.partial());

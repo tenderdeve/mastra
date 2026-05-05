@@ -390,6 +390,7 @@ export const UPDATE_STORED_SKILL_ROUTE = createRoute({
     // Entity-level fields
     authorId,
     visibility,
+    status,
     // Config fields (snapshot-level)
     name,
     description,
@@ -443,6 +444,7 @@ export const UPDATE_STORED_SKILL_ROUTE = createRoute({
         id: storedSkillId,
         authorId,
         visibility: resolvedVisibility,
+        status,
         name,
         description,
         instructions,

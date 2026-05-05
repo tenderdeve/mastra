@@ -28,16 +28,46 @@ export default function AgentBuilderAgentsPage() {
   const [search, setSearch] = useState('');
   const { Link: FrameworkLink } = useLinkComponent();
 
-  const listParams = useMemo<ListStoredAgentsParams>(() => {
-    const params: ListStoredAgentsParams = {};
+  const draftParams = useMemo<ListStoredAgentsParams>(() => {
+    const params: ListStoredAgentsParams = { status: 'draft' };
     if (currentUser?.id) {
       params.authorId = currentUser.id;
     }
     return params;
   }, [currentUser?.id]);
 
-  const { data, isLoading, error } = useStoredAgents(listParams, { enabled: !isCurrentUserLoading });
-  const agents = data?.agents ?? [];
+  const publishedParams = useMemo<ListStoredAgentsParams>(() => {
+    const params: ListStoredAgentsParams = { status: 'published' };
+    if (currentUser?.id) {
+      params.authorId = currentUser.id;
+    }
+    return params;
+  }, [currentUser?.id]);
+
+  const {
+    data: draftData,
+    isLoading: isDraftLoading,
+    error: draftError,
+  } = useStoredAgents(draftParams, { enabled: !isCurrentUserLoading });
+  const {
+    data: publishedData,
+    isLoading: isPublishedLoading,
+    error: publishedError,
+  } = useStoredAgents(publishedParams, { enabled: !isCurrentUserLoading });
+
+  const isLoading = isDraftLoading || isPublishedLoading;
+  const error = draftError || publishedError;
+
+  // Merge: draft version wins over published for the same agent ID
+  const agents = useMemo(() => {
+    const draftAgents = draftData?.agents ?? [];
+    const publishedAgents = publishedData?.agents ?? [];
+    const agentMap = new Map(publishedAgents.map(a => [a.id, a]));
+    for (const agent of draftAgents) {
+      agentMap.set(agent.id, agent);
+    }
+    return Array.from(agentMap.values());
+  }, [draftData, publishedData]);
 
   const body = (() => {
     if (isCurrentUserLoading || isLoading) {

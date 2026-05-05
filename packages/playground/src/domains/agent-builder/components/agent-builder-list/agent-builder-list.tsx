@@ -1,5 +1,5 @@
 import type { StoredAgentResponse } from '@mastra/client-js';
-import { Avatar, EmptyState, Icon, Tooltip, TooltipContent, TooltipTrigger } from '@mastra/playground-ui';
+import { Avatar, Badge, EmptyState, Icon, Tooltip, TooltipContent, TooltipTrigger } from '@mastra/playground-ui';
 import { LockIcon, SearchIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { StarButton } from '@/domains/agents/components/star-button';
@@ -86,6 +86,9 @@ export function AgentBuilderList({ agents, search, rowTestId }: AgentBuilderList
               <div className="flex items-center gap-2 min-w-0">
                 <div className="text-ui-md text-neutral6 truncate">{agent.name}</div>
                 {agent.visibility === 'private' && <PrivateVisibilityIcon />}
+                <Badge variant={agent.status === 'published' ? 'success' : 'info'}>
+                  {agent.status === 'published' ? 'Published' : 'Draft'}
+                </Badge>
               </div>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-ui-sm text-neutral3 line-clamp-1">{agent.description || 'No description'}</span>

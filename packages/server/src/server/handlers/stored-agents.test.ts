@@ -778,8 +778,7 @@ describe('Stored Agents Handlers', () => {
       }
     });
 
-    it('should auto-publish by updating activeVersionId when a new version is created', async () => {
-      const newVersionId = 'v-autopub-2';
+    it('should NOT auto-publish (activeVersionId stays unchanged) when a new draft version is created', async () => {
       mockAgentsData.set('autopub-test', {
         id: 'autopub-test',
         name: 'Original Name',
@@ -788,11 +787,8 @@ describe('Stored Agents Handlers', () => {
         activeVersionId: 'v-autopub-1',
       });
 
-      // listVersions is called multiple times: once by enforceRetentionLimit
-      // inside handleAutoVersioning, then again by the auto-publish code.
-      // Return the new version each time so auto-publish can activate it.
       mockAgentsStore.listVersions.mockResolvedValue({
-        versions: [{ id: newVersionId, versionNumber: 2 }],
+        versions: [{ id: 'v-autopub-2', versionNumber: 2 }],
         total: 2,
       });
 
@@ -803,9 +799,9 @@ describe('Stored Agents Handlers', () => {
         instructions: 'Updated instructions',
       });
 
-      // Verify activeVersionId was updated to the latest version
+      // activeVersionId should remain unchanged — publishing is now explicit
       const stored = mockAgentsData.get('autopub-test');
-      expect(stored?.activeVersionId).toBe(newVersionId);
+      expect(stored?.activeVersionId).toBe('v-autopub-1');
     });
   });
 

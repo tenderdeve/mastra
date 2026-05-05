@@ -72,6 +72,9 @@ export const useActivateAgentVersion = ({ agentId }: { agentId: string }) => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['agent-versions', agentId] });
       void queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
+      void queryClient.invalidateQueries({ queryKey: ['stored-agents'] });
+      void queryClient.invalidateQueries({ queryKey: ['agents'] });
+      void queryClient.invalidateQueries({ queryKey: ['stored-agent', agentId] });
     },
   });
 };

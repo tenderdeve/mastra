@@ -436,6 +436,7 @@ export const UPDATE_STORED_AGENT_ROUTE: ServerRoute<
     authorId,
     metadata,
     visibility,
+    status,
     // Config fields (snapshot-level)
     name,
     description,
@@ -511,6 +512,7 @@ export const UPDATE_STORED_AGENT_ROUTE: ServerRoute<
         authorId,
         metadata,
         visibility: resolvedVisibility,
+        status,
         name,
         description,
         instructions,
@@ -571,22 +573,6 @@ export const UPDATE_STORED_AGENT_ROUTE: ServerRoute<
 
       if (!autoVersionResult) {
         throw new Error('handleAutoVersioning returned undefined');
-      }
-
-      // Auto-publish: activate the latest version so the update is immediately
-      // visible in list views. The Agent Builder UI has no separate "Publish"
-      // button, so without this every edit after creation would create orphaned
-      // draft versions that never surface in the list.
-      // When a proper publish flow ships, this block can be removed.
-      if (autoVersionResult.versionCreated) {
-        const { versions } = await agentsStore.listVersions({ agentId: storedAgentId, perPage: 1 });
-        const latestVersion = versions[0];
-        if (latestVersion) {
-          await agentsStore.update({
-            id: storedAgentId,
-            activeVersionId: latestVersion.id,
-          });
-        }
       }
 
       // Clear the cached agent instance so the next request gets the updated config

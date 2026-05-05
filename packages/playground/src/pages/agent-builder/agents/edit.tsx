@@ -1,6 +1,7 @@
 import type { StoredSkillResponse } from '@mastra/client-js';
-import { Button, Spinner } from '@mastra/playground-ui';
-import { CheckIcon } from 'lucide-react';
+import { Button, Spinner, toast } from '@mastra/playground-ui';
+import { useMastraClient } from '@mastra/react';
+import { CheckIcon, SendIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form';
 import { Navigate, useNavigate, useParams } from 'react-router';
@@ -32,6 +33,7 @@ import { useCurrentUser } from '@/domains/auth/hooks/use-current-user';
 import { useTools } from '@/domains/tools/hooks/use-all-tools';
 import { useWorkflows } from '@/domains/workflows/hooks/use-workflows';
 import { useStoredWorkspaces } from '@/domains/workspace/hooks/use-stored-workspaces';
+import { usePlaygroundStore } from '@/store/playground-store';
 
 type ToolsData = NonNullable<ReturnType<typeof useTools>['data']>;
 type AgentsData = NonNullable<ReturnType<typeof useAgents>['data']>;
@@ -208,13 +210,35 @@ const AgentBuilderAgentEditReady = ({
 
   const [activeDetail, setActiveDetail] = useState<ActiveDetail>(null);
 
+  const client = useMastraClient();
+  const { requestContext } = usePlaygroundStore();
   const { save, isSaving } = useSaveAgent({ agentId: id, mode, availableAgentTools, availableSkills });
+  const [isPublishing, setIsPublishing] = useState(false);
 
   const handleSaveSuccess = async (values: AgentBuilderEditFormValues) => {
     await save(values);
     void navigate(`/agent-builder/agents/${id}/view`, { viewTransition: true });
   };
   const handleSave = formMethods.handleSubmit(handleSaveSuccess);
+
+  const handleCreateAndPublish = formMethods.handleSubmit(async (values: AgentBuilderEditFormValues) => {
+    setIsPublishing(true);
+    try {
+      const created = await save(values);
+      if (created?.id) {
+        const { versions } = await client.getStoredAgent(created.id).listVersions(undefined, requestContext);
+        if (versions.length > 0) {
+          await client.getStoredAgent(created.id).activateVersion(versions[0]!.id, requestContext);
+          toast.success('Agent published');
+        }
+      }
+      void navigate(`/agent-builder/agents/${id}/view`, { viewTransition: true });
+    } catch (error) {
+      toast.error(`Failed to publish: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsPublishing(false);
+    }
+  });
 
   return (
     <ConversationPanelProvider
@@ -242,7 +266,15 @@ const AgentBuilderAgentEditReady = ({
             <VisibilitySelectConnected />
           </div>
         }
-        primaryAction={<HeaderActions mode={mode} isSaving={isSaving} onSave={handleSave} />}
+        primaryAction={
+          <HeaderActions
+            mode={mode}
+            isSaving={isSaving}
+            isPublishing={isPublishing}
+            onSave={handleSave}
+            onCreateAndPublish={mode === 'create' ? handleCreateAndPublish : undefined}
+          />
+        }
         mobileExtra={
           <AgentBuilderMobileMenuConnected
             agentId={id}
@@ -294,17 +326,30 @@ const AgentBuilderMobileMenuConnected = ({
 interface HeaderActionsProps {
   mode: 'create' | 'edit';
   isSaving: boolean;
+  isPublishing: boolean;
   onSave: () => void;
+  onCreateAndPublish?: () => void;
 }
 
-const HeaderActions = ({ mode, isSaving, onSave }: HeaderActionsProps) => {
+const HeaderActions = ({ mode, isSaving, isPublishing, onSave, onCreateAndPublish }: HeaderActionsProps) => {
   const isRunning = useStreamRunning();
-  const disabled = isSaving || isRunning;
+  const busy = isSaving || isPublishing || isRunning;
   return (
     <div className="flex items-center gap-2">
-      <Button size="sm" variant="cta" onClick={onSave} disabled={disabled} data-testid="agent-builder-edit-save">
-        <CheckIcon /> {isSaving ? 'Saving…' : mode === 'edit' ? 'Save' : 'Create'}
+      <Button size="sm" variant="default" onClick={onSave} disabled={busy} data-testid="agent-builder-edit-save">
+        <CheckIcon /> {isSaving ? 'Saving…' : mode === 'edit' ? 'Save' : 'Save as draft'}
       </Button>
+      {mode === 'create' && onCreateAndPublish && (
+        <Button
+          size="sm"
+          variant="cta"
+          onClick={onCreateAndPublish}
+          disabled={busy}
+          data-testid="agent-builder-edit-create-publish"
+        >
+          <SendIcon /> {isPublishing ? 'Publishing…' : 'Create & Publish'}
+        </Button>
+      )}
     </div>
   );
 };

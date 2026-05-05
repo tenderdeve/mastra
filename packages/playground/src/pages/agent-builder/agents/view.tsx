@@ -1,6 +1,6 @@
 import type { StoredSkillResponse } from '@mastra/client-js';
-import { Button, Spinner } from '@mastra/playground-ui';
-import { PencilIcon } from 'lucide-react';
+import { Badge, Button, Spinner } from '@mastra/playground-ui';
+import { CheckIcon, PencilIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
@@ -24,6 +24,7 @@ import type { AgentBuilderEditFormValues } from '@/domains/agent-builder/schemas
 import { BrowserViewPanel } from '@/domains/agents/components/browser-view';
 import { BrowserSessionProvider } from '@/domains/agents/context/browser-session-context';
 import { BrowserToolCallsProvider } from '@/domains/agents/context/browser-tool-calls-context';
+import { useActivateAgentVersion, useAgentVersions } from '@/domains/agents/hooks/use-agent-versions';
 import { useAgents } from '@/domains/agents/hooks/use-agents';
 import type { StoredAgent } from '@/domains/agents/hooks/use-stored-agents';
 import { useStoredAgent } from '@/domains/agents/hooks/use-stored-agents';
@@ -43,6 +44,10 @@ export default function AgentBuilderAgentView() {
   useChannelConnectToast();
   const features = useBuilderAgentFeatures();
   const { data: storedAgent, isLoading: isStoredAgentLoading } = useStoredAgent(id, { status: 'draft' });
+  const { data: versionsData } = useAgentVersions({
+    agentId: id ?? '',
+    params: { orderBy: 'versionNumber', sortDirection: 'DESC', perPage: 1 },
+  });
   const { data: toolsData, isPending: isToolsPending } = useTools({ enabled: features.tools });
   const { data: agentsData, isPending: isAgentsPending } = useAgents({ enabled: features.agents });
   const { data: workflowsData, isPending: isWorkflowsPending } = useWorkflows({ enabled: features.workflows });
@@ -61,6 +66,11 @@ export default function AgentBuilderAgentView() {
 
   if (!isReady) return <AgentBuilderAgentViewSkeleton />;
 
+  const latestVersionId = versionsData?.versions?.[0]?.id;
+  const hasDraft = Boolean(
+    latestVersionId && storedAgent?.activeVersionId && latestVersionId !== storedAgent.activeVersionId,
+  );
+
   return (
     <AgentBuilderAgentViewPage
       id={id}
@@ -70,6 +80,8 @@ export default function AgentBuilderAgentView() {
       workflowsData={workflowsData}
       storedSkillsResponse={storedSkillsResponse}
       currentUser={currentUser ?? null}
+      hasDraft={hasDraft}
+      latestVersionId={latestVersionId}
     />
   );
 }
@@ -82,6 +94,8 @@ interface PageProps {
   workflowsData: WorkflowsData | undefined;
   storedSkillsResponse: ReturnType<typeof useStoredSkills>['data'];
   currentUser: CurrentUser;
+  hasDraft: boolean;
+  latestVersionId: string | undefined;
 }
 
 const AgentBuilderAgentViewPage = ({
@@ -92,6 +106,8 @@ const AgentBuilderAgentViewPage = ({
   workflowsData,
   storedSkillsResponse,
   currentUser,
+  hasDraft,
+  latestVersionId,
 }: PageProps) => {
   const defaultValues = useMemo(() => storedAgentToFormValues(storedAgent), [storedAgent]);
   const formMethods = useForm<AgentBuilderEditFormValues>({ defaultValues });
@@ -110,6 +126,8 @@ const AgentBuilderAgentViewPage = ({
         workflowsData={workflowsData ?? {}}
         storedSkillsResponse={storedSkillsResponse}
         currentUser={currentUser}
+        hasDraft={hasDraft}
+        latestVersionId={latestVersionId}
       />
     </FormProvider>
   );
@@ -129,6 +147,8 @@ interface AgentBuilderAgentViewReadyProps {
   workflowsData: WorkflowsData;
   storedSkillsResponse: ReturnType<typeof useStoredSkills>['data'];
   currentUser: CurrentUser;
+  hasDraft: boolean;
+  latestVersionId: string | undefined;
 }
 
 const AgentBuilderAgentViewReady = ({
@@ -139,6 +159,8 @@ const AgentBuilderAgentViewReady = ({
   workflowsData,
   storedSkillsResponse,
   currentUser,
+  hasDraft,
+  latestVersionId,
 }: AgentBuilderAgentViewReadyProps) => {
   const navigate = useNavigate();
   const [activeDetail, setActiveDetail] = useState<ActiveDetail>(null);
@@ -149,6 +171,18 @@ const AgentBuilderAgentViewReady = ({
   // Gate publishing on the *saved* visibility — never on unsaved form state.
   const isPublishable = storedAgent?.visibility === 'public';
   const isOwner = !storedAgent?.authorId || currentUser?.id === storedAgent.authorId;
+  const activateVersion = useActivateAgentVersion({ agentId: id });
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const handlePublish = async () => {
+    if (!latestVersionId) return;
+    setIsPublishing(true);
+    try {
+      await activateVersion.mutateAsync(latestVersionId);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
   const threadId = currentUser?.id ? `${currentUser.id}-${id}` : id;
 
   const availableAgentTools = useAvailableAgentTools({
@@ -186,13 +220,19 @@ const AgentBuilderAgentViewReady = ({
         showConfigure={isOwner}
         modeAction={
           <div className="hidden lg:flex items-center gap-2">
+            {isOwner && hasDraft && <Badge variant="info">Unpublished changes</Badge>}
             {isOwner && isPublishable && <PublishToChannelButton agentId={id} />}
             <VisibilitySelectIfAuth />
           </div>
         }
         primaryAction={
           isOwner ? (
-            <ViewHeaderActions onEdit={() => navigate(`/agent-builder/agents/${id}/edit`, { viewTransition: true })} />
+            <ViewHeaderActions
+              onEdit={() => navigate(`/agent-builder/agents/${id}/edit`, { viewTransition: true })}
+              hasDraft={hasDraft}
+              isPublishing={isPublishing}
+              onPublish={handlePublish}
+            />
           ) : undefined
         }
         mobileExtra={isOwner ? <AgentBuilderMobileMenu agentId={id} showPublishToChannel={isPublishable} /> : undefined}
@@ -223,19 +263,43 @@ const AgentBuilderAgentViewReady = ({
   );
 };
 
-const ViewHeaderActions = ({ onEdit }: { onEdit: () => void }) => {
+const ViewHeaderActions = ({
+  onEdit,
+  hasDraft,
+  isPublishing,
+  onPublish,
+}: {
+  onEdit: () => void;
+  hasDraft: boolean;
+  isPublishing: boolean;
+  onPublish: () => void;
+}) => {
   const isRunning = useStreamRunning();
   return (
-    <Button
-      size="icon-sm"
-      variant="ghost"
-      onClick={onEdit}
-      disabled={isRunning}
-      tooltip="Edit agent"
-      data-testid="agent-builder-view-edit"
-    >
-      <PencilIcon />
-    </Button>
+    <div className="flex items-center gap-2">
+      {hasDraft && (
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={onPublish}
+          disabled={isRunning || isPublishing}
+          data-testid="agent-builder-view-publish"
+        >
+          {isPublishing ? <Spinner className="size-3" /> : <CheckIcon className="size-3" />}
+          Publish
+        </Button>
+      )}
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        onClick={onEdit}
+        disabled={isRunning}
+        tooltip="Edit agent"
+        data-testid="agent-builder-view-edit"
+      >
+        <PencilIcon />
+      </Button>
+    </div>
   );
 };
 

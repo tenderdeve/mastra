@@ -339,6 +339,10 @@ export const updateStoredAgentBodySchema = agentMetadataSchema
   .partial()
   .merge(snapshotConfigUpdateSchema.partial())
   .extend({
+    status: z
+      .enum(['draft', 'published'])
+      .optional()
+      .describe('Agent status: draft (not live, owner-only) or published (live, visibility applies)'),
     changeMessage: z
       .string()
       .trim()
