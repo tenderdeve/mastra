@@ -17,11 +17,32 @@ interface AgentMemoryConfigProps {
   agentId: string;
 }
 
+type DisplayMemoryConfig = {
+  lastMessages?: number | false;
+  generateTitle?: boolean;
+  semanticRecall?: SemanticRecall | boolean;
+  observationalMemory?: {
+    enabled?: boolean;
+    scope?: 'resource' | 'thread';
+    model?: unknown;
+    observationModel?: string;
+    reflectionModel?: string;
+    observation?: {
+      model?: unknown;
+      messageTokens?: number | { min: number; max: number };
+    };
+    reflection?: {
+      model?: unknown;
+      observationTokens?: number | { min: number; max: number };
+    };
+  };
+};
+
 export const AgentMemoryConfig = ({ agentId }: AgentMemoryConfigProps) => {
   const { data, isLoading } = useMemoryConfig(agentId);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['General', 'Semantic Recall']));
 
-  const config = data?.config;
+  const config = data?.config as DisplayMemoryConfig | undefined;
   const configSections: MemoryConfigSection[] = useMemo(() => {
     if (!config) return [];
 
@@ -80,8 +101,8 @@ export const AgentMemoryConfig = ({ agentId }: AgentMemoryConfigProps) => {
         return `${threshold.min.toLocaleString()}-${threshold.max.toLocaleString()} tokens`;
       };
 
-      const observationModel = omConfig.model || omConfig.observation?.model;
-      const reflectionModel = omConfig.model || omConfig.reflection?.model;
+      const observationModel = omConfig.observationModel || omConfig.model || omConfig.observation?.model;
+      const reflectionModel = omConfig.reflectionModel || omConfig.model || omConfig.reflection?.model;
 
       sections.push({
         title: 'Observational Memory',

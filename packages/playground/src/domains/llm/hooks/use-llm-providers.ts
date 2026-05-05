@@ -1,12 +1,15 @@
+import type { Provider } from '@mastra/client-js';
 import { useMastraClient } from '@mastra/react';
 import { useQuery } from '@tanstack/react-query';
+
+type LLMProvidersResponse = { providers: Provider[] };
 
 export const useLLMProviders = () => {
   const client = useMastraClient();
 
-  return useQuery({
+  return useQuery<LLMProvidersResponse>({
     queryKey: ['llm-providers'],
-    queryFn: () => client.listAgentsModelProviders(),
+    queryFn: async () => client.listAgentsModelProviders() as unknown as LLMProvidersResponse,
     retry: false,
   });
 };

@@ -23,6 +23,7 @@ declare global {
 import { MastraReactProvider } from '@mastra/react';
 import { useMemo } from 'react';
 import { createBrowserRouter, RouterProvider, Outlet, useNavigate, redirect } from 'react-router';
+import type { LoaderFunctionArgs } from 'react-router';
 import { WorkflowLayout } from './domains/workflows/workflow-layout';
 import { PostHogProvider } from './lib/analytics';
 import { Link } from './lib/link';
@@ -251,7 +252,7 @@ const routes = [
         children: [
           {
             index: true,
-            loader: ({ params }: { params: { agentId: string } }) => redirect(`/agents/${params.agentId}/chat`),
+            loader: ({ params }: LoaderFunctionArgs) => redirect(`/agents/${params.agentId}/chat`),
           },
           { path: 'chat', element: <Agent /> },
           { path: 'chat/:threadId', element: <Agent /> },
@@ -293,8 +294,7 @@ const routes = [
         children: [
           {
             index: true,
-            loader: ({ params }: { params: { workflowId: string } }) =>
-              redirect(`/workflows/${params.workflowId}/graph`),
+            loader: ({ params }: LoaderFunctionArgs) => redirect(`/workflows/${params.workflowId}/graph`),
           },
           { path: 'graph', element: <Workflow /> },
           { path: 'graph/:runId', element: <Workflow /> },

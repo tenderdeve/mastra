@@ -58,11 +58,12 @@ function DatasetItemPage() {
 
   // Derive form defaults from latest version (recomputes when version changes)
   const formDefaults = useMemo(() => {
-    if (!latestVersion || isDeleted) return { input: '', groundTruth: '', metadata: '' };
+    if (!latestVersion || isDeleted) return { input: '', groundTruth: '', metadata: '', trajectory: '' };
     return {
       input: JSON.stringify(latestVersion.input, null, 2),
       groundTruth: latestVersion.groundTruth ? JSON.stringify(latestVersion.groundTruth, null, 2) : '',
       metadata: latestVersion.metadata ? JSON.stringify(latestVersion.metadata, null, 2) : '',
+      trajectory: '',
     };
   }, [latestVersion, isDeleted]);
 
@@ -74,6 +75,7 @@ function DatasetItemPage() {
   const [inputValue, setInputValue] = useState(formDefaults.input);
   const [groundTruthValue, setGroundTruthValue] = useState(formDefaults.groundTruth);
   const [metadataValue, setMetadataValue] = useState(formDefaults.metadata);
+  const [trajectoryValue, setTrajectoryValue] = useState(formDefaults.trajectory);
 
   // Reset form values when version changes (key-based reset pattern)
   const [prevVersionKey, setPrevVersionKey] = useState(versionKey);
@@ -82,6 +84,7 @@ function DatasetItemPage() {
     setInputValue(formDefaults.input);
     setGroundTruthValue(formDefaults.groundTruth);
     setMetadataValue(formDefaults.metadata);
+    setTrajectoryValue(formDefaults.trajectory);
   }
 
   // Delete dialog state
@@ -150,6 +153,16 @@ function DatasetItemPage() {
       }
     }
 
+    let parsedTrajectory: unknown | undefined;
+    if (trajectoryValue.trim()) {
+      try {
+        parsedTrajectory = JSON.parse(trajectoryValue);
+      } catch {
+        toast.error('Expected Trajectory must be valid JSON');
+        return;
+      }
+    }
+
     try {
       await updateItem.mutateAsync({
         datasetId,
@@ -157,6 +170,7 @@ function DatasetItemPage() {
         input: parsedInput,
         groundTruth: parsedGroundTruth,
         metadata: parsedMetadata,
+        expectedTrajectory: parsedTrajectory,
       });
       toast.success('Item updated successfully');
       setIsEditing(false);
@@ -171,6 +185,7 @@ function DatasetItemPage() {
       setInputValue(JSON.stringify(latestVersion.input, null, 2));
       setGroundTruthValue(latestVersion.groundTruth ? JSON.stringify(latestVersion.groundTruth, null, 2) : '');
       setMetadataValue(latestVersion.metadata ? JSON.stringify(latestVersion.metadata, null, 2) : '');
+      setTrajectoryValue('');
     }
     setIsEditing(false);
   };
@@ -334,6 +349,8 @@ function DatasetItemPage() {
                     setGroundTruthValue={setGroundTruthValue}
                     metadataValue={metadataValue}
                     setMetadataValue={setMetadataValue}
+                    trajectoryValue={trajectoryValue}
+                    setTrajectoryValue={setTrajectoryValue}
                     validationErrors={null}
                     onSave={handleSave}
                     onCancel={handleCancel}

@@ -14,6 +14,7 @@ import {
   MainContentLayout,
   MainHeader,
   PermissionDenied,
+  SelectField,
   SessionExpired,
   TextAndIcon,
   is401UnauthorizedError,
@@ -35,7 +36,6 @@ import { DatasetItemContent } from '@/domains/datasets';
 import { useDatasetItemVersion, useDatasetItemVersions } from '@/domains/datasets/hooks/use-dataset-item-versions';
 import type { DatasetItemVersion } from '@/domains/datasets/hooks/use-dataset-item-versions';
 import { useDataset } from '@/domains/datasets/hooks/use-datasets';
-import { SelectField } from '@/lib/form/components/select-field';
 import { useLinkComponent } from '@/lib/framework';
 import { cn } from '@/lib/utils';
 

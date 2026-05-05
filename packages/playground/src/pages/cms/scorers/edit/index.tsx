@@ -307,7 +307,7 @@ function CmsScorersEditPage() {
             scorerId={scorerId}
             value={selectedVersionId ?? ''}
             onValueChange={handleVersionSelect}
-            variant="outline"
+            variant="default"
             activeVersionId={activeVersionId}
           />
         </HeaderAction>
