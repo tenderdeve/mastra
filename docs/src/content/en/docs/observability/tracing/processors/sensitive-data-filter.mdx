@@ -17,7 +17,7 @@ The Sensitive Data Filter is included in the recommended observability configura
 import {
   Observability,
   DefaultExporter,
-  CloudExporter,
+  MastraObserveExporter,
   SensitiveDataFilter,
 } from '@mastra/observability'
 
@@ -26,7 +26,7 @@ export const mastra = new Mastra({
     configs: {
       default: {
         serviceName: 'mastra',
-        exporters: [new DefaultExporter(), new CloudExporter()],
+        exporters: [new DefaultExporter(), new MastraObserveExporter()],
         spanOutputProcessors: [
           new SensitiveDataFilter(), // Redacts sensitive fields before export
         ],

@@ -1,17 +1,23 @@
 ---
-title: "Cloud exporter | Tracing | Observability"
+title: "Mastra Observe exporter | Tracing | Observability"
 description: "Send traces, logs, metrics, scores, and feedback to Mastra platform"
 packages:
   - "@mastra/observability"
 ---
 
-# Cloud exporter
+# Mastra Observe exporter
 
-The `CloudExporter` sends traces, logs, metrics, scores, and feedback to the Mastra platform. Use it to route observability data from any Mastra app to a hosted project in the Mastra platform.
+The `MastraObserveExporter` sends traces, logs, metrics, scores, and feedback to the Mastra platform. Use it to route observability data from any Mastra app to a hosted project in the Mastra platform.
+
+:::note
+
+`MastraObserveExporter` was previously called `CloudExporter`. The original `CloudExporter` class is still exported from `@mastra/observability` for backward compatibility, but it is deprecated. New code should use `MastraObserveExporter`.
+
+:::
 
 :::note[Self-hosted or standalone apps]
 
-If you host your Mastra application on your own infrastructure (not on Mastra Platform), you still need a deployed Studio project to view traces, logs, and metrics. `CloudExporter` sends data to a Studio project, so one must exist before you can use it.
+If you host your Mastra application on your own infrastructure (not on Mastra Platform), you still need a deployed Studio project to view traces, logs, and metrics. `MastraObserveExporter` sends data to a Studio project, so one must exist before you can use it.
 
 1. [Create a Mastra project](/guides/getting-started/quickstart) if you don't have one yet.
 1. [Deploy Studio](/docs/studio/deployment#mastra-platform) to the Mastra platform with `mastra studio deploy`.
@@ -21,13 +27,13 @@ If you host your Mastra application on your own infrastructure (not on Mastra Pl
 
 ## Version compatibility
 
-- Use `CloudExporter` with `@mastra/observability@1.8.0` or later.
+- Use `MastraObserveExporter` with `@mastra/observability@1.8.0` or later.
 - If you use `@mastra/observability@1.8.0` through `1.9.1`, set `MASTRA_CLOUD_TRACES_ENDPOINT=https://observability.mastra.ai` in addition to `MASTRA_CLOUD_ACCESS_TOKEN` and `MASTRA_PROJECT_ID`.
-- Starting in `@mastra/observability@1.9.2`, `CloudExporter` defaults to `https://observability.mastra.ai`, so `MASTRA_CLOUD_TRACES_ENDPOINT` is only required when you want to send telemetry to a different collector.
+- Starting in `@mastra/observability@1.9.2`, `MastraObserveExporter` defaults to `https://observability.mastra.ai`, so `MASTRA_CLOUD_TRACES_ENDPOINT` is only required when you want to send telemetry to a different collector.
 
 ## Quickstart
 
-To connect `CloudExporter`, create an access token, find the destination `projectId`, and add the exporter to your observability config.
+To connect `MastraObserveExporter`, create an access token, find the destination `projectId`, and add the exporter to your observability config.
 
 ### 1. Create an access token
 
@@ -80,7 +86,7 @@ MASTRA_PROJECT_ID=<your-project-id>
 
 ### 3. Set your environment variables
 
-Set both values in your environment so `CloudExporter` can authenticate and route telemetry to the correct project:
+Set both values in your environment so `MastraObserveExporter` can authenticate and route telemetry to the correct project:
 
 ```bash title=".env"
 MASTRA_CLOUD_ACCESS_TOKEN=<your-cloud-access-token>
@@ -99,29 +105,29 @@ If you want to send telemetry somewhere other than Mastra platform, set `MASTRA_
 MASTRA_CLOUD_TRACES_ENDPOINT=https://collector.example.com
 ```
 
-When you pass a base origin, `CloudExporter` derives the matching publish URLs for traces, logs, metrics, scores, and feedback automatically.
+When you pass a base origin, `MastraObserveExporter` derives the matching publish URLs for traces, logs, metrics, scores, and feedback automatically.
 
-### 4. Enable `CloudExporter`
+### 4. Enable `MastraObserveExporter`
 
-The following example demonstrates how to add `CloudExporter` to your observability config:
+The following example demonstrates how to add `MastraObserveExporter` to your observability config:
 
 ```ts title="src/mastra/index.ts"
 import { Mastra } from '@mastra/core'
-import { Observability, CloudExporter } from '@mastra/observability'
+import { Observability, MastraObserveExporter } from '@mastra/observability'
 
 export const mastra = new Mastra({
   observability: new Observability({
     configs: {
       production: {
         serviceName: 'api-server',
-        exporters: [new CloudExporter()],
+        exporters: [new MastraObserveExporter()],
       },
     },
   }),
 })
 ```
 
-Set `serviceName` on the observability config, not on `CloudExporter` itself.
+Set `serviceName` on the observability config, not on `MastraObserveExporter` itself.
 
 Use a stable `serviceName` value. In Studio, traces can be filtered by **Deployments → Service Name**, so a consistent name makes traces easier to find.
 
@@ -130,14 +136,14 @@ Visit [Observability configuration reference](/reference/observability/tracing/c
 If you prefer, rely entirely on environment variables:
 
 ```ts title="src/mastra/index.ts"
-new CloudExporter()
+new MastraObserveExporter()
 ```
 
-With `MASTRA_CLOUD_ACCESS_TOKEN` and `MASTRA_PROJECT_ID` set, `CloudExporter` sends data to the Mastra platform project you configured. If you also set `MASTRA_CLOUD_TRACES_ENDPOINT`, it sends data to that collector instead.
+With `MASTRA_CLOUD_ACCESS_TOKEN` and `MASTRA_PROJECT_ID` set, `MastraObserveExporter` sends data to the Mastra platform project you configured. If you also set `MASTRA_CLOUD_TRACES_ENDPOINT`, it sends data to that collector instead.
 
 :::note
 
-Visit [CloudExporter reference](/reference/observability/tracing/exporters/cloud-exporter) for the full list of configuration options.
+Visit [MastraObserveExporter reference](/reference/observability/tracing/exporters/cloud-exporter) for the full list of configuration options.
 
 :::
 
@@ -150,7 +156,7 @@ import { Mastra } from '@mastra/core'
 import {
   Observability,
   DefaultExporter,
-  CloudExporter,
+  MastraObserveExporter,
   SensitiveDataFilter,
 } from '@mastra/observability'
 
@@ -159,7 +165,7 @@ export const mastra = new Mastra({
     configs: {
       default: {
         serviceName: 'mastra',
-        exporters: [new DefaultExporter(), new CloudExporter()],
+        exporters: [new DefaultExporter(), new MastraObserveExporter()],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
     },
@@ -169,7 +175,7 @@ export const mastra = new Mastra({
 
 ## Complete configuration
 
-`CloudExporter` defaults to Mastra platform. If you want to send telemetry to a different collector, set `MASTRA_CLOUD_TRACES_ENDPOINT` in your environment or pass `endpoint` in code.
+`MastraObserveExporter` defaults to Mastra platform. If you want to send telemetry to a different collector, set `MASTRA_CLOUD_TRACES_ENDPOINT` in your environment or pass `endpoint` in code.
 
 ```bash title=".env"
 MASTRA_CLOUD_TRACES_ENDPOINT=https://collector.example.com
@@ -178,7 +184,7 @@ MASTRA_CLOUD_TRACES_ENDPOINT=https://collector.example.com
 The following example demonstrates how to override the collector endpoint and batching behavior in code:
 
 ```ts title="src/mastra/index.ts"
-new CloudExporter({
+new MastraObserveExporter({
   endpoint: 'https://collector.example.com',
   maxBatchSize: 1000,
   maxBatchWaitMs: 5000,
@@ -188,7 +194,7 @@ new CloudExporter({
 
 ## Viewing data in Mastra Studio
 
-After you enable `CloudExporter`, open your project in [Mastra Studio](https://projects.mastra.ai) to inspect the exported data.
+After you enable `MastraObserveExporter`, open your project in [Mastra Studio](https://projects.mastra.ai) to inspect the exported data.
 
 - Open the project you set `MASTRA_PROJECT_ID` to and select **Open Studio**.
 - In Studio, go to **Traces** to inspect agent and workflow traces.
@@ -201,7 +207,7 @@ When you deploy with Mastra Studio, set **Deployment → Service Name** to a sta
 
 :::info
 
-CloudExporter uses batching to optimize network usage. Events are buffered and sent in batches, reducing overhead while maintaining near real-time visibility.
+MastraObserveExporter uses batching to optimize network usage. Events are buffered and sent in batches, reducing overhead while maintaining near real-time visibility.
 
 :::
 

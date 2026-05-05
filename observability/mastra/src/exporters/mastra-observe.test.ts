@@ -11,7 +11,7 @@ import { EntityType, SpanType, TracingEventType } from '@mastra/core/observabili
 
 import { fetchWithRetry } from '@mastra/core/utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CloudExporter } from './cloud';
+import { MastraObserveExporter } from './mastra-observe';
 
 // Mock fetchWithRetry
 vi.mock('@mastra/core/utils', () => ({
@@ -153,8 +153,8 @@ function getMockFeedbackEvent(overrides: Partial<FeedbackEvent['feedback']> = {}
   };
 }
 
-describe('CloudExporter', () => {
-  let exporter: CloudExporter;
+describe('MastraObserveExporter', () => {
+  let exporter: MastraObserveExporter;
   const testJWT = createTestJWT({ teamId: 'team-123', projectId: 'project-456' });
 
   beforeEach(() => {
@@ -163,7 +163,7 @@ describe('CloudExporter', () => {
     mockFetchWithRetry.mockReset();
     mockFetchWithRetry.mockResolvedValue(new Response('{}', { status: 200 }));
 
-    exporter = new CloudExporter({
+    exporter = new MastraObserveExporter({
       accessToken: testJWT,
       endpoint: 'http://localhost:3000',
     });
@@ -417,7 +417,7 @@ describe('CloudExporter', () => {
     });
 
     it('should trigger flush when maxBatchSize is reached', async () => {
-      const smallBatchExporter = new CloudExporter({
+      const smallBatchExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'test-team', projectId: 'test-project' }),
         endpoint: 'http://localhost:3000',
         maxBatchSize: 2, // Small batch size for testing
@@ -451,7 +451,7 @@ describe('CloudExporter', () => {
       const deferredUpload = createDeferred<Response>();
       mockFetchWithRetry.mockReturnValue(deferredUpload.promise);
 
-      const smallBatchExporter = new CloudExporter({
+      const smallBatchExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'test-team', projectId: 'test-project' }),
         endpoint: 'http://localhost:3000',
         maxBatchSize: 1,
@@ -482,7 +482,7 @@ describe('CloudExporter', () => {
       const deferredUpload = createDeferred<Response>();
       mockFetchWithRetry.mockReturnValue(deferredUpload.promise);
 
-      const smallBatchExporter = new CloudExporter({
+      const smallBatchExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'test-team', projectId: 'test-project' }),
         endpoint: 'http://localhost:3000',
         maxBatchSize: 1,
@@ -618,7 +618,7 @@ describe('CloudExporter', () => {
     });
 
     it('should trigger flush when timer expires', async () => {
-      const shortExporter = new CloudExporter({
+      const shortExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'team-123', projectId: 'project-456' }),
         endpoint: 'http://localhost:3000',
         maxBatchWaitMs: 50,
@@ -653,7 +653,7 @@ describe('CloudExporter', () => {
     });
 
     it('should handle timer errors gracefully', async () => {
-      const shortExporter = new CloudExporter({
+      const shortExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'team-123', projectId: 'project-456' }),
         endpoint: 'http://localhost:3000',
         maxBatchWaitMs: 50,
@@ -825,7 +825,7 @@ describe('CloudExporter', () => {
 
     it('should use JWT token in Authorization header', async () => {
       const testJWT = createTestJWT({ teamId: 'auth-test', projectId: 'auth-project' });
-      const authExporter = new CloudExporter({
+      const authExporter = new MastraObserveExporter({
         accessToken: testJWT,
         endpoint: 'http://localhost:3000',
       });
@@ -906,7 +906,7 @@ describe('CloudExporter', () => {
     });
 
     it('should default to observability.mastra.ai when no endpoint override is configured', async () => {
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: testJWT,
       });
 
@@ -926,7 +926,7 @@ describe('CloudExporter', () => {
     });
 
     it('should upload logs, metrics, scores, and feedback to their derived endpoints', async () => {
-      const multiSignalExporter = new CloudExporter({
+      const multiSignalExporter = new MastraObserveExporter({
         accessToken: testJWT,
         endpoint: 'http://localhost:3000',
       });
@@ -982,7 +982,7 @@ describe('CloudExporter', () => {
     });
 
     it('should drop model chunk spans by default', async () => {
-      const cloudExporter = new CloudExporter({
+      const cloudExporter = new MastraObserveExporter({
         accessToken: testJWT,
         endpoint: 'http://localhost:3000',
       });
@@ -1004,7 +1004,7 @@ describe('CloudExporter', () => {
     });
 
     it('should derive signal endpoints from a base endpoint', async () => {
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: testJWT,
         endpoint: 'https://collector.example.com',
       });
@@ -1025,7 +1025,7 @@ describe('CloudExporter', () => {
     });
 
     it('should derive project-scoped signal endpoints from a base endpoint when projectId is configured', async () => {
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: 'sk_org_api_key',
         endpoint: 'https://collector.example.com',
         projectId: 'project-workos',
@@ -1047,7 +1047,7 @@ describe('CloudExporter', () => {
     });
 
     it('should derive sibling signal endpoints from an explicit traces endpoint override', async () => {
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: testJWT,
         endpoint: 'https://fallback.example.com',
         tracesEndpoint: 'https://collector.example.com/custom/spans/publish',
@@ -1081,7 +1081,7 @@ describe('CloudExporter', () => {
     });
 
     it('should derive project-scoped sibling signal endpoints from an origin-only traces endpoint override', async () => {
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: 'sk_org_api_key',
         endpoint: 'https://fallback.example.com',
         tracesEndpoint: 'https://collector.example.com',
@@ -1116,7 +1116,7 @@ describe('CloudExporter', () => {
     });
 
     it('should prefer explicit per-signal endpoint overrides over derived traces siblings', async () => {
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: testJWT,
         tracesEndpoint: 'https://collector.example.com/custom/spans/publish',
         logsEndpoint: 'https://logs.example.com/custom/logs/publish',
@@ -1138,7 +1138,7 @@ describe('CloudExporter', () => {
     });
 
     it('should leave explicit full publish URLs unchanged when projectId is configured', async () => {
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: 'sk_org_api_key',
         projectId: 'project-workos',
         tracesEndpoint: 'https://collector.example.com/custom/spans/publish',
@@ -1175,7 +1175,7 @@ describe('CloudExporter', () => {
     it('should derive sibling signal endpoints from MASTRA_CLOUD_TRACES_ENDPOINT', async () => {
       vi.stubEnv('MASTRA_CLOUD_TRACES_ENDPOINT', 'https://collector.example.com/env/spans/publish');
 
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: testJWT,
       });
 
@@ -1200,7 +1200,7 @@ describe('CloudExporter', () => {
     it('should derive project-scoped signal endpoints from MASTRA_PROJECT_ID', async () => {
       vi.stubEnv('MASTRA_PROJECT_ID', 'project-from-env');
 
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: 'sk_org_api_key',
         endpoint: 'https://collector.example.com',
       });
@@ -1226,7 +1226,7 @@ describe('CloudExporter', () => {
     it('should prefer config projectId over MASTRA_PROJECT_ID', async () => {
       vi.stubEnv('MASTRA_PROJECT_ID', 'project-from-env');
 
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: 'sk_org_api_key',
         endpoint: 'https://collector.example.com',
         projectId: 'project-from-config',
@@ -1253,7 +1253,7 @@ describe('CloudExporter', () => {
     it('should treat an empty MASTRA_PROJECT_ID as unset', async () => {
       vi.stubEnv('MASTRA_PROJECT_ID', '');
 
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: 'sk_org_api_key',
         endpoint: 'https://collector.example.com',
       });
@@ -1279,40 +1279,40 @@ describe('CloudExporter', () => {
     it('should reject an empty config projectId', () => {
       expect(
         () =>
-          new CloudExporter({
+          new MastraObserveExporter({
             accessToken: 'sk_org_api_key',
             endpoint: 'https://collector.example.com',
             projectId: '',
           }),
-      ).toThrowError('CloudExporter projectId must only contain letters, numbers, hyphens, and underscores.');
+      ).toThrowError('MastraObserveExporter projectId must only contain letters, numbers, hyphens, and underscores.');
     });
 
     it('should reject a config projectId that contains whitespace', () => {
       expect(
         () =>
-          new CloudExporter({
+          new MastraObserveExporter({
             accessToken: 'sk_org_api_key',
             endpoint: 'https://collector.example.com',
             projectId: 'project 123',
           }),
-      ).toThrowError('CloudExporter projectId must only contain letters, numbers, hyphens, and underscores.');
+      ).toThrowError('MastraObserveExporter projectId must only contain letters, numbers, hyphens, and underscores.');
     });
 
     it('should reject a config projectId with special characters', () => {
       expect(
         () =>
-          new CloudExporter({
+          new MastraObserveExporter({
             accessToken: 'sk_org_api_key',
             endpoint: 'https://collector.example.com',
             projectId: 'project/123',
           }),
-      ).toThrowError('CloudExporter projectId must only contain letters, numbers, hyphens, and underscores.');
+      ).toThrowError('MastraObserveExporter projectId must only contain letters, numbers, hyphens, and underscores.');
     });
 
     it('should treat an invalid MASTRA_PROJECT_ID as unset', async () => {
       vi.stubEnv('MASTRA_PROJECT_ID', 'has spaces');
 
-      const derivedExporter = new CloudExporter({
+      const derivedExporter = new MastraObserveExporter({
         accessToken: 'sk_org_api_key',
         endpoint: 'https://collector.example.com',
       });
@@ -1338,36 +1338,36 @@ describe('CloudExporter', () => {
     it('should reject legacy publish-path endpoints', () => {
       expect(
         () =>
-          new CloudExporter({
+          new MastraObserveExporter({
             accessToken: testJWT,
             endpoint: 'https://collector.example.com/ai/spans/publish',
           }),
       ).toThrowError(
-        'CloudExporter endpoint must be a base origin like "https://collector.example.com" with no path, search, or hash.',
+        'MastraObserveExporter endpoint must be a base origin like "https://collector.example.com" with no path, search, or hash.',
       );
     });
 
     it('should reject base endpoints that include any path segment', () => {
       expect(
         () =>
-          new CloudExporter({
+          new MastraObserveExporter({
             accessToken: testJWT,
             endpoint: 'https://collector.example.com/custom-ingest',
           }),
       ).toThrowError(
-        'CloudExporter endpoint must be a base origin like "https://collector.example.com" with no path, search, or hash.',
+        'MastraObserveExporter endpoint must be a base origin like "https://collector.example.com" with no path, search, or hash.',
       );
     });
 
     it('should reject explicit traces endpoints that are not publish URLs', () => {
       expect(
         () =>
-          new CloudExporter({
+          new MastraObserveExporter({
             accessToken: testJWT,
             tracesEndpoint: 'https://collector.example.com/custom-ingest',
           }),
       ).toThrowError(
-        'CloudExporter tracesEndpoint must be a base origin like "https://collector.example.com" or a full traces publish URL ending in "/spans/publish".',
+        'MastraObserveExporter tracesEndpoint must be a base origin like "https://collector.example.com" or a full traces publish URL ending in "/spans/publish".',
       );
     });
   });
@@ -1390,7 +1390,7 @@ describe('CloudExporter', () => {
     });
 
     it('should retry on API failures using fetchWithRetry', async () => {
-      const retryExporter = new CloudExporter({
+      const retryExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'retry-team', projectId: 'retry-project' }),
         endpoint: 'http://localhost:3000',
         maxRetries: 3,
@@ -1419,7 +1419,7 @@ describe('CloudExporter', () => {
     });
 
     it('should pass maxRetries to fetchWithRetry correctly', async () => {
-      const customRetryExporter = new CloudExporter({
+      const customRetryExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'custom-team', projectId: 'custom-project' }),
         endpoint: 'http://localhost:3000',
         maxRetries: 5, // Custom retry count
@@ -1443,7 +1443,7 @@ describe('CloudExporter', () => {
     });
 
     it('should drop batch after fetchWithRetry exhausts all retries', async () => {
-      const retryExporter = new CloudExporter({
+      const retryExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'fail-team', projectId: 'fail-project' }),
         endpoint: 'http://localhost:3000',
         maxRetries: 2,
@@ -1470,7 +1470,7 @@ describe('CloudExporter', () => {
     });
 
     it('should handle flush errors gracefully in background', async () => {
-      const shortExporter = new CloudExporter({
+      const shortExporter = new MastraObserveExporter({
         accessToken: createTestJWT({ teamId: 'team-123', projectId: 'project-456' }),
         endpoint: 'http://localhost:3000',
         maxBatchWaitMs: 50,
@@ -1556,7 +1556,7 @@ describe('CloudExporter', () => {
     });
 
     it('should skip flush when exporter is disabled', async () => {
-      const disabledExporter = new CloudExporter({
+      const disabledExporter = new MastraObserveExporter({
         // Missing access token will disable the exporter
         accessToken: undefined,
         endpoint: 'http://localhost:3000',
@@ -1574,7 +1574,7 @@ describe('CloudExporter', () => {
       delete process.env.MASTRA_CLOUD_ACCESS_TOKEN;
 
       try {
-        const disabledExporter = new CloudExporter({
+        const disabledExporter = new MastraObserveExporter({
           accessToken: undefined,
           endpoint: 'http://localhost:3000',
         });
@@ -1629,7 +1629,7 @@ describe('CloudExporter', () => {
 
       expect(clearTimeoutSpy).toHaveBeenCalledWith(timer);
       expect((exporter as any).flushTimer).toBeNull();
-      expect(loggerInfoSpy).toHaveBeenCalledWith('CloudExporter shutdown complete');
+      expect(loggerInfoSpy).toHaveBeenCalledWith('MastraObserveExporter shutdown complete');
     });
 
     it('should flush remaining events on shutdown', async () => {
@@ -1653,7 +1653,7 @@ describe('CloudExporter', () => {
       await exporter.shutdown();
 
       expect(flushSpy).toHaveBeenCalled();
-      expect(loggerInfoSpy).toHaveBeenCalledWith('CloudExporter shutdown complete');
+      expect(loggerInfoSpy).toHaveBeenCalledWith('MastraObserveExporter shutdown complete');
     });
 
     it('should handle shutdown with empty buffer gracefully', async () => {
@@ -1666,7 +1666,7 @@ describe('CloudExporter', () => {
       await exporter.shutdown();
 
       expect(flushSpy).toHaveBeenCalled();
-      expect(loggerInfoSpy).toHaveBeenCalledWith('CloudExporter shutdown complete');
+      expect(loggerInfoSpy).toHaveBeenCalledWith('MastraObserveExporter shutdown complete');
     });
 
     it('should handle shutdown flush errors gracefully', async () => {
@@ -1687,7 +1687,7 @@ describe('CloudExporter', () => {
         'Failed to flush remaining events during shutdown',
         expect.any(Object),
       );
-      expect(loggerInfoSpy).toHaveBeenCalledWith('CloudExporter shutdown complete');
+      expect(loggerInfoSpy).toHaveBeenCalledWith('MastraObserveExporter shutdown complete');
     });
 
     it('should handle shutdown when timer is already null', async () => {
@@ -1701,7 +1701,7 @@ describe('CloudExporter', () => {
 
       // Should not call clearTimeout when timer is already null
       expect(clearTimeoutSpy).not.toHaveBeenCalled();
-      expect(loggerInfoSpy).toHaveBeenCalledWith('CloudExporter shutdown complete');
+      expect(loggerInfoSpy).toHaveBeenCalledWith('MastraObserveExporter shutdown complete');
     });
   });
 });

@@ -234,7 +234,7 @@ import { Mastra } from '@mastra/core/mastra'
 import {
   Observability,
   DefaultExporter,
-  CloudExporter,
+  MastraObserveExporter,
   SensitiveDataFilter,
 } from '@mastra/observability'
 
@@ -243,7 +243,7 @@ export const mastra = new Mastra({
     configs: {
       default: {
         serviceName: 'my-app',
-        exporters: [new DefaultExporter(), new CloudExporter()],
+        exporters: [new DefaultExporter(), new MastraObserveExporter()],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
     },
@@ -252,7 +252,7 @@ export const mastra = new Mastra({
 ```
 
 - `DefaultExporter` persists traces to your storage backend for [Studio](/docs/studio/observability).
-- `CloudExporter` Sends observability data to hosted Mastra Studio when `MASTRA_CLOUD_ACCESS_TOKEN` is set.
+- `MastraObserveExporter` Sends observability data to hosted Mastra Studio when `MASTRA_CLOUD_ACCESS_TOKEN` is set.
 - `SensitiveDataFilter` redacts passwords, tokens, and keys from span data before export.
 
 See the [observability overview](/docs/observability/overview) for the full configuration, including composite storage with DuckDB for metrics.
@@ -293,7 +293,7 @@ MASTRA_PROJECT_ID="<staging-id>" mastra studio deploy --env-file .env.staging --
 MASTRA_PROJECT_ID="<production-id>" mastra studio deploy --env-file .env.production --yes
 ```
 
-Each environment ends up with its own Studio URL and its own observability data. Send `MASTRA_CLOUD_ACCESS_TOKEN` and `MASTRA_PROJECT_ID` per environment so `CloudExporter` routes traces to the correct project.
+Each environment ends up with its own Studio URL and its own observability data. Send `MASTRA_CLOUD_ACCESS_TOKEN` and `MASTRA_PROJECT_ID` per environment so `MastraObserveExporter` routes traces to the correct project.
 
 ## Deploy Server (optional)
 

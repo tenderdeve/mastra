@@ -52,7 +52,7 @@ import { Mastra } from '@mastra/core'
 import {
   Observability,
   DefaultExporter,
-  CloudExporter,
+  MastraObserveExporter,
   SensitiveDataFilter,
 } from '@mastra/observability'
 import { LibSQLStore } from '@mastra/libsql'
@@ -68,7 +68,7 @@ export const mastra = new Mastra({
         serviceName: 'mastra',
         exporters: [
           new DefaultExporter(), // Persists traces to storage for Studio
-          new CloudExporter(), // Sends observability data to hosted Mastra Studio (requires MASTRA_CLOUD_ACCESS_TOKEN)
+          new MastraObserveExporter(), // Sends observability data to hosted Mastra Studio (requires MASTRA_CLOUD_ACCESS_TOKEN)
         ],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
@@ -211,6 +211,6 @@ new DefaultExporter({
 ## Related
 
 - [Tracing Overview](/docs/observability/tracing/overview)
-- [CloudExporter](/docs/observability/tracing/exporters/cloud)
+- [MastraObserveExporter](/docs/observability/tracing/exporters/cloud)
 - [Composite Storage](/reference/storage/composite): Combine multiple storage providers
 - [Storage Configuration](/docs/memory/storage)

@@ -803,7 +803,7 @@ describe('Observability Registry', () => {
       // Verify debug message was logged with exporter name
       expect(infoSpy).toHaveBeenCalledWith(
         expect.stringContaining(
-          'mastra-cloud-observability-exporter disabled: MASTRA_CLOUD_ACCESS_TOKEN environment variable not set',
+          'mastra-observe-exporter disabled: MASTRA_CLOUD_ACCESS_TOKEN environment variable not set',
         ),
       );
 

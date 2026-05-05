@@ -28,7 +28,7 @@ import { Mastra } from '@mastra/core'
 import {
   Observability,
   DefaultExporter,
-  CloudExporter,
+  MastraObserveExporter,
   SensitiveDataFilter,
 } from '@mastra/observability'
 
@@ -39,7 +39,7 @@ export const mastra = new Mastra({
         serviceName: 'mastra',
         exporters: [
           new DefaultExporter(), // Persists traces to storage for Studio
-          new CloudExporter(), // Sends observability data to hosted Mastra Studio (if MASTRA_CLOUD_ACCESS_TOKEN is set)
+          new MastraObserveExporter(), // Sends observability data to hosted Mastra Studio (if MASTRA_CLOUD_ACCESS_TOKEN is set)
         ],
         spanOutputProcessors: [
           new SensitiveDataFilter(), // Redacts sensitive data like passwords, tokens, keys
@@ -60,7 +60,7 @@ This configuration includes:
 - **Sampling**: `"always"` by default (100% of traces)
 - **Exporters**:
   - `DefaultExporter` - Persists traces to your configured storage for Studio
-  - `CloudExporter` - Sends observability data to hosted Mastra Studio (requires `MASTRA_CLOUD_ACCESS_TOKEN`)
+  - `MastraObserveExporter` - Sends observability data to hosted Mastra Studio (requires `MASTRA_CLOUD_ACCESS_TOKEN`)
 - **Span Output Processors**: `SensitiveDataFilter` - Redacts sensitive fields
 
 ## Exporters
@@ -281,13 +281,13 @@ export const mastra = new Mastra({
 
 #### Maintaining Studio access
 
-When adding external exporters, include `DefaultExporter` and `CloudExporter` to maintain access to Studio:
+When adding external exporters, include `DefaultExporter` and `MastraObserveExporter` to maintain access to Studio:
 
 ```ts title="src/mastra/index.ts"
 import {
   Observability,
   DefaultExporter,
-  CloudExporter,
+  MastraObserveExporter,
   SensitiveDataFilter,
 } from '@mastra/observability'
 import { ArizeExporter } from '@mastra/arize'
@@ -303,7 +303,7 @@ export const mastra = new Mastra({
             apiKey: process.env.PHOENIX_API_KEY,
           }),
           new DefaultExporter(), // Keep Studio access
-          new CloudExporter(), // Keep Cloud access
+          new MastraObserveExporter(), // Keep Cloud access
         ],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
@@ -316,7 +316,7 @@ This configuration sends traces to all three destinations simultaneously:
 
 - **Arize Phoenix/AX** for external observability
 - **DefaultExporter** for Studio
-- **CloudExporter** for hosted Studio dashboard
+- **MastraObserveExporter** for hosted Studio dashboard
 
 :::info
 
@@ -1178,7 +1178,7 @@ Mastra automatically creates spans for:
 ### Exporters
 
 - [DefaultExporter](/reference/observability/tracing/exporters/default-exporter): Storage persistence
-- [CloudExporter](/reference/observability/tracing/exporters/cloud-exporter): Mastra platform integration
+- [MastraObserveExporter](/reference/observability/tracing/exporters/cloud-exporter): Mastra platform integration
 - [ConsoleExporter](/reference/observability/tracing/exporters/console-exporter): Debug output
 - [Arize](/reference/observability/tracing/exporters/arize): Arize Phoenix and Arize AX integration
 - [Braintrust](/reference/observability/tracing/exporters/braintrust): Braintrust integration
