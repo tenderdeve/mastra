@@ -10851,74 +10851,6 @@ export interface GetScoresScorersScorerId_RouteContract {
 }
 
 // ============================================================================
-// Route: GET /scores
-// ============================================================================
-export type GetScores_QueryParams = {
-  runId?: string | undefined;
-  scorerId?: string | undefined;
-  entityId?: string | undefined;
-  entityType?: string | undefined;
-  page: number | undefined;
-  perPage: number | undefined;
-};
-
-export type GetScores_Response = {
-  pagination: {
-    total: number;
-    page: number;
-    perPage: number | false;
-    hasMore: boolean;
-  };
-  scores: unknown[];
-};
-
-export type GetScores_Request = Simplify<
-  (never extends never ? {} : { params: never }) &
-    (GetScores_QueryParams extends never
-      ? {}
-      : {} extends GetScores_QueryParams
-        ? { query?: GetScores_QueryParams }
-        : { query: GetScores_QueryParams }) &
-    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
->;
-
-export interface GetScores_RouteContract {
-  pathParams: never;
-  queryParams: GetScores_QueryParams;
-  body: never;
-  request: GetScores_Request;
-  response: GetScores_Response;
-  responseType: 'json';
-}
-
-// ============================================================================
-// Route: GET /scores/:scoreId
-// ============================================================================
-export type GetScoresScoreId_PathParams = {
-  /** Unique identifier for the score */
-  scoreId: string;
-};
-
-export type GetScoresScoreId_Response = {
-  score: unknown | null;
-};
-
-export type GetScoresScoreId_Request = Simplify<
-  (GetScoresScoreId_PathParams extends never ? {} : { params: GetScoresScoreId_PathParams }) &
-    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
-    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
->;
-
-export interface GetScoresScoreId_RouteContract {
-  pathParams: GetScoresScoreId_PathParams;
-  queryParams: never;
-  body: never;
-  request: GetScoresScoreId_Request;
-  response: GetScoresScoreId_Response;
-  responseType: 'json';
-}
-
-// ============================================================================
 // Route: GET /scores/run/:runId
 // ============================================================================
 export type GetScoresRunRunId_PathParams = {
@@ -72009,58 +71941,6 @@ export interface GetSystemPackages_RouteContract {
 }
 
 // ============================================================================
-// Route: GET /system/api-schema
-// ============================================================================
-export type GetSystemApiSchema_Response = {
-  version: 1;
-  routes: {
-    method: string;
-    path: string;
-    responseType: string;
-    pathParamSchema?:
-      | {
-          [key: string]: unknown;
-        }
-      | undefined;
-    queryParamSchema?:
-      | {
-          [key: string]: unknown;
-        }
-      | undefined;
-    bodySchema?:
-      | {
-          [key: string]: unknown;
-        }
-      | undefined;
-    responseSchema?:
-      | {
-          [key: string]: unknown;
-        }
-      | undefined;
-    responseShape: {
-      kind: 'array' | 'record' | 'object-property' | 'single' | 'unknown';
-      listProperty?: string | undefined;
-      paginationProperty?: string | undefined;
-    };
-  }[];
-};
-
-export type GetSystemApiSchema_Request = Simplify<
-  (never extends never ? {} : { params: never }) &
-    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
-    (never extends never ? {} : {} extends never ? { body?: never } : { body: never })
->;
-
-export interface GetSystemApiSchema_RouteContract {
-  pathParams: never;
-  queryParams: never;
-  body: never;
-  request: GetSystemApiSchema_Request;
-  response: GetSystemApiSchema_Response;
-  responseType: 'json';
-}
-
-// ============================================================================
 // Route: GET /datasets
 // ============================================================================
 export type GetDatasets_QueryParams = {
@@ -75175,8 +75055,6 @@ export interface RouteTypes {
   'POST /memory/network/messages/delete': PostMemoryNetworkMessagesDelete_RouteContract;
   'GET /scores/scorers': GetScoresScorers_RouteContract;
   'GET /scores/scorers/:scorerId': GetScoresScorersScorerId_RouteContract;
-  'GET /scores': GetScores_RouteContract;
-  'GET /scores/:scoreId': GetScoresScoreId_RouteContract;
   'GET /scores/run/:runId': GetScoresRunRunId_RouteContract;
   'GET /scores/scorer/:scorerId': GetScoresScorerScorerId_RouteContract;
   'GET /scores/entity/:entityType/:entityId': GetScoresEntityEntityTypeEntityId_RouteContract;
@@ -75346,7 +75224,6 @@ export interface RouteTypes {
   'GET /processor-providers': GetProcessorProviders_RouteContract;
   'GET /processor-providers/:providerId': GetProcessorProvidersProviderId_RouteContract;
   'GET /system/packages': GetSystemPackages_RouteContract;
-  'GET /system/api-schema': GetSystemApiSchema_RouteContract;
   'GET /datasets': GetDatasets_RouteContract;
   'POST /datasets': PostDatasets_RouteContract;
   'GET /datasets/:datasetId': GetDatasetsDatasetId_RouteContract;
@@ -75902,11 +75779,7 @@ export interface Client {
     GET: GetSchedulesScheduleIdTriggers_RouteContract;
   };
   '/scores': {
-    GET: GetScores_RouteContract;
     POST: PostScores_RouteContract;
-  };
-  '/scores/:scoreId': {
-    GET: GetScoresScoreId_RouteContract;
   };
   '/scores/entity/:entityType/:entityId': {
     GET: GetScoresEntityEntityTypeEntityId_RouteContract;
@@ -76050,9 +75923,6 @@ export interface Client {
     DELETE: DeleteStoredWorkspacesStoredWorkspaceId_RouteContract;
     GET: GetStoredWorkspacesStoredWorkspaceId_RouteContract;
     PATCH: PatchStoredWorkspacesStoredWorkspaceId_RouteContract;
-  };
-  '/system/api-schema': {
-    GET: GetSystemApiSchema_RouteContract;
   };
   '/system/packages': {
     GET: GetSystemPackages_RouteContract;
