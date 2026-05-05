@@ -1,14 +1,54 @@
-# Agent Builder Demo Instructions
+# Agent Builder Demo — `demo/agent-builder-brandon`
 
-Demo branch for the new Agent Builder features. This runs the full builder experience: create agents, skills, workspaces, model selection, browser/sandbox config, and more.
+This branch (`demo/agent-builder-brandon`) is a snapshot of `yj/magnificent-marquess` with the latest Agent Builder features. Here's what's on this branch and how to get it running.
 
-## Prerequisites
+---
 
-- **Node.js** >= 18
-- **pnpm** >= 10.18 (`npm install -g pnpm` if needed)
-- **OpenAI API key** (required for LLM calls)
+## What's on This Branch
 
-## Quick Start
+### Skills
+Agents can now have **skills** — reusable capabilities you create and attach to agents. Skills have their own list page at `/agent-builder/skills`, support visibility (Private/Public), and can be starred. You can create skills from the Skills page and then attach them to any agent from the agent's configure panel.
+
+### Stars
+Agents and skills can be **starred** (bookmarked). The star icon appears on cards in the list views.
+
+### Model Allowlist & Default
+The model dropdown is now **admin-controlled**. The config defines which providers/models are allowed (currently all OpenAI models + `claude-opus-4-7` from Anthropic) and which model is selected by default for new agents. Users only see allowed models in the picker.
+
+### Visibility & Ownership
+Agents and skills have **visibility** (Private or Public) and an **authorId** tied to the logged-in user. Private entities are only visible to their creator; Public ones are visible to everyone in the org.
+
+### Preview as Role (Admin Only)
+Admins can **preview the Studio as another role** (member, operator, viewer, etc.) without logging out. Click your avatar in the top-left → "Preview as role" → pick a role. A banner shows at the top while previewing. This is UI-only — API calls still use your real admin permissions. Useful for seeing what a member or operator would experience.
+
+### Browser Toggle
+Agents can now have a **browser capability** toggled on. This connects to Stagehand/Browserbase for web browsing. Requires `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID` env vars to actually work, but the toggle is visible in the configure panel regardless.
+
+### Workspace Auto-Reconciliation
+The builder workspace is now **auto-persisted and reconciled** on server startup. If the config changes (e.g., different filesystem path), the DB record updates automatically. If a workspace is removed from config, it gets archived. No manual setup needed.
+
+### Admin-Controlled Picker Allowlists
+Beyond models, admins can also control which **tools, agents, and workflows** appear in the builder's picker dropdowns.
+
+### Agent Avatar Upload
+Agents can have a **custom avatar** uploaded by the owner.
+
+---
+
+## Getting to Agent Builder
+
+Right now, the Agent Builder doesn't have its own sidebar entry for all roles. How you get there depends on your role:
+
+- **Admin**: Go to the Agents tab in Studio → click "Create Agent" → you're in the builder flow. Or navigate directly to `http://localhost:4111/agent-builder`.
+- **Member** (with current role config): Navigate directly to `http://localhost:4111/agent-builder`. The Agents tab in the main Studio requires `agents:read`/`agents:create` permissions, which members don't have by default, but the builder routes work fine.
+
+We're still working on the best way to surface the builder entry point for non-admin roles.
+
+---
+
+## Setup (From Scratch)
+
+If you need to set up from a fresh clone:
 
 ### 1. Clone and checkout
 
@@ -22,137 +62,118 @@ git checkout demo/agent-builder-brandon
 
 ```bash
 pnpm install
+cd examples/agent
+pnpm install --ignore-workspace
 ```
 
-This takes a few minutes on first run (monorepo with many packages).
-
-### 3. Set up environment variables
+### 3. Environment variables
 
 ```bash
-cp examples/agent/.env.example examples/agent/.env
+cp .env.example .env
 ```
 
 Edit `examples/agent/.env`:
 
 ```bash
-# Required — LLM calls
+# Required — LLM calls (all built-in agents use OpenAI)
 OPENAI_API_KEY=sk-...
 
-# Required — Auth (WorkOS)
+# Optional — only needed if you pick claude-opus-4-7 from the model dropdown
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Auth (WorkOS SSO)
 AUTH_PROVIDER=workos
 WORKOS_API_KEY=<your-workos-api-key>
 WORKOS_CLIENT_ID=<your-workos-client-id>
 WORKOS_ORGANIZATION_ID=<your-workos-org-id>
-
-# Optional — defaults to http://localhost:4111/api/auth/callback
-# WORKOS_REDIRECT_URI=http://localhost:4111/api/auth/callback
 ```
 
-> **Note:** Ask Nik for the WorkOS credentials if you don't have them.
+To run **without auth**, just don't set `AUTH_PROVIDER`. Everything works the same — you just won't have user identity or role-based access.
 
-### 4. Build the monorepo
+### 4. Build and run
 
 ```bash
+# From repo root
+cd ../..
 pnpm build
-```
 
-This builds all packages (~2-3 minutes). You only need to do this once.
-
-### 5. Start the dev server
-
-```bash
+# Start the dev server
 cd examples/agent
 pnpm mastra:dev
 ```
 
-Wait for the server to start. It'll be ready at **http://localhost:4111**.
+Server runs at **http://localhost:4111**.
 
-## What to Demo
+---
 
-### Agent Builder (`/agent-builder`)
+## Quick Demo Flow (Suggestion)
 
-The main attraction. Shows:
+1. Open `http://localhost:4111/agent-builder`
+2. Sign in (WorkOS Google SSO)
+3. Create a new agent — pick a model, write instructions, save
+4. Chat with the agent in the right panel
+5. Go to Skills → create a skill → go back to the agent and attach it
+6. Toggle visibility from Private → Public — show the badge change
+7. Star the agent
+8. (If showing auth/RBAC) Click your avatar → "Preview as role" → pick "member" → show how the experience changes → exit preview
 
-- **Create agents** — Click "New Agent", give it a name, pick a model, write instructions
-- **Model dropdown** — Shows allowed models from the config (all OpenAI models + `claude-opus-4-7`)
-- **Skills** — Create skills, attach them to agents
-- **Visibility** — Toggle agents/skills between Private and Public
-- **Stars** — Star favorite agents/skills
-- **Workspaces** — Builder workspace auto-configured with filesystem + sandbox
+---
 
-### Key Pages
+## Key URLs
 
 | Page | URL |
 |------|-----|
-| Agent Builder (agents list) | `http://localhost:4111/agent-builder` |
-| Skills list | `http://localhost:4111/agent-builder/skills` |
-| Studio (tools, workflows, traces) | `http://localhost:4111` |
+| Agent Builder | `http://localhost:4111/agent-builder` |
+| Skills | `http://localhost:4111/agent-builder/skills` |
+| Studio (standard) | `http://localhost:4111` |
 
-### Demo Flow (suggested)
+---
 
-1. Open `http://localhost:4111/agent-builder`
-2. Click **"New Agent"** — show the creation form
-3. Pick a model from the dropdown (note it only shows allowed providers)
-4. Write some instructions (e.g., "You are a helpful research assistant")
-5. Save the agent → it appears in the list
-6. Go to **Skills** → create a skill → attach it to the agent
-7. Open the agent → show the chat panel on the right, send a message
-8. Show **visibility toggle** (Private → Public badge change)
+## Feature Details
 
-## Auth
+### Auth & Roles
 
-Auth is enabled via WorkOS (Google SSO). When you open the app, you'll be prompted to sign in with Google.
+With `AUTH_PROVIDER=workos`, login is via Google SSO. The current role mapping:
 
-If you need to **disable auth** for a quicker demo (no login screen):
+| Role | Access |
+|------|--------|
+| **admin** | Full access to everything |
+| **member** | Can create/manage own agents and skills in the builder. No access to the main Studio agents tab. |
+| **operator** | Can view and run agents only (no builder access) |
+| **viewer** | Read-only, no resources |
+| **auditor** | Observability/logs only |
 
-1. Remove or comment out `AUTH_PROVIDER=workos` in `examples/agent/.env`
-2. Restart the server
+### Workspaces
 
-Everything works the same without auth — you just won't have user identity (no `authorId` on created entities).
+Workspaces provide filesystem and sandbox infrastructure for agents. The builder workspace is configured in code and auto-managed:
 
-## Troubleshooting
+- Auto-created on startup with `runtimeRegistered: true`
+- Auto-updated if the config changes (e.g., different basePath)
+- Auto-archived if removed from config
 
-**Server won't start / build errors**
+This is admin/platform infrastructure — end users don't interact with it directly. Brandon doesn't need to worry about workspace setup; it just works out of the box.
+
+### Resetting Demo State
+
+To wipe everything and start fresh:
 
 ```bash
-# Clean and rebuild
-pnpm clean
-pnpm install
-pnpm build
 cd examples/agent
+pnpm clean
 pnpm mastra:dev
 ```
 
-**Port 4111 already in use**
+---
 
+## Troubleshooting
+
+**Port 4111 already in use**
 ```bash
 lsof -i :4111 | grep LISTEN | awk '{print $2}' | xargs kill -9
 ```
 
-**"Cannot find module" errors**
+**"Cannot find module" errors** — Run `pnpm build` from the repo root.
 
-Run `pnpm build` again from the repo root. The packages need to be built before the example can import them.
+**Chat not responding** — Check `OPENAI_API_KEY` is set. If using a Claude model, check `ANTHROPIC_API_KEY`.
 
-**Chat not responding**
-
-- Check that `OPENAI_API_KEY` is set correctly in `examples/agent/.env`
-- Check the terminal for error messages
-
-## Known Rough Edges
-
-- **Create Skill button** may appear disabled initially — click into the name field, type something, and it should enable
-- **Daytona sandbox** features won't work without a Daytona API key (fine to ignore for demos)
-- **Browserbase** features need `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID` (fine to skip)
-- The **Agent Builder AI assistant** (the `builderAgent` in chat) works best with `gpt-4o` or better
-
-## Resetting Demo State
-
-To wipe all created agents/skills and start fresh:
-
-```bash
-cd examples/agent
-pnpm clean
-pnpm mastra:dev
-```
-
-This deletes the local SQLite database and starts with a clean slate.
+**Can't find Agent Builder** — Navigate directly to `http://localhost:4111/agent-builder`.
