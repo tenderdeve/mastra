@@ -726,6 +726,12 @@ importers:
       '@mastra/schema-compat':
         specifier: workspace:*
         version: link:../../packages/schema-compat
+      canonicalize:
+        specifier: ^1.0.8
+        version: 1.0.8
+      jose:
+        specifier: ^6.2.1
+        version: 6.2.1
       json-schema:
         specifier: ^0.4.0
         version: 0.4.0
