@@ -27,9 +27,9 @@ If you host your Mastra application on your own infrastructure (not on Mastra Pl
 
 ## Version compatibility
 
-- Use `MastraObserveExporter` with `@mastra/observability@1.8.0` or later.
+- The exporter is available starting in `@mastra/observability@1.8.0`. In versions before the `MastraObserveExporter` rename, import it as `CloudExporter` instead — the constructor signature and environment variables are identical.
 - If you use `@mastra/observability@1.8.0` through `1.9.1`, set `MASTRA_CLOUD_TRACES_ENDPOINT=https://observability.mastra.ai` in addition to `MASTRA_CLOUD_ACCESS_TOKEN` and `MASTRA_PROJECT_ID`.
-- Starting in `@mastra/observability@1.9.2`, `MastraObserveExporter` defaults to `https://observability.mastra.ai`, so `MASTRA_CLOUD_TRACES_ENDPOINT` is only required when you want to send telemetry to a different collector.
+- Starting in `@mastra/observability@1.9.2`, the exporter defaults to `https://observability.mastra.ai`, so `MASTRA_CLOUD_TRACES_ENDPOINT` is only required when you want to send telemetry to a different collector.
 
 ## Quickstart
 
