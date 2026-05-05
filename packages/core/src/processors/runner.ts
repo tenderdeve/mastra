@@ -15,7 +15,6 @@ import type { RequestContext } from '../request-context';
 import type { ChunkType } from '../stream';
 import type { MastraModelOutput } from '../stream/base/output';
 import type { LanguageModelUsage } from '../stream/types';
-import { isMaybeAnthropic, isMaybeCerebras, ProviderHistoryCompat } from './provider-history-compat';
 import {
   summarizeActiveToolsForSpan,
   summarizeProcessorModelForSpan,
@@ -1252,12 +1251,6 @@ export class ProcessorRunner {
    * and immediately *before* the prompt is forwarded to the provider.
    * Mutations are scoped to this single call — they do not affect the
    * persisted message list, memory, UI, or future model swaps.
-   *
-   * Built-in `ProviderHistoryCompat` is auto-injected for Cerebras when the
-   * user hasn't already added one (so the cerebras `reasoning_content` strip
-   * applies out of the box). Other built-in compat rules (e.g. the Anthropic
-   * tool-id reactive fix) still require an explicit `ProviderHistoryCompat`
-   * instance in `inputProcessors`.
    */
   async runProcessLLMPrompt(args: {
     prompt: LanguageModelV2Prompt;
@@ -1272,20 +1265,9 @@ export class ProcessorRunner {
   }): Promise<{ prompt: LanguageModelV2Prompt }> {
     const observabilityContext = resolveObservabilityContext({ tracingContext: args.tracingContext });
 
-    // Auto-inject ProviderHistoryCompat for providers with preemptive prompt
-    // rules when the user hasn't already added one.
-    let processors = this.inputProcessors;
-    if (
-      args.model &&
-      (isMaybeCerebras(args.model) || isMaybeAnthropic(args.model)) &&
-      !this.inputProcessors.some(p => !isProcessorWorkflow(p) && p.id === 'provider-history-compat')
-    ) {
-      processors = [...this.inputProcessors, new ProviderHistoryCompat()];
-    }
-
     let currentPrompt = args.prompt;
 
-    for (const processorOrWorkflow of processors) {
+    for (const processorOrWorkflow of this.inputProcessors) {
       // Workflows do not currently participate in processLLMPrompt.
       if (isProcessorWorkflow(processorOrWorkflow)) continue;
       const processor = processorOrWorkflow;

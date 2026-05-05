@@ -594,9 +594,9 @@ describe('ProviderHistoryCompat.processLLMPrompt', () => {
 });
 
 describe('ProcessorRunner.runProcessLLMPrompt', () => {
-  it('auto-injects ProviderHistoryCompat for generic provider objects with cerebras-prefixed model IDs', async () => {
+  it('runs ProviderHistoryCompat when explicitly configured', async () => {
     const runner = new ProcessorRunner({
-      inputProcessors: [],
+      inputProcessors: [new ProviderHistoryCompat()],
       outputProcessors: [],
       logger: mockLogger,
       agentName: 'test-agent',
@@ -613,7 +613,7 @@ describe('ProcessorRunner.runProcessLLMPrompt', () => {
     expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
   });
 
-  it('auto-injects ProviderHistoryCompat for Anthropic models', async () => {
+  it('does not auto-inject ProviderHistoryCompat for provider models', async () => {
     const runner = new ProcessorRunner({
       inputProcessors: [],
       outputProcessors: [],
@@ -629,6 +629,6 @@ describe('ProcessorRunner.runProcessLLMPrompt', () => {
     });
 
     const assistant = result.prompt.find(m => m.role === 'assistant')!;
-    expect((assistant.content as any[]).map(p => p.type)).toEqual(['text']);
+    expect((assistant.content as any[]).map(p => p.type)).toEqual(['reasoning', 'text']);
   });
 });

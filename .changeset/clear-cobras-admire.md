@@ -1,8 +1,9 @@
 ---
 '@mastra/core': minor
+'mastracode': patch
 ---
 
-Add a new `processLLMPrompt` processor hook and use it to fix reasoning-history incompatibilities on Cerebras and Anthropic.
+Add a new `processLLMPrompt` processor hook and a `ProviderHistoryCompat` processor for reasoning-history incompatibilities on Cerebras and Anthropic.
 
 **New hook**: `Processor` instances may now implement `processLLMPrompt(args: { prompt, model, … })`. It runs after `MessageList` has been converted to `LanguageModelV2Prompt` and immediately before the prompt is forwarded to the provider. Mutations are scoped to a single call — they do not persist back to the message list, memory, UI, or future model swaps. This is the right place for transient, model-aware rewrites such as stripping fields a specific provider rejects, or re-shaping tool-result formats when switching providers mid-loop.
 
@@ -10,4 +11,4 @@ Add a new `processLLMPrompt` processor hook and use it to fix reasoning-history 
 
 **Anthropic fix**: Anthropic accepts its own signed thinking blocks, but can reject reasoning history emitted by other providers when that history is forwarded as Anthropic thinking input. `ProviderHistoryCompat` now ships a built-in `anthropic-strip-foreign-reasoning-content` rule that strips non-Anthropic `reasoning` parts from assistant messages in the outbound prompt for Anthropic-resolved models while keeping Anthropic-native reasoning parts intact.
 
-`ProviderHistoryCompat` is auto-injected for Cerebras- and Anthropic-resolved models when the user hasn't already added one, so these fixes apply out of the box.
+Add `ProviderHistoryCompat` explicitly to an agent's `inputProcessors` to enable the preemptive prompt rewrites. MastraCode includes `ProviderHistoryCompat` by default for both prompt rewrites and API error recovery while the processor gets more production testing.

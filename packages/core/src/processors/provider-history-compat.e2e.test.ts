@@ -9,6 +9,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider-v5';
 import { config } from 'dotenv';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Agent } from '../agent';
+import { ProviderHistoryCompat } from './provider-history-compat';
 
 config();
 
@@ -53,6 +54,7 @@ describe('ProviderHistoryCompat Anthropic reasoning E2E', { timeout: 60_000 }, (
       name: 'Anthropic Foreign Reasoning E2E Agent',
       instructions: 'Reply exactly as requested.',
       model: anthropicModel,
+      inputProcessors: [new ProviderHistoryCompat()],
     });
 
     const firstUserMessage = { role: 'user' as const, content: 'What is 19 * 23? Reply with one sentence.' };
@@ -94,6 +96,7 @@ describe('ProviderHistoryCompat Anthropic reasoning E2E', { timeout: 60_000 }, (
       name: 'Anthropic Native Reasoning E2E Agent',
       instructions: 'Reply exactly as requested.',
       model: anthropicModel,
+      inputProcessors: [new ProviderHistoryCompat()],
     });
     const providerOptions = {
       anthropic: {

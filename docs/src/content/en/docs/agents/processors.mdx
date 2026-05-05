@@ -228,7 +228,7 @@ Use the message-based hooks for conversation changes:
 - `processInputStep()`: Change messages or step configuration before each LLM call.
 - `processLLMPrompt()`: Change only the outbound prompt for the current provider call.
 
-Changes returned from `processLLMPrompt()` are transient. They do not persist back to `MessageList`, memory, UI history, or future provider calls. This makes the hook a good fit for provider compatibility rewrites, role/content normalization, or other model-specific prompt changes that should not alter stored conversation history.
+Changes returned from `processLLMPrompt()` are transient. They don't persist back to `MessageList`, memory, UI history, or future provider calls. This makes the hook a good fit for provider compatibility rewrites, role/content normalization, or other model-specific prompt changes that shouldn't alter stored conversation history.
 
 The method receives `prompt`, `model`, `stepNumber`, `steps`, `state`, and the shared processor context. Calling `abort()` from `processLLMPrompt()` emits the normal tripwire response and stops the call.
 
@@ -340,7 +340,7 @@ For more on retry behavior, see [Retry mechanism](#retry-mechanism) in Advanced 
 
 ### Persist data across chunks and steps
 
-Output methods receive a `state` object that persists for the lifetime of one request. State is keyed by the processor's `id`, so each processor sees only its own data, and it is shared between `processOutputStream`, `processOutputStep`, and `processOutputResult`. A new state object is created for every new `agent.generate()` or `agent.stream()` call.
+Output methods receive a `state` object that persists for the lifetime of one request. State is keyed by the processor's `id`, so each processor sees only its own data, and it's shared between `processOutputStream`, `processOutputStep`, and `processOutputResult`. A new state object is created for every new `agent.generate()` or `agent.stream()` call.
 
 ```typescript title="src/mastra/processors/word-counter.ts"
 import type { Processor } from '@mastra/core/processors'
@@ -406,6 +406,14 @@ See the [`ToolCallFilter` reference](/reference/processors/tool-call-filter) for
 Enables dynamic tool discovery for agents with large tool libraries. Instead of providing all tools upfront, the processor gives the agent `search_tools` and `load_tool` meta-tools to find and load tools by keyword on demand, reducing context token usage.
 
 See the [`ToolSearchProcessor` reference](/reference/processors/tool-search-processor) for configuration options and usage examples.
+
+### `ProviderHistoryCompat`
+
+Handles provider-specific history incompatibilities when agents reuse messages across model providers. It can rewrite the outbound LLM prompt before the provider call, or recover from known provider API errors and retry.
+
+Add `ProviderHistoryCompat` explicitly when you need provider history compatibility rules, reactive API error recovery, custom compatibility rules, or predictable processor ordering.
+
+See the [`ProviderHistoryCompat` reference](/reference/processors/provider-history-compat) for setup, built-in rules, and custom rule options.
 
 ## Advanced patterns
 
@@ -518,7 +526,7 @@ for await (const chunk of stream.fullStream) {
 
 Custom chunk types must use the `data-` prefix (e.g., `data-moderation-update`, `data-status`).
 
-By default, `processOutputStream()` skips `data-*` chunks so it does not accidentally operate on tool telemetry or other processors' output. To inspect, modify, or block these chunks in a processor, set `processDataParts = true` on that processor:
+By default, `processOutputStream()` skips `data-*` chunks so it doesn't accidentally operate on tool telemetry or other processors' output. To inspect, modify, or block these chunks in a processor, set `processDataParts = true` on that processor:
 
 ```typescript
 class ModerationCollector implements Processor {
