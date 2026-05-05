@@ -14,6 +14,7 @@ import { ThreadLockError } from '../utils/thread-lock.js';
 import { renderBanner } from './components/banner.js';
 import { TaskProgressComponent } from './components/task-progress.js';
 import { showError, showInfo } from './display.js';
+import { isGoalJudgeInputLocked, showGoalJudgeInputLockInfo } from './goal-input-lock.js';
 import type { TUIState } from './state.js';
 import { updateStatusLine } from './status-line.js';
 import { theme } from './theme.js';
@@ -158,6 +159,12 @@ export function setupKeyboardShortcuts(
 
   // Enter - submit immediately when idle, queue follow-up input while streaming
   state.editor.onAction('followUp', () => {
+    if (isGoalJudgeInputLocked(state)) {
+      showGoalJudgeInputLockInfo(state);
+      state.ui.requestRender();
+      return true;
+    }
+
     if (!state.harness.isRunning()) {
       state.editor.onSubmit?.(state.editor.getExpandedText());
       return true;

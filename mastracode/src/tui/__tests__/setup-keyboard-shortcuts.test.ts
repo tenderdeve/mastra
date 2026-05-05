@@ -37,6 +37,8 @@ vi.mock('../status-line.js', () => ({
   updateStatusLine: vi.fn(),
 }));
 
+import { showInfo } from '../display.js';
+import { GOAL_JUDGE_INPUT_LOCK_MESSAGE } from '../goal-input-lock.js';
 import { setupAutocomplete, setupKeyboardShortcuts } from '../setup.js';
 
 function createState(isRunning: boolean) {
@@ -147,6 +149,28 @@ describe('setupKeyboardShortcuts', () => {
     expect(queueFollowUpMessage).toHaveBeenCalledWith('/help');
     expect(editor.setText).toHaveBeenCalledWith('');
     expect(editor.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('blocks Enter submissions while the goal judge is evaluating', () => {
+    vi.mocked(showInfo).mockClear();
+    const { state, editor, actions } = createState(false);
+    state.activeGoalJudge = { modelId: 'openai/gpt-5.5' };
+    const queueFollowUpMessage = vi.fn();
+
+    setupKeyboardShortcuts(state, {
+      stop: vi.fn(),
+      doubleCtrlCMs: 500,
+      queueFollowUpMessage,
+    });
+
+    const followUp = actions.get('followUp');
+    expect(followUp?.()).toBe(true);
+    expect(editor.onSubmit).not.toHaveBeenCalled();
+    expect(editor.addToHistory).not.toHaveBeenCalled();
+    expect(editor.setText).not.toHaveBeenCalled();
+    expect(queueFollowUpMessage).not.toHaveBeenCalled();
+    expect(showInfo).toHaveBeenCalledWith(state, GOAL_JUDGE_INPUT_LOCK_MESSAGE);
+    expect(state.ui.requestRender).toHaveBeenCalled();
   });
 
   it('toggles system reminder expansion with Ctrl+E', () => {

@@ -40,6 +40,7 @@ import { ModelSelectorComponent } from './components/model-selector.js';
 import type { ModelItem } from './components/model-selector.js';
 import { showError, showInfo, showFormattedError, notify } from './display.js';
 import { dispatchEvent } from './event-dispatch.js';
+import { isGoalJudgeInputLocked, showGoalJudgeInputLockInfo } from './goal-input-lock.js';
 import type { EventHandlerContext } from './handlers/types.js';
 import { promptForApiKeyIfNeeded } from './prompt-api-key.js';
 
@@ -702,6 +703,13 @@ export class MastraTUI {
   private getUserInput(): Promise<string> {
     return new Promise(resolve => {
       this.state.editor.onSubmit = (text: string) => {
+        if (isGoalJudgeInputLocked(this.state)) {
+          this.state.editor.setText(text);
+          showGoalJudgeInputLockInfo(this.state);
+          this.state.ui.requestRender();
+          return;
+        }
+
         // Add to history for arrow up/down navigation (skip empty)
         if (text.trim()) {
           this.state.editor.addToHistory(text);

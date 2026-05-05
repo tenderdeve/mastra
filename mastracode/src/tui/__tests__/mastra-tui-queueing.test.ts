@@ -21,6 +21,7 @@ vi.mock('../display.js', () => ({
   notify: vi.fn(),
 }));
 
+import { GOAL_JUDGE_INPUT_LOCK_MESSAGE } from '../goal-input-lock.js';
 import { handleAgentEnd } from '../handlers/agent-lifecycle.js';
 import type { EventHandlerContext } from '../handlers/types.js';
 import { MastraTUI, consumePendingImages } from '../mastra-tui.js';
@@ -116,6 +117,49 @@ describe('MastraTUI queueing', () => {
     expect(editor.addToHistory).toHaveBeenCalledWith('queued follow-up');
     expect(editor.setText).toHaveBeenCalledWith('');
     expect(tui.queueFollowUpMessage).toHaveBeenCalledWith('queued follow-up');
+
+    const resolution = await Promise.race([
+      pendingInput.then(value => ({ resolved: true as const, value })),
+      Promise.resolve({ resolved: false as const, value: undefined }),
+    ]);
+    expect(resolution).toEqual({ resolved: false, value: undefined });
+  });
+
+  it('blocks editor submissions while the goal judge is evaluating', async () => {
+    const editor = {
+      onSubmit: undefined as ((text: string) => void) | undefined,
+      addToHistory: vi.fn(),
+      setText: vi.fn(),
+    };
+    const state = {
+      editor,
+      activeGoalJudge: { modelId: 'openai/gpt-5.5' },
+      harness: { isRunning: vi.fn(() => false) },
+      pendingSlashCommands: [],
+      pendingQueuedActions: [],
+      pendingFollowUpMessages: [],
+      pendingImages: [],
+      ui: { requestRender: vi.fn() },
+      chatContainer: {},
+      followUpComponents: [],
+    };
+
+    const tui = Object.create(MastraTUI.prototype) as {
+      state: typeof state;
+      getUserInput: () => Promise<string>;
+      queueFollowUpMessage: (text: string) => void;
+    };
+    tui.state = state;
+    tui.queueFollowUpMessage = vi.fn();
+
+    const pendingInput = tui.getUserInput();
+    editor.onSubmit?.('wait for judge');
+
+    expect(editor.addToHistory).not.toHaveBeenCalled();
+    expect(editor.setText).toHaveBeenCalledWith('wait for judge');
+    expect(tui.queueFollowUpMessage).not.toHaveBeenCalled();
+    expect(mocks.showInfo).toHaveBeenCalledWith(state, GOAL_JUDGE_INPUT_LOCK_MESSAGE);
+    expect(state.ui.requestRender).toHaveBeenCalled();
 
     const resolution = await Promise.race([
       pendingInput.then(value => ({ resolved: true as const, value })),

@@ -5,9 +5,11 @@ vi.hoisted(() => vi.resetModules());
 const mocks = vi.hoisted(() => ({
   handleModelsPackCommand: vi.fn().mockResolvedValue(undefined),
   handleCustomProvidersCommand: vi.fn().mockResolvedValue(undefined),
+  handleGoalCommand: vi.fn().mockResolvedValue(undefined),
   handleJudgeCommand: vi.fn().mockResolvedValue(undefined),
   processSlashCommand: vi.fn().mockResolvedValue('custom output'),
   showError: vi.fn(),
+  showInfo: vi.fn(),
 }));
 
 vi.mock('../commands/index.js', () => ({
@@ -44,13 +46,13 @@ vi.mock('../commands/index.js', () => ({
   handleApiKeysCommand: vi.fn(),
   handleFeedbackCommand: vi.fn(),
   handleObservabilityCommand: vi.fn(),
-  handleGoalCommand: vi.fn(),
+  handleGoalCommand: mocks.handleGoalCommand,
   handleJudgeCommand: mocks.handleJudgeCommand,
 }));
 
 vi.mock('../display.js', () => ({
   showError: mocks.showError,
-  showInfo: vi.fn(),
+  showInfo: mocks.showInfo,
 }));
 
 vi.mock('../../utils/slash-command-processor.js', () => ({
@@ -58,14 +60,17 @@ vi.mock('../../utils/slash-command-processor.js', () => ({
 }));
 
 import { dispatchSlashCommand } from '../command-dispatch.js';
+import { GOAL_JUDGE_INPUT_LOCK_MESSAGE } from '../goal-input-lock.js';
 
 describe('dispatchSlashCommand models routing', () => {
   beforeEach(() => {
     mocks.handleModelsPackCommand.mockClear();
     mocks.handleCustomProvidersCommand.mockClear();
+    mocks.handleGoalCommand.mockClear();
     mocks.handleJudgeCommand.mockClear();
     mocks.processSlashCommand.mockClear();
     mocks.showError.mockClear();
+    mocks.showInfo.mockClear();
   });
 
   it('routes /models to handleModelsPackCommand', async () => {
@@ -109,6 +114,42 @@ describe('dispatchSlashCommand models routing', () => {
     expect(handled).toBe(true);
     expect(mocks.handleJudgeCommand).toHaveBeenCalledTimes(1);
     expect(mocks.handleJudgeCommand).toHaveBeenCalledWith(ctx);
+  });
+
+  it('blocks slash commands while the goal judge is evaluating', async () => {
+    const state = { customSlashCommands: [], activeGoalJudge: { modelId: 'openai/gpt-5.5' } } as any;
+
+    const handled = await dispatchSlashCommand('/models', state, () => ({}) as any);
+
+    expect(handled).toBe(true);
+    expect(mocks.handleModelsPackCommand).not.toHaveBeenCalled();
+    expect(mocks.showInfo).toHaveBeenCalledWith(state, GOAL_JUDGE_INPUT_LOCK_MESSAGE);
+  });
+
+  it('allows goal escape hatches while the goal judge is evaluating', async () => {
+    const state = { customSlashCommands: [], activeGoalJudge: { modelId: 'openai/gpt-5.5' } } as any;
+    const ctx = {} as any;
+
+    await expect(dispatchSlashCommand('/goal pause', state, () => ctx)).resolves.toBe(true);
+    await expect(dispatchSlashCommand('/goal clear', state, () => ctx)).resolves.toBe(true);
+
+    expect(mocks.handleGoalCommand).toHaveBeenCalledTimes(2);
+    expect(mocks.handleGoalCommand).toHaveBeenNthCalledWith(1, ctx, ['pause']);
+    expect(mocks.handleGoalCommand).toHaveBeenNthCalledWith(2, ctx, ['clear']);
+    expect(mocks.showInfo).not.toHaveBeenCalled();
+  });
+
+  it('blocks custom slash commands while the goal judge is evaluating', async () => {
+    const state = {
+      customSlashCommands: [{ name: 'deploy', description: 'Deploy to prod', template: 'deploy now', sourcePath: '' }],
+      activeGoalJudge: { modelId: 'openai/gpt-5.5' },
+    } as any;
+
+    const handled = await dispatchSlashCommand('//deploy', state, () => ({}) as any);
+
+    expect(handled).toBe(true);
+    expect(mocks.processSlashCommand).not.toHaveBeenCalled();
+    expect(mocks.showInfo).toHaveBeenCalledWith(state, GOAL_JUDGE_INPUT_LOCK_MESSAGE);
   });
 
   it('routes //deploy to a matching custom slash command', async () => {

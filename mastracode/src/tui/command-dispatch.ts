@@ -44,6 +44,11 @@ import {
 import type { SlashCommandContext } from './commands/types.js';
 import { SlashCommandComponent } from './components/slash-command.js';
 import { showError, showInfo } from './display.js';
+import {
+  canRunSlashCommandDuringGoalJudge,
+  isGoalJudgeInputLocked,
+  showGoalJudgeInputLockInfo,
+} from './goal-input-lock.js';
 import type { TUIState } from './state.js';
 
 /**
@@ -62,6 +67,11 @@ export async function dispatchSlashCommand(
   const withoutSlashes = slashMatch?.[2] ?? trimmedInput;
 
   if (slashPrefix === '//') {
+    if (isGoalJudgeInputLocked(state)) {
+      showGoalJudgeInputLockInfo(state);
+      return true;
+    }
+
     const [cmdName, ...cmdArgs] = withoutSlashes.split(' ');
     const customCommand = state.customSlashCommands.find(cmd => cmd.name === cmdName);
     if (customCommand) {
@@ -73,7 +83,12 @@ export async function dispatchSlashCommand(
     return true;
   }
 
-  const [command, ...args] = withoutSlashes.split(' ');
+  const [command = '', ...args] = withoutSlashes.split(' ');
+
+  if (isGoalJudgeInputLocked(state) && !canRunSlashCommandDuringGoalJudge(command, args)) {
+    showGoalJudgeInputLockInfo(state);
+    return true;
+  }
 
   switch (command) {
     case 'new':
