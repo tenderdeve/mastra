@@ -35,6 +35,9 @@ import {
   handleThemeCommand,
   handleUpdateCommand,
   handleMemoryGatewayCommand,
+  handleApiKeysCommand,
+  handleFeedbackCommand,
+  handleObservabilityCommand,
 } from './commands/index.js';
 import type { SlashCommandContext } from './commands/types.js';
 import { SlashCommandComponent } from './components/slash-command.js';
@@ -87,7 +90,7 @@ export async function dispatchSlashCommand(
 
   switch (command) {
     case 'new':
-      handleNewCommand(ctx);
+      await handleNewCommand(ctx);
       return true;
     case 'clone':
       await handleCloneCommand(ctx);
@@ -185,6 +188,15 @@ export async function dispatchSlashCommand(
     case 'memory-gateway':
       await handleMemoryGatewayCommand(ctx);
       return true;
+    case 'api-keys':
+      await handleApiKeysCommand(buildCtx());
+      return true;
+    case 'feedback':
+      await handleFeedbackCommand(buildCtx(), args);
+      return true;
+    case 'observability':
+      await handleObservabilityCommand(buildCtx(), args);
+      return true;
     default: {
       const customCommand = state.customSlashCommands.find(cmd => cmd.name === command);
       if (customCommand) {
@@ -215,6 +227,11 @@ async function handleCustomSlashCommand(
       state.allSlashCommandComponents.push(slashComp);
       state.chatContainer.addChild(slashComp);
       state.ui.requestRender();
+
+      if (state.pendingNewThread) {
+        await state.harness.createThread();
+        state.pendingNewThread = false;
+      }
 
       // Wrap in <slash-command> tags so the assistant sees the full
       // content but addUserMessage won't double-render it.
