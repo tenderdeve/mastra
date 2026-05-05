@@ -118,14 +118,7 @@ export async function persistStepUpdate(
     tracingContext,
   } = params;
 
-  // Include workflowStatus and the last step's status in the operation ID so
-  // multiple persistStepUpdate calls within the same executionPath (e.g. the
-  // pre-step "running" snapshot from step.ts and the post-step "running"
-  // snapshot from this file) get distinct durable step IDs. Without this,
-  // Inngest SDK v4 emits an AUTOMATIC_PARALLEL_INDEXING warning.
-  const lastStepId = executionContext.stepExecutionPath?.at(-1);
-  const lastStepStatus = lastStepId ? stepResults[lastStepId]?.status : undefined;
-  const operationId = `workflow.${workflowId}.run.${runId}.path.${JSON.stringify(executionContext.executionPath)}.stepUpdate.${workflowStatus}.${lastStepStatus ?? 'pre'}`;
+  const operationId = `workflow.${workflowId}.run.${runId}.path.${JSON.stringify(executionContext.executionPath)}.stepUpdate`;
 
   await engine.wrapDurableOperation(operationId, async () => {
     const shouldPersistSnapshot = engine.options?.shouldPersistSnapshot?.({ stepResults, workflowStatus });

@@ -1,6 +1,5 @@
 ---
 '@mastra/inngest': minor
-'@mastra/core': patch
 ---
 
 Updated `@mastra/inngest` to use Inngest SDK v4.
