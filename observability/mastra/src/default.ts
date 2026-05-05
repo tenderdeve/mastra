@@ -125,7 +125,8 @@ export class Observability extends MastraBase implements ObservabilityEntrypoint
     if (config.default?.enabled) {
       console.warn(
         '[Mastra Observability] The "default: { enabled: true }" configuration is deprecated and will be removed in a future version. ' +
-          'Please use explicit configs with DefaultExporter, CloudExporter, and SensitiveDataFilter instead. ' +
+          'Please use explicit configs with DefaultExporter and CloudExporter instead. ' +
+          'Sensitive data filtering is applied by default and can be controlled via the top-level "sensitiveDataFilter" option. ' +
           'See https://mastra.ai/docs/observability/tracing/overview for the recommended configuration.',
       );
 
