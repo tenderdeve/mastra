@@ -25,4 +25,4 @@ const mastra = new Mastra({
 });
 ```
 
-Mastra now signs served A2A Agent Cards and includes the `signatures` array in the Agent Card response.
+Mastra now conditionally signs served A2A Agent Cards via `signAgentCard(...)` when `server.a2a.agentCardSigning` is configured, and the A2A Agent Card response schema now includes the `signatures` array.
