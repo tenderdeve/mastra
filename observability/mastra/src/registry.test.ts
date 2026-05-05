@@ -848,8 +848,14 @@ describe('Observability Registry', () => {
         expect(processors?.[1]).toBe(userProcessor);
       });
 
-      it('should not duplicate SensitiveDataFilter when user already added one', () => {
-        const userFilter = new SensitiveDataFilter({ redactionToken: '[USER]' });
+      it('should use the user-supplied SensitiveDataFilter (and its options) when one is provided', () => {
+        // User supplies their own filter with custom options. We must register
+        // their instance unchanged and not auto-add a second filter that would
+        // override their configuration.
+        const userFilter = new SensitiveDataFilter({
+          redactionToken: '[USER]',
+          sensitiveFields: ['mySecret'],
+        });
 
         observability = new Observability({
           configs: {
@@ -859,11 +865,27 @@ describe('Observability Registry', () => {
               spanOutputProcessors: [userFilter],
             },
           },
+          // Even when a top-level option is set, the user-supplied filter wins.
+          sensitiveDataFilter: { redactionToken: '[REGISTRY]' },
         });
 
         const processors = observability.getInstance('custom')?.getSpanOutputProcessors();
         expect(processors).toHaveLength(1);
         expect(processors?.[0]).toBe(userFilter);
+
+        // Verify the user's options actually drive redaction end-to-end
+        // (no double-wrapping with the registry-level config).
+        const filtered = (processors?.[0] as SensitiveDataFilter).process({
+          attributes: { mySecret: 'value', password: 'not-in-user-list' },
+          metadata: undefined,
+          input: undefined,
+          output: undefined,
+          errorInfo: undefined,
+        } as any);
+
+        expect((filtered as any).attributes.mySecret).toBe('[USER]');
+        // password is not in the user's sensitiveFields list so it is not redacted
+        expect((filtered as any).attributes.password).toBe('not-in-user-list');
       });
 
       it('should not auto-apply SensitiveDataFilter when set to false', () => {
