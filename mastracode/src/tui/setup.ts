@@ -151,22 +151,10 @@ export function setupKeyboardShortcuts(
     showInfo(state, current ? 'YOLO mode off' : 'YOLO mode on');
   });
 
-  // Enter - submit immediately when idle, queue follow-up input while streaming
+  // Enter - submit immediately. The submit handler decides whether active input
+  // should be sent as a signal or queued for cases signals cannot handle.
   state.editor.onAction('followUp', () => {
-    if (!state.harness.isRunning()) {
-      state.editor.onSubmit?.(state.editor.getExpandedText());
-      return true;
-    }
-
-    const text = state.editor.getExpandedText().trim();
-    if (!text) {
-      return true;
-    }
-
-    state.editor.addToHistory(text);
-    state.editor.setText('');
-    callbacks.queueFollowUpMessage(text);
-    state.ui.requestRender();
+    state.editor.onSubmit?.(state.editor.getExpandedText());
     return true;
   });
 }
