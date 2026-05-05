@@ -21,21 +21,23 @@ type DisplayMemoryConfig = {
   lastMessages?: number | false;
   generateTitle?: boolean;
   semanticRecall?: SemanticRecall | boolean;
-  observationalMemory?: {
-    enabled?: boolean;
-    scope?: 'resource' | 'thread';
-    model?: unknown;
-    observationModel?: string;
-    reflectionModel?: string;
-    observation?: {
-      model?: unknown;
-      messageTokens?: number | { min: number; max: number };
-    };
-    reflection?: {
-      model?: unknown;
-      observationTokens?: number | { min: number; max: number };
-    };
-  };
+  observationalMemory?:
+    | boolean
+    | {
+        enabled?: boolean;
+        scope?: 'resource' | 'thread';
+        model?: unknown;
+        observationModel?: string;
+        reflectionModel?: string;
+        observation?: {
+          model?: unknown;
+          messageTokens?: number | { min: number; max: number };
+        };
+        reflection?: {
+          model?: unknown;
+          observationTokens?: number | { min: number; max: number };
+        };
+      };
 };
 
 export const AgentMemoryConfig = ({ agentId }: AgentMemoryConfigProps) => {
@@ -94,23 +96,36 @@ export const AgentMemoryConfig = ({ agentId }: AgentMemoryConfigProps) => {
 
     // Observational Memory section
     const omConfig = config.observationalMemory;
-    if (typeof omConfig === 'object' && omConfig?.enabled !== false) {
+    const isOmConfigObject = omConfig !== null && typeof omConfig === 'object';
+    const isObservationalMemoryEnabled = omConfig === true || (isOmConfigObject && omConfig.enabled !== false);
+
+    if (isObservationalMemoryEnabled) {
       const formatThreshold = (threshold: number | { min: number; max: number } | undefined) => {
         if (!threshold) return 'Default';
         if (typeof threshold === 'number') return `${threshold.toLocaleString()} tokens`;
         return `${threshold.min.toLocaleString()}-${threshold.max.toLocaleString()} tokens`;
       };
 
-      const observationModel = omConfig.observationModel || omConfig.model || omConfig.observation?.model;
-      const reflectionModel = omConfig.reflectionModel || omConfig.model || omConfig.reflection?.model;
+      const observationModel = isOmConfigObject
+        ? omConfig.observationModel || omConfig.model || omConfig.observation?.model
+        : undefined;
+      const reflectionModel = isOmConfigObject
+        ? omConfig.reflectionModel || omConfig.model || omConfig.reflection?.model
+        : undefined;
 
       sections.push({
         title: 'Observational Memory',
         items: [
           { label: 'Enabled', value: true, badge: 'success' },
-          { label: 'Scope', value: omConfig.scope || 'thread' },
-          { label: 'Message Tokens', value: formatThreshold(omConfig.observation?.messageTokens) },
-          { label: 'Observation Tokens', value: formatThreshold(omConfig.reflection?.observationTokens) },
+          { label: 'Scope', value: isOmConfigObject ? omConfig.scope || 'thread' : 'thread' },
+          {
+            label: 'Message Tokens',
+            value: formatThreshold(isOmConfigObject ? omConfig.observation?.messageTokens : undefined),
+          },
+          {
+            label: 'Observation Tokens',
+            value: formatThreshold(isOmConfigObject ? omConfig.reflection?.observationTokens : undefined),
+          },
           ...(observationModel ? [{ label: 'Observation Model', value: String(observationModel) }] : []),
           ...(reflectionModel ? [{ label: 'Reflection Model', value: String(reflectionModel) }] : []),
         ],
