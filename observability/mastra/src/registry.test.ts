@@ -785,6 +785,175 @@ describe('Observability Registry', () => {
       expect(observability.getSelectedInstance(config2Options)).toBe(observability.getInstance('config2'));
     });
 
+    describe('Sensitive Data Filter Default', () => {
+      it('should auto-prepend SensitiveDataFilter to user configs by default', () => {
+        observability = new Observability({
+          configs: {
+            custom: {
+              serviceName: 'custom-service',
+              exporters: [new TestExporter()],
+            },
+          },
+        });
+
+        const instance = observability.getInstance('custom');
+        const processors = instance?.getSpanOutputProcessors();
+        expect(processors).toHaveLength(1);
+        expect(processors?.[0]).toBeInstanceOf(SensitiveDataFilter);
+      });
+
+      it('should auto-prepend SensitiveDataFilter to every user config', () => {
+        observability = new Observability({
+          configs: {
+            first: {
+              serviceName: 'service-first',
+              exporters: [new TestExporter()],
+            },
+            second: {
+              serviceName: 'service-second',
+              exporters: [new TestExporter()],
+              spanOutputProcessors: [],
+            },
+          },
+          configSelector: () => 'first',
+        });
+
+        const first = observability.getInstance('first');
+        const second = observability.getInstance('second');
+
+        expect(first?.getSpanOutputProcessors()[0]).toBeInstanceOf(SensitiveDataFilter);
+        expect(second?.getSpanOutputProcessors()[0]).toBeInstanceOf(SensitiveDataFilter);
+      });
+
+      it('should prepend SensitiveDataFilter before user spanOutputProcessors', () => {
+        const userProcessor = {
+          name: 'user-processor',
+          process: (span: any) => span,
+          shutdown: async () => {},
+        };
+
+        observability = new Observability({
+          configs: {
+            custom: {
+              serviceName: 'custom-service',
+              exporters: [new TestExporter()],
+              spanOutputProcessors: [userProcessor],
+            },
+          },
+        });
+
+        const processors = observability.getInstance('custom')?.getSpanOutputProcessors();
+        expect(processors).toHaveLength(2);
+        expect(processors?.[0]).toBeInstanceOf(SensitiveDataFilter);
+        expect(processors?.[1]).toBe(userProcessor);
+      });
+
+      it('should not duplicate SensitiveDataFilter when user already added one', () => {
+        const userFilter = new SensitiveDataFilter({ redactionToken: '[USER]' });
+
+        observability = new Observability({
+          configs: {
+            custom: {
+              serviceName: 'custom-service',
+              exporters: [new TestExporter()],
+              spanOutputProcessors: [userFilter],
+            },
+          },
+        });
+
+        const processors = observability.getInstance('custom')?.getSpanOutputProcessors();
+        expect(processors).toHaveLength(1);
+        expect(processors?.[0]).toBe(userFilter);
+      });
+
+      it('should not auto-apply SensitiveDataFilter when set to false', () => {
+        observability = new Observability({
+          configs: {
+            custom: {
+              serviceName: 'custom-service',
+              exporters: [new TestExporter()],
+            },
+          },
+          sensitiveDataFilter: false,
+        });
+
+        const processors = observability.getInstance('custom')?.getSpanOutputProcessors();
+        expect(processors).toHaveLength(0);
+      });
+
+      it('should pass options to auto-applied SensitiveDataFilter when given an object', () => {
+        observability = new Observability({
+          configs: {
+            custom: {
+              serviceName: 'custom-service',
+              exporters: [new TestExporter()],
+            },
+          },
+          sensitiveDataFilter: {
+            sensitiveFields: ['customSecret'],
+            redactionToken: '[CUSTOM]',
+          },
+        });
+
+        const processors = observability.getInstance('custom')?.getSpanOutputProcessors();
+        expect(processors).toHaveLength(1);
+        const filter = processors?.[0] as SensitiveDataFilter;
+        expect(filter).toBeInstanceOf(SensitiveDataFilter);
+
+        const filtered = filter.process({
+          attributes: { customSecret: 'my-value', password: 'still-redacted' },
+          metadata: undefined,
+          input: undefined,
+          output: undefined,
+          errorInfo: undefined,
+        } as any);
+        expect((filtered as any).attributes.customSecret).toBe('[CUSTOM]');
+        // password is no longer in the override list, so it should pass through
+        expect((filtered as any).attributes.password).toBe('still-redacted');
+      });
+
+      it('should still auto-apply SensitiveDataFilter under the deprecated default config', async () => {
+        observability = new Observability({
+          default: { enabled: true },
+        });
+
+        const defaultInstance = observability.getInstance('default');
+        const processors = defaultInstance?.getSpanOutputProcessors();
+        expect(processors).toHaveLength(1);
+        expect(processors?.[0]).toBeInstanceOf(SensitiveDataFilter);
+      });
+
+      it('should respect sensitiveDataFilter=false under the deprecated default config', async () => {
+        observability = new Observability({
+          default: { enabled: true },
+          sensitiveDataFilter: false,
+        });
+
+        const defaultInstance = observability.getInstance('default');
+        expect(defaultInstance?.getSpanOutputProcessors()).toHaveLength(0);
+      });
+
+      it('should not modify pre-instantiated ObservabilityInstance values', () => {
+        const preBuilt = new DefaultObservabilityInstance({
+          serviceName: 'pre-built',
+          name: 'pre-built',
+          sampling: { type: SamplingStrategyType.ALWAYS },
+          exporters: [new TestExporter()],
+          spanOutputProcessors: [],
+        });
+
+        observability = new Observability({
+          configs: {
+            preBuilt,
+          },
+        });
+
+        // Pre-built instance is registered as-is, no auto-injected filter.
+        const processors = observability.getInstance('preBuilt')?.getSpanOutputProcessors();
+        expect(processors).toHaveLength(0);
+      });
+    });
+
     it('should handle CloudExporter gracefully when token is missing', async () => {
       // Clear the token environment variable
       const originalToken = process.env.MASTRA_CLOUD_ACCESS_TOKEN;
