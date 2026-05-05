@@ -188,6 +188,74 @@ describe('MastraTUI queueing', () => {
     expect(ctx.updateStatusLine).toHaveBeenCalledTimes(6);
   });
 
+  it('drains queued user actions before goal continuation when queued during judge evaluation', async () => {
+    let resolveEvaluation: ((value: { continuation: string; judgeResult: { decision: 'continue'; reason: string } }) => void) | undefined;
+    const state = createQueueState({
+      gradientAnimator: { fadeOut: vi.fn(), start: vi.fn() } as any,
+      goalManager: {
+        isActive: vi.fn(() => true),
+        getGoal: vi.fn(() => ({ id: 'goal-1', status: 'active', judgeModelId: 'openai/gpt-5.5', turnsUsed: 1, maxTurns: 20 })),
+        evaluateAfterTurn: vi.fn(
+          () =>
+            new Promise(resolve => {
+              resolveEvaluation = resolve;
+            }),
+        ),
+      } as any,
+    });
+    const ctx = createQueueContext(state);
+
+    handleAgentEnd(ctx);
+    state.pendingQueuedActions.push('message');
+    state.pendingFollowUpMessages.push({ content: 'user follow-up' });
+    resolveEvaluation?.({ continuation: 'goal continuation', judgeResult: { decision: 'continue', reason: 'Keep going.' } });
+
+    await vi.waitFor(() => {
+      expect(ctx.fireMessage).toHaveBeenCalledWith('user follow-up', undefined);
+    });
+    expect(ctx.fireMessage).not.toHaveBeenCalledWith('goal continuation');
+    expect(ctx.addUserMessage).toHaveBeenCalledWith({
+      id: expect.stringMatching(/^user-/),
+      role: 'user',
+      content: [{ type: 'text', text: 'user follow-up' }],
+      createdAt: expect.any(Date),
+    });
+  });
+
+  it('does not continue a goal that was paused while judge evaluation was running', async () => {
+    let goal: { id: string; status: 'active' | 'paused'; judgeModelId: string; turnsUsed: number; maxTurns: number } = {
+      id: 'goal-1',
+      status: 'active',
+      judgeModelId: 'openai/gpt-5.5',
+      turnsUsed: 1,
+      maxTurns: 20,
+    };
+    let resolveEvaluation: ((value: { continuation: string; judgeResult: { decision: 'continue'; reason: string } }) => void) | undefined;
+    const state = createQueueState({
+      gradientAnimator: { fadeOut: vi.fn(), start: vi.fn() } as any,
+      goalManager: {
+        isActive: vi.fn(() => true),
+        getGoal: vi.fn(() => goal),
+        evaluateAfterTurn: vi.fn(
+          () =>
+            new Promise(resolve => {
+              resolveEvaluation = resolve;
+            }),
+        ),
+      } as any,
+    });
+    const ctx = createQueueContext(state);
+
+    handleAgentEnd(ctx);
+    goal = { ...goal, status: 'paused' };
+    resolveEvaluation?.({ continuation: 'goal continuation', judgeResult: { decision: 'continue', reason: 'Keep going.' } });
+
+    await vi.waitFor(() => {
+      expect(state.gradientAnimator?.fadeOut).toHaveBeenCalled();
+    });
+    expect(ctx.fireMessage).not.toHaveBeenCalledWith('goal continuation');
+  });
+
   it('persists terminal goal judge responses when no continuation is queued', async () => {
     const saveSystemReminderMessage = vi.fn().mockResolvedValue(null);
     const state = createQueueState({

@@ -54,11 +54,21 @@ export function handleAgentEnd(ctx: EventHandlerContext): void {
 
   ctx.notify('agent_done');
 
+  if (drainQueuedAction(ctx)) {
+    return;
+  }
+
+  maybeGoalContinuation(ctx);
+}
+
+function drainQueuedAction(ctx: EventHandlerContext): boolean {
+  const { state } = ctx;
+
   // Drain queued follow-up actions once all harness-level follow-ups are done.
   // Each queued action that starts a new agent operation will eventually trigger
   // handleAgentEnd again, which drains the next FIFO item.
   if (state.harness.getFollowUpCount() > 0) {
-    return;
+    return true;
   }
 
   // User-queued actions preempt the goal loop — if the user typed something
@@ -66,15 +76,13 @@ export function handleAgentEnd(ctx: EventHandlerContext): void {
   const nextAction = state.pendingQueuedActions.shift();
   ctx.updateStatusLine();
   if (!nextAction) {
-    // No user-queued actions — check for goal continuation
-    maybeGoalContinuation(ctx);
-    return;
+    return false;
   }
 
   if (nextAction === 'message') {
     const nextMessage = state.pendingFollowUpMessages.shift();
     if (!nextMessage) {
-      return;
+      return true;
     }
 
     ctx.addUserMessage({
@@ -92,17 +100,18 @@ export function handleAgentEnd(ctx: EventHandlerContext): void {
     });
     state.ui.requestRender();
     ctx.fireMessage(nextMessage.content, nextMessage.images);
-    return;
+    return true;
   }
 
   const nextCommand = state.pendingSlashCommands.shift();
   if (!nextCommand) {
-    return;
+    return true;
   }
 
   ctx.handleSlashCommand(nextCommand).catch(error => {
     ctx.showError(error instanceof Error ? error.message : 'Queued slash command failed');
   });
+  return true;
 }
 
 export function handleAgentAborted(ctx: EventHandlerContext): void {
@@ -178,6 +187,7 @@ function maybeGoalContinuation(ctx: EventHandlerContext): void {
 
   const goal = state.goalManager.getGoal();
   if (!goal) return;
+  const evaluatedGoalId = goal.id;
 
   if (!state.gradientAnimator) {
     state.gradientAnimator = new GradientAnimator(() => {
@@ -201,6 +211,13 @@ function maybeGoalContinuation(ctx: EventHandlerContext): void {
       }
 
       if (continuation) {
+        const currentGoal = state.goalManager.getGoal();
+        if (currentGoal?.id !== evaluatedGoalId || currentGoal.status !== 'active') {
+          return;
+        }
+        if (drainQueuedAction(ctx)) {
+          return;
+        }
         ctx.fireMessage(continuation);
       } else {
         // Goal is done, paused, or waiting at an explicit checkpoint. Persist the final
