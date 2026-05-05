@@ -187,9 +187,8 @@ export const mastra = new Mastra({
         createBrowser: config =>
           new StagehandBrowser({
             ...config,
-            apiKey: process.env.BROWSERBASE_API_KEY ?? '',
-            env: 'BROWSERBASE',
-            projectId: process.env.BROWSERBASE_PROJECT_ID ?? '',
+            env: 'LOCAL',
+            headless: true,
           }),
       },
     },
@@ -250,7 +249,7 @@ export const mastra = new Mastra({
   server: {
     auth: mastraAuth,
     rbac: rbacProvider,
-    fga: fgaProvider,
+    // fga: fgaProvider,
   },
   backgroundTasks: {
     enabled: true,
