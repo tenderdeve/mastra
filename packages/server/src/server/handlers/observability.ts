@@ -3,6 +3,10 @@ import { extractTrajectoryFromTrace, listScoresResponseSchema } from '@mastra/co
 import { scoreTraces } from '@mastra/core/evals/scoreTraces';
 import type { ScoresStorage } from '@mastra/core/storage';
 import {
+  branchesFilterSchema,
+  branchesOrderBySchema,
+  listBranchesResponseSchema,
+  liveCursorSchema,
   tracesFilterSchema,
   tracesOrderBySchema,
   paginationArgsSchema,
@@ -21,7 +25,7 @@ import { z } from 'zod/v4';
 import { HTTPException } from '../http-exception';
 import { createRoute, pickParams, wrapSchemaForQueryParams } from '../server-adapter/routes/route-builder';
 import { handleError } from './error';
-import { getObservabilityStore, getStorage } from './observability-shared';
+import { createObservabilityListQuerySchema, getObservabilityStore, getStorage } from './observability-shared';
 
 export * from './observability-new-endpoints';
 
@@ -100,31 +104,71 @@ export const LIST_TRACES_ROUTE = createRoute({
   method: 'GET',
   path: '/observability/traces',
   responseType: 'json',
-  queryParamSchema: wrapSchemaForQueryParams(
-    tracesFilterSchema
-      .extend(paginationArgsSchema.shape)
-      .extend(tracesOrderBySchema.shape)
-      .extend(legacyQueryParamsSchema.shape) // Accept legacy params for backward compatibility
-      .partial(),
+  queryParamSchema: createObservabilityListQuerySchema(
+    tracesFilterSchema.extend(legacyQueryParamsSchema.shape),
+    tracesOrderBySchema,
   ),
   responseSchema: listTracesResponseSchema,
   summary: 'List traces',
   description: 'Returns a paginated list of traces with optional filtering and sorting',
   tags: ['Observability'],
   requiresAuth: true,
-  handler: async ({ mastra, ...params }) => {
+  handler: async ({ mastra, mode, after, limit, ...params }) => {
     try {
       // Transform legacy params to new format before processing
       const transformedParams = transformLegacyParams(params);
 
       const filters = pickParams(tracesFilterSchema, transformedParams);
+      const observabilityStore = await getObservabilityStore(mastra);
+      if (mode === 'delta') {
+        return await observabilityStore.listTraces({
+          mode,
+          filters,
+          after: liveCursorSchema.optional().parse(after),
+          limit,
+        });
+      }
+
       const pagination = pickParams(paginationArgsSchema, transformedParams);
       const orderBy = pickParams(tracesOrderBySchema, transformedParams);
-
-      const observabilityStore = await getObservabilityStore(mastra);
-      return await observabilityStore.listTraces({ filters, pagination, orderBy });
+      return await observabilityStore.listTraces(mode === 'page' ? { mode, filters, pagination, orderBy } : { filters, pagination, orderBy });
     } catch (error) {
       return handleError(error, 'Error listing traces');
+    }
+  },
+});
+
+/** Route: GET /observability/branches - paginated branch listing with filtering and sorting. */
+export const LIST_BRANCHES_ROUTE = createRoute({
+  method: 'GET',
+  path: '/observability/branches',
+  responseType: 'json',
+  queryParamSchema: createObservabilityListQuerySchema(branchesFilterSchema, branchesOrderBySchema),
+  responseSchema: listBranchesResponseSchema,
+  summary: 'List branches',
+  description: 'Returns a paginated list of branch-anchor spans with optional filtering and sorting',
+  tags: ['Observability'],
+  requiresAuth: true,
+  handler: async ({ mastra, mode, after, limit, ...params }) => {
+    try {
+      const filters = pickParams(branchesFilterSchema, params);
+      const observabilityStore = await getObservabilityStore(mastra);
+      if (mode === 'delta') {
+        return await observabilityStore.listBranches({
+          mode,
+          filters,
+          after: liveCursorSchema.optional().parse(after),
+          limit,
+        });
+      }
+
+      const pagination = pickParams(paginationArgsSchema, params);
+      const orderBy = pickParams(branchesOrderBySchema, params);
+      return await observabilityStore.listBranches(
+        mode === 'page' ? { mode, filters, pagination, orderBy } : { filters, pagination, orderBy },
+      );
+    } catch (error) {
+      return handleError(error, 'Error listing branches');
     }
   },
 });

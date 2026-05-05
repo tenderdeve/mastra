@@ -17,11 +17,22 @@ import type {
   BatchCreateSpansArgs,
   BatchDeleteTracesArgs,
   SpanRecord,
+  LiveCursor,
 } from '@mastra/core/storage';
-import { BRANCH_SPAN_TYPES, toTraceSpans } from '@mastra/core/storage';
+import { BRANCH_SPAN_TYPES, listBranchesArgsSchema, listTracesArgsSchema, toTraceSpans } from '@mastra/core/storage';
 import type { DuckDBConnection } from '../../db/index';
 import { buildWhereClause, buildOrderByClause, buildPaginationClause } from './filters';
-import { v, jsonV, parseJson, parseJsonArray, toDate, toDateOrNull } from './helpers';
+import {
+  createIngestedAt,
+  createLiveCursor,
+  createSyntheticNowCursor,
+  jsonV,
+  parseJson,
+  parseJsonArray,
+  toDate,
+  toDateOrNull,
+  v,
+} from './helpers';
 
 // ============================================================================
 // Columns & Reconstruction
@@ -30,6 +41,7 @@ import { v, jsonV, parseJson, parseJsonArray, toDate, toDateOrNull } from './hel
 const COLUMNS = [
   'eventType',
   'timestamp',
+  'ingestedAt',
   'traceId',
   'spanId',
   'parentSpanId',
@@ -191,6 +203,11 @@ function buildHasChildErrorClause(hasChildError: boolean | undefined): string {
   return hasChildError ? `EXISTS (${base})` : `NOT EXISTS (${base})`;
 }
 
+function rowToLiveCursor(row: Record<string, unknown>): LiveCursor | null {
+  if (row.ingestedAt == null || row.tieBreaker == null) return null;
+  return createLiveCursor(row.ingestedAt, String(row.tieBreaker));
+}
+
 // ============================================================================
 // Row builder — used by both create and update
 // ============================================================================
@@ -208,6 +225,7 @@ function buildHasChildErrorClause(hasChildError: boolean | undefined): string {
 interface SpanEventRow {
   eventType: 'start' | 'end';
   timestamp: Date;
+  ingestedAt: Date;
   traceId: string;
   spanId: string;
   parentSpanId: string | null;
@@ -245,6 +263,7 @@ function toValuesTuple(row: SpanEventRow): string {
   return [
     v(row.eventType),
     v(row.timestamp),
+    v(row.ingestedAt),
     v(row.traceId),
     v(row.spanId),
     v(row.parentSpanId),
@@ -289,10 +308,11 @@ async function insertSpanEvents(db: DuckDBConnection, rows: SpanEventRow[]): Pro
 // Public API
 // ============================================================================
 
-function createStartSpanRow(s: CreateSpanArgs['span']): SpanEventRow {
+function createStartSpanRow(s: CreateSpanArgs['span'], ingestedAt: Date): SpanEventRow {
   return {
     eventType: 'start',
     timestamp: s.startedAt,
+    ingestedAt,
     traceId: s.traceId,
     spanId: s.spanId,
     parentSpanId: s.parentSpanId ?? null,
@@ -327,10 +347,11 @@ function createStartSpanRow(s: CreateSpanArgs['span']): SpanEventRow {
   };
 }
 
-function createEndSpanRow(s: CreateSpanArgs['span']): SpanEventRow {
+function createEndSpanRow(s: CreateSpanArgs['span'], ingestedAt: Date): SpanEventRow {
   return {
     eventType: 'end',
     timestamp: s.endedAt!,
+    ingestedAt,
     traceId: s.traceId,
     spanId: s.spanId,
     parentSpanId: s.parentSpanId ?? null,
@@ -367,9 +388,10 @@ function createEndSpanRow(s: CreateSpanArgs['span']): SpanEventRow {
 
 /** Insert a 'start' event for a new span. */
 export async function createSpan(db: DuckDBConnection, args: CreateSpanArgs): Promise<void> {
-  const rows = [createStartSpanRow(args.span)];
+  const ingestedAt = createIngestedAt();
+  const rows = [createStartSpanRow(args.span, ingestedAt)];
   if (args.span.endedAt) {
-    rows.push(createEndSpanRow(args.span));
+    rows.push(createEndSpanRow(args.span, ingestedAt));
   }
   await insertSpanEvents(db, rows);
 }
@@ -378,9 +400,10 @@ export async function createSpan(db: DuckDBConnection, args: CreateSpanArgs): Pr
 export async function batchCreateSpans(db: DuckDBConnection, args: BatchCreateSpansArgs): Promise<void> {
   if (args.records.length === 0) return;
   const rows = args.records.flatMap(record => {
-    const events = [createStartSpanRow(record)];
+    const ingestedAt = createIngestedAt();
+    const events = [createStartSpanRow(record, ingestedAt)];
     if (record.endedAt) {
-      events.push(createEndSpanRow(record));
+      events.push(createEndSpanRow(record, ingestedAt));
     }
     return events;
   });
@@ -442,16 +465,11 @@ export async function getTraceLight(db: DuckDBConnection, args: GetTraceArgs): P
 
 /** List root spans (traces) with filtering, ordering, and pagination. */
 export async function listTraces(db: DuckDBConnection, args: ListTracesArgs): Promise<ListTracesResponse> {
-  const filters = args.filters ?? {};
-  const page = Number(args.pagination?.page ?? 0);
-  const perPage = Number(args.pagination?.perPage ?? 10);
-  const orderBy = { field: args.orderBy?.field ?? 'startedAt', direction: args.orderBy?.direction ?? 'DESC' } as const;
-
+  const parsed = listTracesArgsSchema.parse(args);
+  const filters = parsed.filters ?? {};
   const { clause: filterClause, params: filterParams } = buildWhereClause(filters as Record<string, unknown>);
-  const orderByClause = buildOrderByClause(orderBy);
-  const { clause: paginationClause, params: paginationParams } = buildPaginationClause({ page, perPage });
 
-  const filterParts = [];
+  const filterParts: string[] = [];
   if (filterClause) filterParts.push(filterClause.replace(/^WHERE\s+/i, ''));
   const hasChildError = typeof filters.hasChildError === 'boolean' ? filters.hasChildError : undefined;
   const childErrorClause = buildHasChildErrorClause(hasChildError);
@@ -466,8 +484,79 @@ export async function listTraces(db: DuckDBConnection, args: ListTracesArgs): Pr
     root_spans AS (
       SELECT * FROM reconstructed_spans
       WHERE parentSpanId IS NULL
+    ),
+    trace_activity AS (
+      SELECT traceId, ingestedAt, tieBreaker
+      FROM (
+        SELECT
+          traceId,
+          ingestedAt,
+          traceId || ':' || spanId AS tieBreaker,
+          row_number() OVER (
+            PARTITION BY traceId
+            ORDER BY ingestedAt DESC, traceId || ':' || spanId DESC
+          ) AS rn
+        FROM span_events
+        WHERE ingestedAt IS NOT NULL
+      )
+      WHERE rn = 1
     )
   `;
+
+  if (parsed.mode === 'delta') {
+    if (!parsed.after) {
+      const liveCursorRows = await db.query<Record<string, unknown>>(
+        `
+          ${cteSql}
+          SELECT trace_activity.ingestedAt, trace_activity.tieBreaker
+          FROM root_spans
+          INNER JOIN trace_activity USING (traceId)
+          ${combinedFilterClause}
+          ORDER BY trace_activity.ingestedAt DESC, trace_activity.tieBreaker DESC
+          LIMIT 1
+        `,
+        filterParams,
+      );
+
+      return {
+        delta: { limit: parsed.limit, hasMore: false },
+        liveCursor: (liveCursorRows[0] ? rowToLiveCursor(liveCursorRows[0]) : null) ?? createSyntheticNowCursor(),
+        spans: [],
+      };
+    }
+
+    const rows = await db.query<Record<string, unknown>>(
+      `
+        ${cteSql}
+        SELECT root_spans.*, trace_activity.ingestedAt, trace_activity.tieBreaker
+        FROM root_spans
+        INNER JOIN trace_activity USING (traceId)
+        ${
+          combinedFilterClause
+            ? `${combinedFilterClause} AND (trace_activity.ingestedAt > ? OR (trace_activity.ingestedAt = ? AND trace_activity.tieBreaker > ?))`
+            : 'WHERE trace_activity.ingestedAt > ? OR (trace_activity.ingestedAt = ? AND trace_activity.tieBreaker > ?)'
+        }
+        ORDER BY trace_activity.ingestedAt ASC, trace_activity.tieBreaker ASC
+        LIMIT ?
+      `,
+      [...filterParams, parsed.after.ingestedAt, parsed.after.ingestedAt, parsed.after.tieBreaker, parsed.limit + 1],
+    );
+
+    const pageRows = rows.slice(0, parsed.limit);
+    const liveCursor = (pageRows.length > 0 ? rowToLiveCursor(pageRows[pageRows.length - 1]!) : null) ?? parsed.after;
+    const spans = pageRows.map(row => rowToSpanRecord(row));
+
+    return {
+      delta: { limit: parsed.limit, hasMore: rows.length > parsed.limit },
+      liveCursor,
+      spans: toTraceSpans(spans),
+    };
+  }
+
+  const page = Number(parsed.pagination.page);
+  const perPage = Number(parsed.pagination.perPage);
+  const orderByClause = buildOrderByClause(parsed.orderBy);
+  const { clause: paginationClause, params: paginationParams } = buildPaginationClause({ page, perPage });
 
   const countSql = `
     ${cteSql}
@@ -482,6 +571,19 @@ export async function listTraces(db: DuckDBConnection, args: ListTracesArgs): Pr
   `;
   const rows = await db.query(dataSql, [...filterParams, ...paginationParams]);
 
+  const liveCursorRows = await db.query<Record<string, unknown>>(
+    `
+      ${cteSql}
+      SELECT trace_activity.ingestedAt, trace_activity.tieBreaker
+      FROM root_spans
+      INNER JOIN trace_activity USING (traceId)
+      ${combinedFilterClause}
+      ORDER BY trace_activity.ingestedAt DESC, trace_activity.tieBreaker DESC
+      LIMIT 1
+    `,
+    filterParams,
+  );
+
   const spans = rows.map(row => rowToSpanRecord(row as Record<string, unknown>));
 
   return {
@@ -491,6 +593,7 @@ export async function listTraces(db: DuckDBConnection, args: ListTracesArgs): Pr
       perPage,
       hasMore: (page + 1) * perPage < total,
     },
+    liveCursor: (liveCursorRows[0] ? rowToLiveCursor(liveCursorRows[0]) : null) ?? createSyntheticNowCursor(),
     spans: toTraceSpans(spans),
   };
 }
@@ -534,33 +637,27 @@ export async function getSpans(db: DuckDBConnection, args: GetSpansArgs): Promis
  * (MODEL_STEP, MODEL_CHUNK, etc.) that are never anchors.
  */
 export async function listBranches(db: DuckDBConnection, args: ListBranchesArgs): Promise<ListBranchesResponse> {
-  const filters = args.filters ?? {};
-  const page = Number(args.pagination?.page ?? 0);
-  const perPage = Number(args.pagination?.perPage ?? 10);
-  const orderBy = { field: args.orderBy?.field ?? 'startedAt', direction: args.orderBy?.direction ?? 'DESC' } as const;
+  const parsed = listBranchesArgsSchema.parse(args);
+  const filters = parsed.filters ?? {};
 
-  // spanType is consumed by the prefilter; pass the rest of the filter set
-  // through buildWhereClause unchanged.
   const { spanType, ...passthroughFilters } = filters as Record<string, unknown>;
   const { clause: filterClause, params: filterParams } = buildWhereClause(passthroughFilters);
-  const orderByClause = buildOrderByClause(orderBy);
-  const { clause: paginationClause, params: paginationParams } = buildPaginationClause({ page, perPage });
 
-  // Prefilter raw events to branch-anchor types. Unlike the ClickHouse path
-  // which reads from an MV-filtered table, DuckDB queries raw span_events
-  // directly, so this guard is what enforces "listBranches only returns
-  // branches" here. Caller-supplied spanType narrows further; if it's not a
-  // branch type, the intersection is empty and we short-circuit to no rows
-  // (instead of silently widening to all branches or leaking the non-branch
-  // type through).
   let prefilterClause: string;
   let prefilterParams: unknown[];
   if (typeof spanType === 'string') {
     if (!(BRANCH_SPAN_TYPES as readonly string[]).includes(spanType)) {
-      // Caller asked for a non-branch span type; "branch anchors with that
-      // type" is an empty set by definition.
+      if (parsed.mode === 'delta') {
+        return {
+          delta: { limit: parsed.limit ?? 0, hasMore: false },
+          liveCursor: createSyntheticNowCursor(),
+          branches: [],
+        };
+      }
+
       return {
-        pagination: { total: 0, page, perPage, hasMore: false },
+        pagination: { total: 0, page: parsed.pagination.page, perPage: parsed.pagination.perPage, hasMore: false },
+        liveCursor: createSyntheticNowCursor(),
         branches: [],
       };
     }
@@ -576,19 +673,102 @@ export async function listBranches(db: DuckDBConnection, args: ListBranchesArgs)
       ${SPAN_RECONSTRUCT_SELECT}
       ${prefilterClause}
       GROUP BY traceId, spanId
+    ),
+    branch_activity AS (
+      SELECT traceId, spanId, ingestedAt, tieBreaker
+      FROM (
+        SELECT
+          traceId,
+          spanId,
+          ingestedAt,
+          traceId || ':' || spanId AS tieBreaker,
+          row_number() OVER (
+            PARTITION BY traceId, spanId
+            ORDER BY ingestedAt DESC, traceId || ':' || spanId DESC
+          ) AS rn
+        FROM span_events
+        ${prefilterClause}
+        AND ingestedAt IS NOT NULL
+      )
+      WHERE rn = 1
     )
   `;
+
+  if (parsed.mode === 'delta') {
+    const deltaLimit = parsed.limit;
+    if (!parsed.after) {
+      const liveCursorRows = await db.query<Record<string, unknown>>(
+        `
+          ${cteSql}
+          SELECT branch_activity.ingestedAt, branch_activity.tieBreaker
+          FROM branch_anchors
+          INNER JOIN branch_activity USING (traceId, spanId)
+          ${filterClause}
+          ORDER BY branch_activity.ingestedAt DESC, branch_activity.tieBreaker DESC
+          LIMIT 1
+        `,
+        [...prefilterParams, ...prefilterParams, ...filterParams],
+      );
+
+      return {
+        delta: { limit: deltaLimit, hasMore: false },
+        liveCursor: (liveCursorRows[0] ? rowToLiveCursor(liveCursorRows[0]) : null) ?? createSyntheticNowCursor(),
+        branches: [],
+      };
+    }
+
+    const rows = await db.query<Record<string, unknown>>(
+      `
+        ${cteSql}
+        SELECT branch_anchors.*, branch_activity.ingestedAt, branch_activity.tieBreaker
+        FROM branch_anchors
+        INNER JOIN branch_activity USING (traceId, spanId)
+        ${
+          filterClause
+            ? `${filterClause} AND (branch_activity.ingestedAt > ? OR (branch_activity.ingestedAt = ? AND branch_activity.tieBreaker > ?))`
+            : 'WHERE branch_activity.ingestedAt > ? OR (branch_activity.ingestedAt = ? AND branch_activity.tieBreaker > ?)'
+        }
+        ORDER BY branch_activity.ingestedAt ASC, branch_activity.tieBreaker ASC
+        LIMIT ?
+      `,
+      [
+        ...prefilterParams,
+        ...prefilterParams,
+        ...filterParams,
+        parsed.after.ingestedAt,
+        parsed.after.ingestedAt,
+        parsed.after.tieBreaker,
+        deltaLimit + 1,
+      ],
+    );
+
+    const pageRows = rows.slice(0, deltaLimit);
+    const liveCursor = (pageRows.length > 0 ? rowToLiveCursor(pageRows[pageRows.length - 1]!) : null) ?? parsed.after;
+    const spans = pageRows.map(row => rowToSpanRecord(row));
+
+    return {
+      delta: { limit: deltaLimit, hasMore: rows.length > deltaLimit },
+      liveCursor,
+      branches: toTraceSpans(spans),
+    };
+  }
+
+  const page = Number(parsed.pagination.page);
+  const perPage = Number(parsed.pagination.perPage);
+  const orderByClause = buildOrderByClause(parsed.orderBy);
+  const { clause: paginationClause, params: paginationParams } = buildPaginationClause({ page, perPage });
 
   const countSql = `
     ${cteSql}
     SELECT COUNT(*) as total FROM branch_anchors ${filterClause}
   `;
-  const countResult = await db.query<{ total: number }>(countSql, [...prefilterParams, ...filterParams]);
+  const countResult = await db.query<{ total: number }>(countSql, [...prefilterParams, ...prefilterParams, ...filterParams]);
   const total = Number(countResult[0]?.total ?? 0);
 
   if (total === 0) {
     return {
       pagination: { total: 0, page, perPage, hasMore: false },
+      liveCursor: createSyntheticNowCursor(),
       branches: [],
     };
   }
@@ -597,7 +777,21 @@ export async function listBranches(db: DuckDBConnection, args: ListBranchesArgs)
     ${cteSql}
     SELECT * FROM branch_anchors ${filterClause} ${orderByClause} ${paginationClause}
   `;
-  const rows = await db.query(dataSql, [...prefilterParams, ...filterParams, ...paginationParams]);
+  const rows = await db.query(dataSql, [...prefilterParams, ...prefilterParams, ...filterParams, ...paginationParams]);
+
+  const liveCursorRows = await db.query<Record<string, unknown>>(
+    `
+      ${cteSql}
+      SELECT branch_activity.ingestedAt, branch_activity.tieBreaker
+      FROM branch_anchors
+      INNER JOIN branch_activity USING (traceId, spanId)
+      ${filterClause}
+      ORDER BY branch_activity.ingestedAt DESC, branch_activity.tieBreaker DESC
+      LIMIT 1
+    `,
+    [...prefilterParams, ...prefilterParams, ...filterParams],
+  );
+
   const spans = rows.map(row => rowToSpanRecord(row as Record<string, unknown>));
 
   return {
@@ -607,6 +801,7 @@ export async function listBranches(db: DuckDBConnection, args: ListBranchesArgs)
       perPage,
       hasMore: (page + 1) * perPage < total,
     },
+    liveCursor: (liveCursorRows[0] ? rowToLiveCursor(liveCursorRows[0]) : null) ?? createSyntheticNowCursor(),
     branches: toTraceSpans(spans),
   };
 }
