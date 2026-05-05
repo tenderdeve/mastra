@@ -599,24 +599,20 @@ export function isProcessorWorkflow(obj: unknown): obj is ProcessorWorkflow {
     !('processOutputStream' in obj) &&
     !('processOutputResult' in obj) &&
     !('processOutputStep' in obj) &&
+    !('processLLMPrompt' in obj) &&
     !('processAPIError' in obj)
   );
 }
 
 export * from './processors';
 export { PrefillErrorHandler } from './prefill-error-handler';
+export { ProviderHistoryCompat, anthropicToolIdFormat, cerebrasStripReasoningContent } from './provider-history-compat';
 export {
   isRetryableOpenAIResponsesStreamError,
   StreamErrorRetryProcessor,
   type StreamErrorRetryMatcher,
   type StreamErrorRetryProcessorOptions,
 } from './stream-error-retry-processor';
-export {
-  ProviderHistoryCompat,
-  anthropicToolIdFormat,
-  cerebrasStripReasoningContent,
-  isMaybeCerebras,
-} from './provider-history-compat';
 export type { CompatRule } from './provider-history-compat';
 export { ProcessorState, ProcessorRunner } from './runner';
 export * from './memory';

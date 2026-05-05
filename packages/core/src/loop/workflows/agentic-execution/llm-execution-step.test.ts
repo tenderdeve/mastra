@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { z } from 'zod/v4';
 import { MessageList } from '../../../agent/message-list';
+import { ProviderHistoryCompat } from '../../../processors/provider-history-compat';
 import { RequestContext } from '../../../request-context';
 import { ToolStream } from '../../../tools/stream';
 import { createTool } from '../../../tools/tool';
@@ -845,9 +846,15 @@ describe('createLLMExecutionStep gateway provider tools', () => {
       } as any,
     } as unknown as OuterLLMRun<{}>);
 
-    await llmExecutionStep.execute(createExecuteParams(createIterationInput()));
+    await llmExecutionStep.execute(
+      createExecuteParams({
+        ...createIterationInput(),
+        processorRetryCount: 2,
+      }),
+    );
 
     expect(processLLMPrompt).toHaveBeenCalledOnce();
+    expect(processLLMPrompt).toHaveBeenCalledWith(expect.objectContaining({ retryCount: 2 }));
     expect(doStream).toHaveBeenCalledOnce();
     expect(doStream.mock.calls[0]?.[0]?.prompt).toEqual(
       expect.arrayContaining([
@@ -1036,7 +1043,7 @@ describe('createLLMExecutionStep gateway provider tools', () => {
           } as any,
         },
       ],
-      inputProcessors: [],
+      inputProcessors: [new ProviderHistoryCompat()],
       tools: {},
       streamState: {
         serialize: vi.fn(),

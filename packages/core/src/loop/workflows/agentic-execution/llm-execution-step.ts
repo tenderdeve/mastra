@@ -837,6 +837,7 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
                 model: currentStep.model,
                 stepNumber: inputData.output?.steps?.length || 0,
                 steps: inputData.output?.steps || [],
+                retryCount: inputData.processorRetryCount || 0,
                 requestContext,
                 tracingContext: modelSpanTracker?.getTracingContext() ?? tracingContext,
                 writer: promptStepWriter,
