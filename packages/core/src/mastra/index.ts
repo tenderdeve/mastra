@@ -248,14 +248,14 @@ export interface Config<
    *
    * @example
    * ```typescript
-   * import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
+   * import { Observability, DefaultExporter, MastraObserveExporter, SensitiveDataFilter } from '@mastra/observability';
    *
    * new Mastra({
    *   observability: new Observability({
    *     configs: {
    *       default: {
    *         serviceName: 'mastra',
-   *         exporters: [new DefaultExporter(), new CloudExporter()],
+   *         exporters: [new DefaultExporter(), new MastraObserveExporter()],
    *         spanOutputProcessors: [new SensitiveDataFilter()],
    *       },
    *     },
@@ -765,7 +765,7 @@ export class Mastra<
    * as default. If a real observability entrypoint already exists, the exporter
    * is added directly to the existing default instance.
    *
-   * @param exporter - The exporter to register (e.g. a CloudExporter)
+   * @param exporter - The exporter to register (e.g. a MastraObserveExporter)
    * @param instance - An ObservabilityInstance pre-configured with the exporter, used as default when bootstrapping
    * @param entrypoint - A real ObservabilityEntrypoint to bootstrap if the current one is a no-op
    */

@@ -9,7 +9,7 @@ import type {
 } from '@mastra/core/observability';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Observability } from './default';
-import { CloudExporter, DefaultExporter, TestExporter } from './exporters';
+import { MastraObserveExporter, DefaultExporter, TestExporter } from './exporters';
 import { BaseObservabilityInstance, DefaultObservabilityInstance } from './instances';
 import { SensitiveDataFilter } from './span_processors';
 
@@ -622,7 +622,7 @@ describe('Observability Registry', () => {
 
   describe('Default Config', () => {
     beforeEach(() => {
-      // Mock environment variable for CloudExporter
+      // Mock environment variable for MastraObserveExporter
       vi.stubEnv('MASTRA_CLOUD_ACCESS_TOKEN', 'test-token-123');
     });
 
@@ -649,7 +649,7 @@ describe('Observability Registry', () => {
       expect(exporters).toHaveLength(2);
       console.log(exporters);
       expect(exporters?.[0]).toBeInstanceOf(DefaultExporter);
-      expect(exporters?.[1]).toBeInstanceOf(CloudExporter);
+      expect(exporters?.[1]).toBeInstanceOf(MastraObserveExporter);
 
       // Verify processors
       const processors = defaultInstance?.getSpanOutputProcessors();
@@ -785,7 +785,7 @@ describe('Observability Registry', () => {
       expect(observability.getSelectedInstance(config2Options)).toBe(observability.getInstance('config2'));
     });
 
-    it('should handle CloudExporter gracefully when token is missing', async () => {
+    it('should handle MastraObserveExporter gracefully when token is missing', async () => {
       // Clear the token environment variable
       const originalToken = process.env.MASTRA_CLOUD_ACCESS_TOKEN;
       delete process.env.MASTRA_CLOUD_ACCESS_TOKEN;
@@ -797,8 +797,8 @@ describe('Observability Registry', () => {
       // Note: ConsoleLogger.debug() calls console.info() internally
       const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
-      // CloudExporter should not throw, but log debug message instead
-      const exporter = new CloudExporter({ logger });
+      // MastraObserveExporter should not throw, but log debug message instead
+      const exporter = new MastraObserveExporter({ logger });
 
       // Verify debug message was logged with exporter name
       expect(infoSpy).toHaveBeenCalledWith(

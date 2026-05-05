@@ -49,6 +49,7 @@ const EXPORT_TO_SUBPATH: Record<string, string> = {
   // Tracing
   DefaultExporter: '@mastra/observability',
   CloudExporter: '@mastra/observability',
+  MastraObserveExporter: '@mastra/observability',
 
   // Streaming
   ChunkType: '@mastra/core/stream',

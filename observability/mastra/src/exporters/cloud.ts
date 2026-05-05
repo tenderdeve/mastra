@@ -13,7 +13,7 @@ import { fetchWithRetry } from '@mastra/core/utils';
 import { BaseExporter } from './base';
 import type { BaseExporterConfig } from './base';
 
-export interface CloudExporterConfig extends BaseExporterConfig {
+export interface MastraObserveExporterConfig extends BaseExporterConfig {
   maxBatchSize?: number; // Default: 1000 spans
   maxBatchWaitMs?: number; // Default: 5000ms
   maxRetries?: number; // Default: 3
@@ -77,7 +77,7 @@ const VALID_PROJECT_ID = /^[a-zA-Z0-9_-]+$/;
 function createInvalidProjectIdError(projectId: string): MastraError {
   return new MastraError({
     id: `CLOUD_EXPORTER_INVALID_PROJECT_ID`,
-    text: 'CloudExporter projectId must only contain letters, numbers, hyphens, and underscores.',
+    text: 'MastraObserveExporter projectId must only contain letters, numbers, hyphens, and underscores.',
     domain: ErrorDomain.MASTRA_OBSERVABILITY,
     category: ErrorCategory.USER,
     details: {
@@ -89,7 +89,7 @@ function createInvalidProjectIdError(projectId: string): MastraError {
 function resolveBaseEndpoint(baseEndpoint: string): string {
   const normalizedEndpoint = trimTrailingSlashes(baseEndpoint);
   const invalidText =
-    'CloudExporter endpoint must be a base origin like "https://collector.example.com" with no path, search, or hash.';
+    'MastraObserveExporter endpoint must be a base origin like "https://collector.example.com" with no path, search, or hash.';
 
   try {
     const parsedEndpoint = new URL(normalizedEndpoint);
@@ -121,7 +121,7 @@ function buildSignalEndpoint(baseEndpoint: string, signal: CloudSignal, projectI
 
 function resolveExplicitSignalEndpoint(signal: CloudSignal, endpoint: string, projectId?: string): string {
   const normalizedEndpoint = trimTrailingSlashes(endpoint);
-  const invalidText = `CloudExporter ${signal}Endpoint must be a base origin like "https://collector.example.com" or a full ${signal} publish URL ending in "${SIGNAL_PUBLISH_SUFFIXES[signal]}".`;
+  const invalidText = `MastraObserveExporter ${signal}Endpoint must be a base origin like "https://collector.example.com" or a full ${signal} publish URL ending in "${SIGNAL_PUBLISH_SUFFIXES[signal]}".`;
 
   try {
     const parsedEndpoint = new URL(normalizedEndpoint);
@@ -157,7 +157,7 @@ function deriveSignalEndpointFromTracesEndpoint(signal: CloudSignal, tracesEndpo
 
   const normalizedTracesEndpoint = trimTrailingSlashes(tracesEndpoint);
   const invalidText =
-    'CloudExporter tracesEndpoint must be a base origin like "https://collector.example.com" or a full traces publish URL ending in "/spans/publish".';
+    'MastraObserveExporter tracesEndpoint must be a base origin like "https://collector.example.com" or a full traces publish URL ending in "/spans/publish".';
 
   try {
     const parsedEndpoint = new URL(normalizedTracesEndpoint);
@@ -218,7 +218,7 @@ type ResolvedCloudConfig = {
   feedbackEndpoint: string;
 };
 
-export class CloudExporter extends BaseExporter {
+export class MastraObserveExporter extends BaseExporter {
   name = 'mastra-cloud-observability-exporter';
 
   private readonly cloudConfig: Readonly<ResolvedCloudConfig>;
@@ -226,7 +226,7 @@ export class CloudExporter extends BaseExporter {
   private flushTimer: NodeJS.Timeout | null = null;
   private inFlightFlushes = new Set<Promise<void>>();
 
-  constructor(config: CloudExporterConfig = {}) {
+  constructor(config: MastraObserveExporterConfig = {}) {
     super(config);
 
     if (config.projectId !== undefined && !VALID_PROJECT_ID.test(config.projectId)) {
@@ -654,6 +654,25 @@ export class CloudExporter extends BaseExporter {
       this.logger.error('Failed to flush remaining events during shutdown', mastraError);
     }
 
-    this.logger.info('CloudExporter shutdown complete');
+    this.logger.info('MastraObserveExporter shutdown complete');
   }
 }
+
+/**
+ * @deprecated Use `MastraObserveExporter` instead. `CloudExporter` is kept as an
+ * alias for backward compatibility and will be removed in a future major version.
+ */
+export const CloudExporter = MastraObserveExporter;
+
+/**
+ * @deprecated Use `MastraObserveExporter` (the class type) instead. Kept for
+ * backward compatibility so existing `: CloudExporter` annotations keep working.
+ */
+export type CloudExporter = MastraObserveExporter;
+
+/**
+ * @deprecated Use `MastraObserveExporterConfig` instead. `CloudExporterConfig` is
+ * kept as an alias for backward compatibility and will be removed in a future
+ * major version.
+ */
+export type CloudExporterConfig = MastraObserveExporterConfig;

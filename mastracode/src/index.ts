@@ -22,7 +22,7 @@ import type { RequestContext } from '@mastra/core/request-context';
 import { MastraCompositeStore } from '@mastra/core/storage';
 import { DuckDBStore } from '@mastra/duckdb';
 
-import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
+import { Observability, DefaultExporter, MastraObserveExporter, SensitiveDataFilter } from '@mastra/observability';
 
 import { getDynamicInstructions } from './agents/instructions.js';
 import { getDynamicMemory } from './agents/memory.js';
@@ -125,7 +125,7 @@ export function createAuthStorage() {
 }
 
 /**
- * Resolve cloud observability credentials for the CloudExporter.
+ * Resolve cloud observability credentials for the MastraObserveExporter.
  * Priority: per-resource settings > environment variables > disabled.
  */
 function resolveCloudObservabilityConfig(
@@ -298,7 +298,7 @@ export async function createMastraCode(config?: MastraCodeConfig) {
         ],
         exporters: [
           new DefaultExporter({ strategy: 'event-sourced' }),
-          new CloudExporter(resolveCloudObservabilityConfig(globalSettings, authStorage, project.resourceId)),
+          new MastraObserveExporter(resolveCloudObservabilityConfig(globalSettings, authStorage, project.resourceId)),
         ],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
