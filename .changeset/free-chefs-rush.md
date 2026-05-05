@@ -2,4 +2,4 @@
 '@mastra/playground-ui': patch
 ---
 
-Fixed Playground type checking and shared UI component types.
+Fixed type definitions and shared UI component types for `@mastra/playground-ui`.

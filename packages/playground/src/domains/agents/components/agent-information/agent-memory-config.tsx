@@ -94,7 +94,7 @@ export const AgentMemoryConfig = ({ agentId }: AgentMemoryConfigProps) => {
 
     // Observational Memory section
     const omConfig = config.observationalMemory;
-    if (typeof omConfig === 'object' && omConfig?.enabled) {
+    if (typeof omConfig === 'object' && omConfig?.enabled !== false) {
       const formatThreshold = (threshold: number | { min: number; max: number } | undefined) => {
         if (!threshold) return 'Default';
         if (typeof threshold === 'number') return `${threshold.toLocaleString()} tokens`;

@@ -63,7 +63,8 @@ function DatasetItemPage() {
       input: JSON.stringify(latestVersion.input, null, 2),
       groundTruth: latestVersion.groundTruth ? JSON.stringify(latestVersion.groundTruth, null, 2) : '',
       metadata: latestVersion.metadata ? JSON.stringify(latestVersion.metadata, null, 2) : '',
-      trajectory: '',
+      trajectory:
+        latestVersion.expectedTrajectory != null ? JSON.stringify(latestVersion.expectedTrajectory, null, 2) : '',
     };
   }, [latestVersion, isDeleted]);
 
@@ -154,7 +155,8 @@ function DatasetItemPage() {
     }
 
     let parsedTrajectory: unknown | undefined;
-    if (trajectoryValue.trim()) {
+    const trajectoryChanged = trajectoryValue !== formDefaults.trajectory;
+    if (trajectoryChanged && trajectoryValue.trim()) {
       try {
         parsedTrajectory = JSON.parse(trajectoryValue);
       } catch {
@@ -170,7 +172,7 @@ function DatasetItemPage() {
         input: parsedInput,
         groundTruth: parsedGroundTruth,
         metadata: parsedMetadata,
-        expectedTrajectory: parsedTrajectory,
+        ...(trajectoryChanged ? { expectedTrajectory: parsedTrajectory ?? null } : {}),
       });
       toast.success('Item updated successfully');
       setIsEditing(false);
@@ -185,7 +187,9 @@ function DatasetItemPage() {
       setInputValue(JSON.stringify(latestVersion.input, null, 2));
       setGroundTruthValue(latestVersion.groundTruth ? JSON.stringify(latestVersion.groundTruth, null, 2) : '');
       setMetadataValue(latestVersion.metadata ? JSON.stringify(latestVersion.metadata, null, 2) : '');
-      setTrajectoryValue('');
+      setTrajectoryValue(
+        latestVersion.expectedTrajectory != null ? JSON.stringify(latestVersion.expectedTrajectory, null, 2) : '',
+      );
     }
     setIsEditing(false);
   };
@@ -213,6 +217,7 @@ function DatasetItemPage() {
         datasetVersion: versionToDisplay.datasetVersion,
         input: versionToDisplay.input,
         groundTruth: versionToDisplay.groundTruth,
+        expectedTrajectory: versionToDisplay.expectedTrajectory,
         metadata: versionToDisplay.metadata,
         createdAt: versionToDisplay.createdAt,
         updatedAt: versionToDisplay.updatedAt,
