@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from 'node:crypto';
+import * as crypto from 'node:crypto';
 import { openai } from '@ai-sdk/openai';
 import type { Task, MessageSendParams } from '@mastra/core/a2a';
 import { MastraA2AError } from '@mastra/core/a2a';
@@ -8,7 +8,6 @@ import { Mastra } from '@mastra/core/mastra';
 import { RequestContext } from '@mastra/core/request-context';
 import type { MastraStorage } from '@mastra/core/storage';
 import canonicalize from 'canonicalize';
-import jws from 'jws';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DefaultPushNotificationSender, DEFAULT_PUSH_NOTIFICATION_TOKEN_HEADER } from '../a2a/push-notification-sender';
 import { InMemoryPushNotificationStore } from '../a2a/push-notification-store';
@@ -217,7 +216,7 @@ describe('A2A Handler', () => {
     });
 
     it('should sign the agent card when A2A signing is configured', async () => {
-      const { privateKey, publicKey } = generateKeyPairSync('ec', {
+      const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', {
         namedCurve: 'P-256',
       });
       const privateJwk = privateKey.export({ format: 'jwk' });
@@ -253,10 +252,15 @@ describe('A2A Handler', () => {
 
       expect(canonicalPayload).toBeTruthy();
 
-      const verification = jws.verify(
-        `${signature.protected}.${Buffer.from(canonicalPayload!).toString('base64url')}.${signature.signature}`,
-        'ES256',
-        publicKey,
+      const signingInput = `${signature.protected}.${Buffer.from(canonicalPayload!, 'utf8').toString('base64url')}`;
+      const verification = crypto.verify(
+        'sha256',
+        Buffer.from(signingInput, 'utf8'),
+        {
+          key: publicKey,
+          dsaEncoding: 'ieee-p1363',
+        },
+        Buffer.from(signature.signature, 'base64url'),
       );
 
       expect(verification).toBe(true);
