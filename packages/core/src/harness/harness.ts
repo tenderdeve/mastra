@@ -2708,7 +2708,9 @@ export class Harness<TState = {}> {
             }
           }
         }
-        ds.activeSubagents = new Map();
+        if (event.reason !== 'suspended') {
+          ds.activeSubagents = new Map();
+        }
         break;
       }
 
@@ -2730,11 +2732,15 @@ export class Harness<TState = {}> {
         ds.toolInputBuffers.set(event.toolCallId, { text: '', toolName: event.toolName });
         const existing = ds.activeTools.get(event.toolCallId);
         if (existing) {
-          existing.name = event.toolName;
-          existing.args = {};
           if (existing.status === 'completed' || existing.status === 'error') {
+            existing.name = event.toolName;
+            existing.args = {};
             existing.startedAt = new Date();
           } else {
+            if (existing.status === 'streaming_input') {
+              existing.name = event.toolName;
+              existing.args = {};
+            }
             existing.startedAt ??= new Date();
           }
           existing.status = 'streaming_input';
