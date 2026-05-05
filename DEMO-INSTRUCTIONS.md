@@ -62,7 +62,7 @@ git checkout demo/agent-builder-brandon
 
 ```bash
 pnpm install
-cd examples/agent
+cd examples/agent-builder
 pnpm install --ignore-workspace
 ```
 
@@ -72,7 +72,7 @@ pnpm install --ignore-workspace
 cp .env.example .env
 ```
 
-Edit `examples/agent/.env`:
+Edit `examples/agent-builder/.env`:
 
 ```bash
 # Required — LLM calls (all built-in agents use OpenAI)
@@ -98,7 +98,7 @@ cd ../..
 pnpm build
 
 # Start the dev server
-cd examples/agent
+cd examples/agent-builder
 pnpm mastra:dev
 ```
 
@@ -158,7 +158,7 @@ This is admin/platform infrastructure — end users don't interact with it direc
 To wipe everything and start fresh:
 
 ```bash
-cd examples/agent
+cd examples/agent-builder
 pnpm clean
 pnpm mastra:dev
 ```
