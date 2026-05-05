@@ -10,7 +10,6 @@ import {
   DialogTitle,
   DropdownMenu,
   StatusBadge,
-  toast,
 } from '@mastra/playground-ui';
 import { Globe, LockIcon, MoreVerticalIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -20,7 +19,11 @@ import type { AgentBuilderEditFormValues } from '../../schemas';
 import { ChannelDialog } from './publish-channel-dialogs';
 import type { Visibility } from './visibility-select';
 import { PlatformIcon } from '@/domains/agents/components/agent-channels/platform-icons';
-import { useChannelInstallations, useChannelPlatforms, useConnectChannel } from '@/domains/agents/hooks/use-channels';
+import {
+  useChannelInstallations,
+  useChannelPlatforms,
+  useConnectChannelAction,
+} from '@/domains/agents/hooks/use-channels';
 import type { ChannelInstallationInfo, ChannelPlatformInfo } from '@/domains/agents/hooks/use-channels';
 
 export interface AgentBuilderMobileMenuProps {
@@ -163,7 +166,7 @@ interface MobileMenuChannelItemProps {
 function MobileMenuChannelItem({ platform, agentId, disabled, onSelect }: MobileMenuChannelItemProps) {
   const { data: installations = [] } = useChannelInstallations(platform.id, agentId);
   const installation = installations.find(i => i.status === 'active');
-  const { mutate: connect, isPending: isConnecting } = useConnectChannel(platform.id);
+  const { connect, isConnecting } = useConnectChannelAction(platform.id);
 
   // Slack-specific shortcut: when the platform is configured but not yet
   // connected, the dialog adds nothing — the user's intent ("connect Slack")
@@ -179,28 +182,7 @@ function MobileMenuChannelItem({ platform, agentId, disabled, onSelect }: Mobile
       return;
     }
 
-    connect(
-      { agentId },
-      {
-        onSuccess: result => {
-          if (result.type === 'oauth') {
-            window.location.href = result.authorizationUrl;
-            return;
-          }
-          if (result.type === 'deep_link') {
-            const popup = window.open(result.url, '_blank', 'noopener,noreferrer');
-            if (!popup) {
-              toast.error('Popup blocked — please allow popups and try again');
-            }
-          }
-          // 'immediate' → installation list will be invalidated by the hook;
-          // no further UI action needed.
-        },
-        onError: (err: Error & { body?: { error?: string } }) => {
-          toast.error(err.body?.error || err.message || 'Failed to connect channel');
-        },
-      },
-    );
+    connect(agentId);
   };
 
   return (
