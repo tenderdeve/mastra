@@ -33,6 +33,7 @@ import { statusAction } from './commands/studio/deploy-status';
 import { suggestionsAction } from './commands/studio/deploy-suggestions';
 import { listProjectsAction, createProjectAction } from './commands/studio/projects';
 import { parseComponents, parseLlmProvider, parseMcp, parseSkills } from './commands/utils';
+import { startWorker } from './commands/worker/worker';
 
 function wrapAction(fn: (...args: any[]) => Promise<void>): (...args: any[]) => void {
   return (...args: any[]) => {
@@ -164,6 +165,17 @@ program
   .option('-s, --studio', 'Bundle the studio UI with the build')
   .option('--debug', 'Enable debug logs', false)
   .action(buildProject);
+
+program
+  .command('worker [name]')
+  .description('Build and start a standalone worker (orchestration, scheduler, backgroundTasks, or all)')
+  .option('-d, --dir <path>', 'Path to your Mastra folder')
+  .option('-r, --root <path>', 'Path to your root folder')
+  .option('-t, --tools <toolsDirs>', 'Comma-separated list of paths to tool files to include')
+  .option('--debug', 'Enable debug logs', false)
+  .action((name: string | undefined, opts: { dir?: string; root?: string; tools?: string; debug: boolean }) => {
+    return startWorker({ name, ...opts });
+  });
 
 program
   .command('start')

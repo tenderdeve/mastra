@@ -5,6 +5,7 @@ import { EventProcessor } from '../../../events/processor';
 import type { Event } from '../../../events/types';
 import type { Mastra } from '../../../mastra';
 import { RequestContext } from '../../../request-context/';
+import type { StepExecutionStrategy } from '../../../worker/types';
 import type {
   StepFlowEntry,
   StepResult,
@@ -63,15 +64,17 @@ export type ParentWorkflow = {
 
 export class WorkflowEventProcessor extends EventProcessor {
   private stepExecutor: StepExecutor;
+  private stepExecutionStrategy?: StepExecutionStrategy;
   // Map of runId -> AbortController for active workflow runs
   private abortControllers: Map<string, AbortController> = new Map();
   // Map of child runId -> parent runId for tracking nested workflows
   private parentChildRelationships: Map<string, string> = new Map();
   private runFormats: Map<string, 'legacy' | 'vnext' | undefined> = new Map();
 
-  constructor({ mastra }: { mastra: Mastra }) {
+  constructor({ mastra, stepExecutionStrategy }: { mastra: Mastra; stepExecutionStrategy?: StepExecutionStrategy }) {
     super({ mastra });
     this.stepExecutor = new StepExecutor({ mastra });
+    this.stepExecutionStrategy = stepExecutionStrategy;
   }
 
   /**
@@ -1064,22 +1067,44 @@ export class WorkflowEventProcessor extends EventProcessor {
     // Get the abort controller for this workflow run
     const abortController = this.getOrCreateAbortController(runId);
 
-    const stepResult = await this.stepExecutor.execute({
-      workflowId,
-      step: step.step,
-      runId,
-      stepResults,
-      state: currentState,
-      requestContext: rc,
-      input: (prevResult as any)?.output,
-      resumeData: resumeDataToUse,
-      retryCount,
-      foreachIdx: step.type === 'foreach' ? executionPath[1] : undefined,
-      validateInputs: workflow.options.validateInputs,
-      abortController,
-      format: streamFormat,
-      perStep,
-    });
+    let stepResult: StepResult<any, any, any, any>;
+
+    if (this.stepExecutionStrategy) {
+      stepResult = await this.stepExecutionStrategy.executeStep({
+        workflowId,
+        runId,
+        stepId: step.step.id,
+        executionPath,
+        stepResults,
+        state: currentState,
+        requestContext: Object.fromEntries(rc.entries()),
+        input: (prevResult as any)?.output,
+        resumeData: resumeDataToUse,
+        retryCount,
+        foreachIdx: step.type === 'foreach' ? executionPath[1] : undefined,
+        format: streamFormat,
+        perStep,
+        validateInputs: workflow.options.validateInputs,
+        abortSignal: abortController.signal,
+      });
+    } else {
+      stepResult = await this.stepExecutor.execute({
+        workflowId,
+        step: step.step,
+        runId,
+        stepResults,
+        state: currentState,
+        requestContext: rc,
+        input: (prevResult as any)?.output,
+        resumeData: resumeDataToUse,
+        retryCount,
+        foreachIdx: step.type === 'foreach' ? executionPath[1] : undefined,
+        validateInputs: workflow.options.validateInputs,
+        abortController,
+        format: streamFormat,
+        perStep,
+      });
+    }
     requestContext = Object.fromEntries(rc.entries());
 
     // @ts-expect-error - bailed status not in type

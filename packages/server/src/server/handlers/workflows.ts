@@ -1190,3 +1190,65 @@ export const OBSERVE_STREAM_LEGACY_WORKFLOW_ROUTE = createRoute({
     }
   },
 });
+
+// ============================================================================
+// Worker Step Execution Endpoint
+// Used by standalone OrchestrationWorker instances with HttpRemoteStrategy.
+// ============================================================================
+
+const stepExecutionBodySchema = z.object({
+  workflowId: z.string(),
+  runId: z.string(),
+  stepId: z.string(),
+  executionPath: z.array(z.number()),
+  stepResults: z.record(z.string(), z.any()),
+  state: z.record(z.string(), z.any()),
+  requestContext: z.record(z.string(), z.any()),
+  input: z.any().optional(),
+  resumeData: z.any().optional(),
+  retryCount: z.number().optional(),
+  foreachIdx: z.number().optional(),
+  format: z.enum(['legacy', 'vnext']).optional(),
+  perStep: z.boolean().optional(),
+  validateInputs: z.boolean().optional(),
+});
+
+export const EXECUTE_WORKFLOW_STEP_ROUTE = createRoute({
+  method: 'POST',
+  path: '/workflows/:workflowId/runs/:runId/steps/execute',
+  responseType: 'json',
+  pathParamSchema: workflowRunPathParams,
+  bodySchema: stepExecutionBodySchema,
+  summary: 'Execute a workflow step',
+  description:
+    'Internal endpoint used by standalone OrchestrationWorker instances to execute workflow steps remotely via HttpRemoteStrategy.',
+  tags: ['Workflows', 'Worker'],
+  requiresAuth: true,
+  handler: (async ({ mastra, workflowId, runId, ...body }: any) => {
+    try {
+      const { InProcessStrategy } = await import('@mastra/core/worker');
+
+      const strategy = new InProcessStrategy({ mastra });
+      const result = await strategy.executeStep({
+        workflowId,
+        runId,
+        stepId: body.stepId,
+        executionPath: body.executionPath,
+        stepResults: body.stepResults,
+        state: body.state,
+        requestContext: body.requestContext,
+        input: body.input,
+        resumeData: body.resumeData,
+        retryCount: body.retryCount,
+        foreachIdx: body.foreachIdx,
+        format: body.format,
+        perStep: body.perStep,
+        validateInputs: body.validateInputs,
+      });
+
+      return result;
+    } catch (error) {
+      return handleError(error, 'Error executing workflow step');
+    }
+  }) as any,
+});
