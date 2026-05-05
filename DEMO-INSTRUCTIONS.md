@@ -28,7 +28,7 @@ Agents and skills have **visibility** (Private or Public) and an **authorId** ti
 
 ### Preview as Role (Admin Only)
 
-Admins can **preview the Studio as another role** (member, operator, viewer, etc.) without logging out. Click your avatar in the top-right → "Preview as role" → pick a role. Useful for seeing what a member or operator would experience.
+Admins can **preview the Studio as another role** (member, operator, viewer, etc.) without logging out. Click your avatar in the top-left → "Preview as role" → pick a role. A banner shows at the top while previewing. This is UI-only — API calls still use your real admin permissions. Useful for seeing what a member or operator would experience.
 
 ### Browser Toggle
 
@@ -52,15 +52,14 @@ Agents can have a **custom avatar** uploaded by the owner.
 
 ---
 
-## Key Concepts
+## Getting to Agent Builder
 
-| Term | What it means |
-|------|---------------|
-| **Runtime agent** | Defined in code (e.g., `builderAgent`). Shows "Runtime" badge. |
-| **Stored agent** | Created through the Agent Builder UI. Stored in DB. Shows "Private" or "Public" badge. |
-| **Builder agent** | The AI assistant you chat with to create agents. It's a runtime agent registered by `@mastra/editor`. |
-| **Studio** | The main Mastra dashboard at `/agents`, `/workflows`, etc. Shows all agents (runtime + stored). |
-| **Agent Builder** | The builder UI at `/agent-builder/*`. Focused on creating and managing stored agents. |
+Right now, the Agent Builder doesn't have its own sidebar entry for all roles. How you get there depends on your role:
+
+- **Admin**: Go to the Agents tab in Studio → click "Create Agent" → you're in the builder flow. Or navigate directly to `http://localhost:4111/agent-builder`.
+- **Member** (with current role config): Navigate directly to `http://localhost:4111/agent-builder`. The Agents tab in the main Studio requires `agents:read`/`agents:create` permissions, which members don't have by default, but the builder routes work fine.
+
+We're still working on the best way to surface the builder entry point for non-admin roles.
 
 ---
 
@@ -219,15 +218,15 @@ Click your avatar (top-right) → **Preview as Role** → pick Member, Operator,
 
 ## Key URLs
 
-| Page              | URL                                          |
-| ----------------- | -------------------------------------------- |
-| Agent Builder     | `http://localhost:4111/agent-builder`        |
-| My Agents         | `http://localhost:4111/agent-builder/agents` |
-| Skills            | `http://localhost:4111/agent-builder/skills` |
-| Favorites         | `http://localhost:4111/agent-builder/favorite` |
-| Library           | `http://localhost:4111/agent-builder/library` |
-| Studio (standard) | `http://localhost:4111/agents`               |
-| API               | `http://localhost:4111/api`                  |
+| Page              | URL                                           |
+| ----------------- | --------------------------------------------- |
+| Agent Builder     | `http://localhost:4111/agent-builder`          |
+| My Agents         | `http://localhost:4111/agent-builder/agents`   |
+| Skills            | `http://localhost:4111/agent-builder/skills`   |
+| Favorites         | `http://localhost:4111/agent-builder/favorite`  |
+| Library           | `http://localhost:4111/agent-builder/library`  |
+| Studio (standard) | `http://localhost:4111/agents`                 |
+| API               | `http://localhost:4111/api`                    |
 
 ---
 
@@ -242,6 +241,18 @@ With `AUTH_PROVIDER=workos`, login is via Google SSO. The current role mapping:
 | **operator** | Can view and run agents only (no builder access)                                                 |
 | **viewer**   | Read-only, no resources                                                                          |
 | **auditor**  | Observability/logs only                                                                          |
+
+---
+
+## Workspaces
+
+Workspaces provide filesystem and sandbox infrastructure for agents. The builder workspace is configured in code and auto-managed:
+
+- Auto-created on startup with `runtimeRegistered: true`
+- Auto-updated if the config changes (e.g., different basePath)
+- Auto-archived if removed from config
+
+This is admin/platform infrastructure — end users don't interact with it directly. Brandon doesn't need to worry about workspace setup; it just works out of the box.
 
 ---
 
@@ -268,12 +279,12 @@ pnpm mastra:dev
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| Server crashes at startup | Set `OPENAI_API_KEY` — `OpenAIVoice` module requires it |
-| Port 4111 already in use | `lsof -i :4111 \| grep LISTEN \| awk '{print $2}' \| xargs kill -9` |
-| "Cannot find module" errors | Run `pnpm build` from the repo root |
-| Chat not responding | Check `OPENAI_API_KEY` is set. If using Claude, check `ANTHROPIC_API_KEY` |
-| Auth redirect loop | Verify WorkOS redirect URI is exactly `http://localhost:4111/api/auth/callback` |
-| Can't find Agent Builder | Navigate directly to `http://localhost:4111/agent-builder` |
-| "No session" errors on restart | Browser's `/auth/refresh` polling during restart. Just restart the server. |
+| Problem                         | Fix                                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| Server crashes at startup       | Set `OPENAI_API_KEY` — `OpenAIVoice` module requires it                          |
+| Port 4111 already in use        | `lsof -i :4111 \| grep LISTEN \| awk '{print $2}' \| xargs kill -9`             |
+| "Cannot find module" errors     | Run `pnpm build` from the repo root                                             |
+| Chat not responding             | Check `OPENAI_API_KEY` is set. If using Claude, check `ANTHROPIC_API_KEY`        |
+| Auth redirect loop              | Verify WorkOS redirect URI is exactly `http://localhost:4111/api/auth/callback`   |
+| Can't find Agent Builder        | Navigate directly to `http://localhost:4111/agent-builder`                        |
+| "No session" errors on restart  | Browser's `/auth/refresh` polling during restart. Just restart the server.       |
