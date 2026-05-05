@@ -490,6 +490,8 @@ export interface ActiveToolState {
   name: string;
   args: unknown;
   status: 'streaming_input' | 'running' | 'completed' | 'error';
+  startedAt?: Date;
+  completedAt?: Date;
   partialResult?: string;
   result?: unknown;
   isError?: boolean;
@@ -507,6 +509,8 @@ export interface ActiveSubagentState {
   toolCalls: Array<{ name: string; isError: boolean }>;
   textDelta: string;
   status: 'running' | 'completed' | 'error';
+  startedAt?: Date;
+  completedAt?: Date;
   durationMs?: number;
   result?: string;
 }
