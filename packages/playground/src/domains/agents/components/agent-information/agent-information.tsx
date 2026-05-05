@@ -20,5 +20,9 @@ export interface AgentInformationLayoutProps {
 }
 
 export const AgentInformationLayout = ({ children }: AgentInformationLayoutProps) => {
-  return <div className="grid grid-rows-[1fr] h-full items-start overflow-y-auto overflow-x-hidden min-w-0 w-full bg-surface2">{children}</div>;
+  return (
+    <div className="grid grid-rows-[1fr] h-full items-start overflow-y-auto overflow-x-hidden min-w-0 w-full bg-surface2">
+      {children}
+    </div>
+  );
 };

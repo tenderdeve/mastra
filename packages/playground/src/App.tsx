@@ -1,9 +1,3 @@
-import { PlaygroundQueryClient } from '@/lib/tanstack-query';
-import { createFetchWithRefresh } from '@/domains/auth/hooks/fetch-with-refresh';
-import { PlaygroundConfigGuard } from '@/domains/configuration/components/playground-config-guard';
-import { StudioConfigProvider, useStudioConfig } from '@/domains/configuration/context/studio-config-context';
-import { LinkComponentProvider } from '@/lib/framework';
-import type { LinkComponentProviderProps } from '@/lib/framework';
 import { v4 as uuid } from '@lukeed/uuid';
 import { coreFeatures } from '@mastra/core/features';
 
@@ -85,13 +79,22 @@ import Template from './pages/templates/template';
 import AgentTool from './pages/tools/agent-tool';
 import Tool from './pages/tools/tool';
 import Traces from './pages/traces';
+import TraceDetails from './pages/traces/trace';
 import Workflows from './pages/workflows';
+import SchedulePage from './pages/workflows/schedule';
+import SchedulesPage from './pages/workflows/schedules';
 import { Workflow } from './pages/workflows/workflow';
 import Workspace from './pages/workspace';
 import WorkspaceSkillDetailPage from './pages/workspace/skills/[skillName]';
 import { Layout } from '@/components/layout';
 import { MinimalLayout } from '@/components/minimal-layout';
 import { AgentLayout } from '@/domains/agents/agent-layout';
+import { createFetchWithRefresh } from '@/domains/auth/hooks/fetch-with-refresh';
+import { PlaygroundConfigGuard } from '@/domains/configuration/components/playground-config-guard';
+import { StudioConfigProvider, useStudioConfig } from '@/domains/configuration/context/studio-config-context';
+import { LinkComponentProvider } from '@/lib/framework';
+import type { LinkComponentProviderProps } from '@/lib/framework';
+import { PlaygroundQueryClient } from '@/lib/tanstack-query';
 import { Processors } from '@/pages/processors';
 import { Processor } from '@/pages/processors/processor';
 import Tools from '@/pages/tools';
@@ -109,6 +112,8 @@ const paths: LinkComponentProviderProps['paths'] = {
     messageId ? `/agents/${agentId}/chat/${threadId}?messageId=${messageId}` : `/agents/${agentId}/chat/${threadId}`,
   workflowsLink: () => `/workflows`,
   workflowLink: (workflowId: string) => `/workflows/${workflowId}`,
+  schedulesLink: () => `/workflows/schedules`,
+  scheduleLink: (scheduleId: string) => `/workflows/schedules/${encodeURIComponent(scheduleId)}`,
   networkLink: (networkId: string) => `/networks/v-next/${networkId}/chat`,
   networkNewThreadLink: (networkId: string) => `/networks/v-next/${networkId}/chat/${uuid()}`,
   networkThreadLink: (networkId: string, threadId: string) => `/networks/v-next/${networkId}/chat/${threadId}`,
@@ -217,6 +222,7 @@ const routes = [
       { path: '/metrics', element: <Metrics /> },
       { path: '/observability-overview', element: <ObservabilityOverview /> },
       { path: '/observability', element: <Traces /> },
+      { path: '/traces/:traceId', element: <TraceDetails /> },
       { path: '/resources', element: <Resources /> },
       { path: '/agents', element: <Agents /> },
       {
@@ -275,6 +281,8 @@ const routes = [
       { path: '/workspaces/:workspaceId/skills/:skillName', element: <WorkspaceSkillDetailPage /> },
 
       { path: '/workflows', element: <Workflows /> },
+      { path: '/workflows/schedules', element: <SchedulesPage /> },
+      { path: '/workflows/schedules/:scheduleId', element: <SchedulePage /> },
       {
         path: '/workflows/:workflowId',
         element: (

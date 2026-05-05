@@ -101,6 +101,14 @@ const sidebars = {
         },
         {
           type: 'doc',
+          id: 'agents/background-tasks',
+          label: 'Background Tasks',
+          customProps: {
+            tags: ['new'],
+          },
+        },
+        {
+          type: 'doc',
           id: 'agents/processors',
           label: 'Processors',
         },
@@ -231,6 +239,11 @@ const sidebars = {
           id: 'workflows/error-handling',
           label: 'Error Handling',
         },
+        {
+          type: 'doc',
+          id: 'workflows/scheduled-workflows',
+          label: 'Scheduled Workflows',
+        },
       ],
     },
     {
@@ -281,6 +294,14 @@ const sidebars = {
           id: 'streaming/workflow-streaming',
           label: 'Workflow Streaming',
         },
+        {
+          type: 'doc',
+          id: 'streaming/background-task-streaming',
+          label: 'Background Task Streaming',
+          customProps: {
+            tags: ['new'],
+          },
+        },
       ],
     },
     {
@@ -295,8 +316,8 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'mcp/publishing-mcp-server',
-          label: 'Publishing an MCP Server',
+          id: 'mcp/mcp-apps',
+          label: 'MCP Apps',
         },
       ],
     },
@@ -357,6 +378,11 @@ const sidebars = {
           type: 'doc',
           id: 'browser/stagehand',
           label: 'Stagehand',
+        },
+        {
+          type: 'doc',
+          id: 'browser/browser-viewer',
+          label: 'BrowserViewer',
         },
       ],
     },
@@ -437,6 +463,11 @@ const sidebars = {
               type: 'doc',
               id: 'server/auth/firebase',
               label: 'Firebase',
+            },
+            {
+              type: 'doc',
+              id: 'server/auth/fga',
+              label: 'Fine-Grained Authorization',
             },
             {
               type: 'doc',
@@ -532,6 +563,11 @@ const sidebars = {
               type: 'category',
               label: 'Bridges',
               items: [
+                {
+                  type: 'doc',
+                  id: 'observability/tracing/bridges/datadog',
+                  label: 'Datadog',
+                },
                 {
                   type: 'doc',
                   id: 'observability/tracing/bridges/otel',

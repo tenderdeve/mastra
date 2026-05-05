@@ -2,9 +2,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import type { GetToolResponse, GetWorkflowResponse } from '@mastra/client-js';
 import {
-  Alert,
-  AlertTitle,
-  AlertDescription,
+  Notice,
   Badge,
   useCodemirrorTheme,
   Skeleton,
@@ -13,7 +11,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
   AgentIcon,
-  MemoryIcon,
   ProcessorIcon,
   SkillIcon,
   ToolsIcon,
@@ -30,7 +27,6 @@ import { AgentMetadataModelList } from './agent-metadata-model-list';
 import { AgentMetadataSection } from './agent-metadata-section';
 import { AgentMetadataWrapper } from './agent-metadata-wrapper';
 import { useIsCmsAvailable } from '@/domains/cms/hooks/use-is-cms-available';
-import { useMemory } from '@/domains/memory/hooks';
 import { useScorers } from '@/domains/scores';
 import { WORKSPACE_TOOLS_PREFIX } from '@/domains/workspace/constants';
 import { LoadingBadge } from '@/lib/ai-ui/tools/badges/loading-badge';
@@ -68,14 +64,12 @@ export const AgentMetadataNetworkList = ({ agents }: AgentMetadataNetworkListPro
 
 export const AgentMetadata = ({ agentId }: AgentMetadataProps) => {
   const { data: agent, isLoading } = useAgent(agentId);
-  const { data: memory, isLoading: isMemoryLoading } = useMemory(agentId);
   const { mutate: reorderModelList } = useReorderModelList(agentId);
   const { mutateAsync: updateModelInModelList } = useUpdateModelInModelList(agentId);
   const codemirrorTheme = useCodemirrorTheme();
   const { isCmsAvailable, isLoading: isCmsLoading } = useIsCmsAvailable();
-  const hasMemoryEnabled = Boolean(memory?.result);
 
-  if (isLoading || isMemoryLoading) {
+  if (isLoading) {
     return <Skeleton className="h-full" />;
   }
 
@@ -206,9 +200,8 @@ export const AgentMetadata = ({ agentId }: AgentMetadataProps) => {
           theme={codemirrorTheme}
         />
         {!isCmsLoading && !isCmsAvailable && (
-          <Alert variant="warning">
-            <AlertTitle as="h5">Read-only</AlertTitle>
-            <AlertDescription as="p">
+          <Notice variant="warning" title="Read-only">
+            <Notice.Message>
               To edit the system prompt in Studio, add <code className="font-medium">@mastra/editor</code> to your
               project. See the{' '}
               <a
@@ -220,8 +213,8 @@ export const AgentMetadata = ({ agentId }: AgentMetadataProps) => {
                 documentation
               </a>
               .
-            </AlertDescription>
-          </Alert>
+            </Notice.Message>
+          </Notice>
         )}
       </AgentMetadataSection>
     </AgentMetadataWrapper>

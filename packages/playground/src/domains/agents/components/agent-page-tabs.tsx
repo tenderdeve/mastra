@@ -1,5 +1,5 @@
-import { Txt, Icon, cn } from '@mastra/playground-ui';
-import { EyeIcon, FlaskConical, MessageSquare, ClipboardCheck, GitBranch } from 'lucide-react';
+import { Tab, TabList, Tabs, Tooltip, TooltipContent, TooltipTrigger, Txt, Icon } from '@mastra/playground-ui';
+import { ExternalLink, EyeIcon, FlaskConical, MessageSquare, ClipboardCheck, GitBranch } from 'lucide-react';
 
 import { useLinkComponent } from '@/lib/framework';
 
@@ -14,32 +14,37 @@ interface AgentPageTabsProps {
   rightSlot?: React.ReactNode;
 }
 
-function TabLink({
-  href,
-  active,
+function DocsLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 underline text-inherit hover:text-white"
+    >
+      {children}
+      <ExternalLink className="h-3 w-3" />
+    </a>
+  );
+}
+
+function AgentTab({
+  value,
   icon,
   label,
   badge,
+  disabled,
+  disabledReason,
 }: {
-  href: string;
-  active: boolean;
+  value: AgentPageTab;
   icon: React.ReactNode;
   label: string;
   badge?: number;
+  disabled?: boolean;
+  disabledReason?: React.ReactNode;
 }) {
-  const { navigate } = useLinkComponent();
-
-  return (
-    <button
-      type="button"
-      onClick={() => navigate(href)}
-      className={cn(
-        'flex items-center gap-1.5 px-3 py-2.5 text-sm transition-colors border-b-2',
-        active
-          ? 'border-black/50 dark:border-white/50 text-neutral5'
-          : 'border-transparent text-neutral3 hover:text-neutral5',
-      )}
-    >
+  const tabContent = (
+    <>
       <Icon size="sm">{icon}</Icon>
       <Txt variant="ui-sm" className="text-inherit">
         {label}
@@ -49,7 +54,28 @@ function TabLink({
           {badge}
         </span>
       )}
-    </button>
+    </>
+  );
+
+  if (disabled) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span tabIndex={0} className="inline-flex">
+            <Tab value={value} disabled className="px-3 py-2.5">
+              {tabContent}
+            </Tab>
+          </span>
+        </TooltipTrigger>
+        {disabledReason && <TooltipContent side="bottom">{disabledReason}</TooltipContent>}
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tab value={value} className="px-3 py-2.5">
+      {tabContent}
+    </Tab>
   );
 }
 
@@ -61,43 +87,70 @@ export function AgentPageTabs({
   reviewBadge,
   rightSlot,
 }: AgentPageTabsProps) {
+  const { navigate } = useLinkComponent();
+
+  const playgroundDisabledReason = !showPlayground ? (
+    <p>
+      Configure <code>@mastra/editor</code> to use the Editor.{' '}
+      <DocsLink href="https://mastra.ai/docs/editor/overview">Learn more</DocsLink>
+    </p>
+  ) : undefined;
+  const observabilityDisabledReason = !showObservability ? (
+    <p>
+      Add <code>@mastra/observability</code> to enable this tab.{' '}
+      <DocsLink href="https://mastra.ai/docs/observability/overview">Learn more</DocsLink>
+    </p>
+  ) : undefined;
+
+  const hrefMap: Record<AgentPageTab, string> = {
+    chat: `/agents/${agentId}/chat/new`,
+    versions: `/agents/${agentId}/editor`,
+    evaluate: `/agents/${agentId}/evaluate`,
+    review: `/agents/${agentId}/review`,
+    traces: `/agents/${agentId}/traces`,
+  };
+
+  const handleTabChange = (value: AgentPageTab) => {
+    navigate(hrefMap[value]);
+  };
+
   return (
-    <div className="flex items-center border-b border-border1 px-4 bg-surface2">
-      <TabLink
-        href={`/agents/${agentId}/chat/new`}
-        active={activeTab === 'chat'}
-        icon={<MessageSquare />}
-        label="Chat"
-      />
-      {showPlayground && (
-        <TabLink
-          href={`/agents/${agentId}/editor`}
-          active={activeTab === 'versions'}
-          icon={<GitBranch />}
-          label="Editor"
-        />
-      )}
-      {showObservability && (
-        <>
-          <TabLink
-            href={`/agents/${agentId}/evaluate`}
-            active={activeTab === 'evaluate'}
+    <div className="bg-surface2 px-4 flex items-center gap-2">
+      <Tabs value={activeTab} defaultTab={activeTab} onValueChange={handleTabChange} className="flex-1 min-w-0">
+        <TabList>
+          <AgentTab value="chat" icon={<MessageSquare />} label="Chat" />
+          <AgentTab
+            value="versions"
+            icon={<GitBranch />}
+            label="Editor"
+            disabled={!showPlayground}
+            disabledReason={playgroundDisabledReason}
+          />
+          <AgentTab
+            value="evaluate"
             icon={<FlaskConical />}
             label="Evaluate"
+            disabled={!showObservability}
+            disabledReason={observabilityDisabledReason}
           />
-          <TabLink
-            href={`/agents/${agentId}/review`}
-            active={activeTab === 'review'}
+          <AgentTab
+            value="review"
             icon={<ClipboardCheck />}
             label="Review"
             badge={reviewBadge}
+            disabled={!showObservability}
+            disabledReason={observabilityDisabledReason}
           />
-        </>
-      )}
-      {showObservability && (
-        <TabLink href={`/agents/${agentId}/traces`} active={activeTab === 'traces'} icon={<EyeIcon />} label="Traces" />
-      )}
-      {rightSlot && <div className="ml-auto flex items-center gap-2">{rightSlot}</div>}
+          <AgentTab
+            value="traces"
+            icon={<EyeIcon />}
+            label="Traces"
+            disabled={!showObservability}
+            disabledReason={observabilityDisabledReason}
+          />
+        </TabList>
+      </Tabs>
+      {rightSlot && <div className="flex items-center gap-2">{rightSlot}</div>}
     </div>
   );
 }
