@@ -30,6 +30,7 @@
     "@mastra/ai-sdk": "beta",
     "@mastra/editor": "beta",
     "@mastra/auth-workos": "beta",
+    "@mastra/daytona": "beta",
     "@mastra/stagehand": "beta",
     "@mastra/slack": "beta",
     "ws": "^8.18.0"
@@ -53,6 +54,7 @@
       "@mastra/ai-sdk": "link:../../client-sdks/ai-sdk",
       "mastra": "link:../../packages/cli",
       "@mastra/editor": "link:../../packages/editor",
+      "@mastra/daytona": "link:../../workspaces/daytona",
       "@mastra/stagehand": "link:../../browser/stagehand",
       "@mastra/slack": "link:../../channels/slack"
     }
