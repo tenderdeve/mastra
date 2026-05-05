@@ -356,8 +356,21 @@ export const CREATE_STORED_SKILL_ROUTE = createRoute({
         },
       });
 
-      // Return the resolved skill (thin record + version config)
-      const resolved = await skillStore.getByIdResolved(id);
+      // Publish the initial version so the skill is immediately usable.
+      // Without this, the thin record stays as status='draft' with activeVersionId=null,
+      // which makes the skill unreachable via status='published' resolution.
+      const { versions } = await skillStore.listVersions({ skillId: id, perPage: 1 });
+      const initialVersion = versions[0];
+      if (initialVersion) {
+        await skillStore.update({
+          id,
+          activeVersionId: initialVersion.id,
+          status: 'published',
+        });
+      }
+
+      // Return the resolved skill (thin record + version config) using the newly published version
+      const resolved = await skillStore.getByIdResolved(id, { status: 'published' });
       if (!resolved) {
         throw new HTTPException(500, { message: 'Failed to resolve created skill' });
       }
@@ -458,8 +471,23 @@ export const UPDATE_STORED_SKILL_ROUTE = createRoute({
         metadata,
       });
 
+      // When the caller explicitly requests status='published', activate the
+      // latest version so the update is immediately live.
+      if (status === 'published') {
+        const { versions } = await skillStore.listVersions({ skillId: storedSkillId, perPage: 1 });
+        const latestVersion = versions[0];
+        if (latestVersion) {
+          await skillStore.update({
+            id: storedSkillId,
+            activeVersionId: latestVersion.id,
+            status: 'published',
+          });
+        }
+      }
+
       // Return the resolved skill with the updated config
-      const resolved = await skillStore.getByIdResolved(storedSkillId);
+      const resolveStatus = status === 'published' ? 'published' : 'draft';
+      const resolved = await skillStore.getByIdResolved(storedSkillId, { status: resolveStatus });
       if (!resolved) {
         throw new HTTPException(500, { message: 'Failed to resolve updated skill' });
       }

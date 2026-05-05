@@ -221,17 +221,34 @@ const AgentBuilderAgentEditReady = ({
   };
   const handleSave = formMethods.handleSubmit(handleSaveSuccess);
 
+  const handlePublishAfterSave = async (agentId: string) => {
+    const { versions } = await client.getStoredAgent(agentId).listVersions(undefined, requestContext);
+    if (versions.length > 0) {
+      await client.getStoredAgent(agentId).activateVersion(versions[0]!.id, requestContext);
+      toast.success('Agent published');
+    }
+  };
+
   const handleCreateAndPublish = formMethods.handleSubmit(async (values: AgentBuilderEditFormValues) => {
     setIsPublishing(true);
     try {
       const created = await save(values);
       if (created?.id) {
-        const { versions } = await client.getStoredAgent(created.id).listVersions(undefined, requestContext);
-        if (versions.length > 0) {
-          await client.getStoredAgent(created.id).activateVersion(versions[0]!.id, requestContext);
-          toast.success('Agent published');
-        }
+        await handlePublishAfterSave(created.id);
       }
+      void navigate(`/agent-builder/agents/${id}/view`, { viewTransition: true });
+    } catch (error) {
+      toast.error(`Failed to publish: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsPublishing(false);
+    }
+  });
+
+  const handleSaveAndPublish = formMethods.handleSubmit(async (values: AgentBuilderEditFormValues) => {
+    setIsPublishing(true);
+    try {
+      await save(values);
+      await handlePublishAfterSave(id);
       void navigate(`/agent-builder/agents/${id}/view`, { viewTransition: true });
     } catch (error) {
       toast.error(`Failed to publish: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -272,7 +289,7 @@ const AgentBuilderAgentEditReady = ({
             isSaving={isSaving}
             isPublishing={isPublishing}
             onSave={handleSave}
-            onCreateAndPublish={mode === 'create' ? handleCreateAndPublish : undefined}
+            onPublish={mode === 'create' ? handleCreateAndPublish : handleSaveAndPublish}
           />
         }
         mobileExtra={
@@ -328,10 +345,10 @@ interface HeaderActionsProps {
   isSaving: boolean;
   isPublishing: boolean;
   onSave: () => void;
-  onCreateAndPublish?: () => void;
+  onPublish: () => void;
 }
 
-const HeaderActions = ({ mode, isSaving, isPublishing, onSave, onCreateAndPublish }: HeaderActionsProps) => {
+const HeaderActions = ({ mode, isSaving, isPublishing, onSave, onPublish }: HeaderActionsProps) => {
   const isRunning = useStreamRunning();
   const busy = isSaving || isPublishing || isRunning;
   return (
@@ -339,17 +356,9 @@ const HeaderActions = ({ mode, isSaving, isPublishing, onSave, onCreateAndPublis
       <Button size="sm" variant="default" onClick={onSave} disabled={busy} data-testid="agent-builder-edit-save">
         <CheckIcon /> {isSaving ? 'Saving…' : mode === 'edit' ? 'Save' : 'Save as draft'}
       </Button>
-      {mode === 'create' && onCreateAndPublish && (
-        <Button
-          size="sm"
-          variant="cta"
-          onClick={onCreateAndPublish}
-          disabled={busy}
-          data-testid="agent-builder-edit-create-publish"
-        >
-          <SendIcon /> {isPublishing ? 'Publishing…' : 'Create & Publish'}
-        </Button>
-      )}
+      <Button size="sm" variant="cta" onClick={onPublish} disabled={busy} data-testid="agent-builder-edit-publish">
+        <SendIcon /> {isPublishing ? 'Publishing…' : mode === 'edit' ? 'Save & Publish' : 'Create & Publish'}
+      </Button>
     </div>
   );
 };

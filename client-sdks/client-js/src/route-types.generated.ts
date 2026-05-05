@@ -41027,6 +41027,8 @@ export type PatchStoredAgentsStoredAgentId_Body = {
         | undefined
       )
     | undefined;
+  /** Agent status: draft (not live, owner-only) or published (live, visibility applies) */
+  status?: ('draft' | 'published') | undefined;
   /** Optional message describing the changes for the auto-created version */
   changeMessage?: string | undefined;
 };
@@ -72670,6 +72672,7 @@ type PatchStoredSkillsStoredSkillId_Body_Auxiliary_4 = {
 export type PatchStoredSkillsStoredSkillId_Body = {
   authorId?: (string | undefined) | undefined;
   visibility?: (('private' | 'public') | undefined) | undefined;
+  status?: (('draft' | 'published') | undefined) | undefined;
   name?: string | undefined;
   description?: string | undefined;
   instructions?: string | undefined;

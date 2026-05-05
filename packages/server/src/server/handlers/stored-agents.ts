@@ -575,6 +575,20 @@ export const UPDATE_STORED_AGENT_ROUTE: ServerRoute<
         throw new Error('handleAutoVersioning returned undefined');
       }
 
+      // When the caller explicitly requests status='published', activate the
+      // latest version so the update is immediately live.
+      if (status === 'published') {
+        const { versions } = await agentsStore.listVersions({ agentId: storedAgentId, perPage: 1 });
+        const latestVersion = versions[0];
+        if (latestVersion) {
+          await agentsStore.update({
+            id: storedAgentId,
+            activeVersionId: latestVersion.id,
+            status: 'published',
+          });
+        }
+      }
+
       // Clear the cached agent instance so the next request gets the updated config
       const editor = mastra.getEditor();
       if (editor) {
@@ -582,7 +596,8 @@ export const UPDATE_STORED_AGENT_ROUTE: ServerRoute<
       }
 
       // Return the resolved agent with the latest version
-      const resolved = await agentsStore.getByIdResolved(storedAgentId, { status: 'draft' });
+      const resolveStatus = status === 'published' ? 'published' : 'draft';
+      const resolved = await agentsStore.getByIdResolved(storedAgentId, { status: resolveStatus });
       if (!resolved) {
         throw new HTTPException(500, { message: 'Failed to resolve updated agent' });
       }

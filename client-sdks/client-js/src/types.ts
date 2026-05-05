@@ -1231,6 +1231,8 @@ export interface UpdateStoredAgentParams {
   authorId?: string;
   /** Visibility of the agent. */
   visibility?: 'private' | 'public';
+  /** Status of the agent. Pass 'published' to publish the latest version. */
+  status?: 'draft' | 'published';
   metadata?: Record<string, unknown>;
   name?: string;
   description?: string;
@@ -1960,6 +1962,8 @@ export interface UpdateStoredSkillParams {
   authorId?: string;
   /** Visibility of the skill. */
   visibility?: 'private' | 'public';
+  /** Status of the skill. Pass 'published' to publish the latest version. */
+  status?: 'draft' | 'published';
   metadata?: Record<string, unknown>;
   name?: string;
   description?: string;

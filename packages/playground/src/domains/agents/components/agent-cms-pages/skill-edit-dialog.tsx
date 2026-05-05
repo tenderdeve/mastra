@@ -12,7 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@mastra/playground-ui';
-import { AlertTriangle, ChevronDown, ChevronRight, Globe, LockIcon, Pencil, Settings2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Globe, LockIcon, Pencil, SendIcon, Settings2 } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
@@ -229,7 +229,61 @@ export function SkillEditDialog({
     onClose,
   ]);
 
-  const isPending = createSkill.isPending || updateSkill.isPending;
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const handleSaveAndPublish = useCallback(async () => {
+    let filesToSave = files;
+    if (!filesToSave.some(n => n.id === 'root') && name.trim()) {
+      filesToSave = createInitialStructure(name);
+    }
+    if (instructions && filesToSave.some(n => n.id === 'root')) {
+      filesToSave = updateNodeContent(filesToSave, 'skill-md', instructions);
+    }
+
+    setIsPublishing(true);
+    try {
+      if (isExistingSkill && skill) {
+        const result = await updateSkill.mutateAsync({
+          id: skill.id,
+          name,
+          description,
+          visibility,
+          instructions,
+          status: 'published',
+        });
+        onSkillUpdated?.(result);
+      } else {
+        // Create first (auto-publishes), then close
+        const result = await createSkill.mutateAsync({
+          name,
+          description,
+          visibility,
+          workspaceId,
+          files: filesToSave,
+        });
+        onSkillCreated?.(result, workspaceId);
+      }
+      onClose();
+    } finally {
+      setIsPublishing(false);
+    }
+  }, [
+    name,
+    description,
+    visibility,
+    instructions,
+    workspaceId,
+    files,
+    isExistingSkill,
+    skill,
+    createSkill,
+    updateSkill,
+    onSkillCreated,
+    onSkillUpdated,
+    onClose,
+  ]);
+
+  const isPending = createSkill.isPending || updateSkill.isPending || isPublishing;
 
   const dialogTitle = isExistingSkill ? (isEditing ? 'Edit Skill' : 'Skill Details') : 'Add Skill';
 
@@ -286,8 +340,12 @@ export function SkillEditDialog({
                   </SelectContent>
                 </Select>
               )}
-              <Button variant="primary" size="sm" onClick={handleSave} disabled={!name.trim() || isPending}>
-                {isPending ? 'Saving...' : isExistingSkill ? 'Save' : 'Create'}
+              <Button variant="default" size="sm" onClick={handleSave} disabled={!name.trim() || isPending}>
+                {isPending && !isPublishing ? 'Saving...' : isExistingSkill ? 'Save' : 'Save as draft'}
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSaveAndPublish} disabled={!name.trim() || isPending}>
+                <SendIcon className="h-3.5 w-3.5" />
+                {isPublishing ? 'Publishing...' : isExistingSkill ? 'Save & Publish' : 'Create & Publish'}
               </Button>
             </>
           )}

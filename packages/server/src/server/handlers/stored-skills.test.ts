@@ -35,6 +35,7 @@ interface MockSkillsStore {
   getById: ReturnType<typeof vi.fn>;
   getByIdResolved: ReturnType<typeof vi.fn>;
   listResolved: ReturnType<typeof vi.fn>;
+  listVersions: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
 }
@@ -83,6 +84,14 @@ function createMockSkillsStore(skillsData: Map<string, MockStoredSkill> = new Ma
         };
       },
     ),
+    listVersions: vi.fn().mockImplementation(async ({ skillId }: { skillId: string; perPage?: number }) => {
+      const skill = skillsData.get(skillId);
+      if (!skill) return { versions: [], total: 0 };
+      return {
+        versions: [{ id: `${skillId}-v1`, skillId, versionNumber: 1 }],
+        total: 1,
+      };
+    }),
     update: vi.fn().mockImplementation(async (updates: Partial<MockStoredSkill> & { id: string }) => {
       const existing = skillsData.get(updates.id);
       if (!existing) return null;

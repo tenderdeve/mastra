@@ -1,5 +1,5 @@
 import type { StoredSkillResponse } from '@mastra/client-js';
-import { EmptyState, Icon, Tooltip, TooltipContent, TooltipTrigger } from '@mastra/playground-ui';
+import { Badge, EmptyState, Icon, Tooltip, TooltipContent, TooltipTrigger } from '@mastra/playground-ui';
 import { LockIcon, SearchIcon, SparklesIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { SkillStarButton } from '@/domains/agents/components/skill-star-button';
@@ -80,6 +80,9 @@ export function SkillBuilderList({ skills, search, onSkillClick }: SkillBuilderL
                     <TooltipContent>Only visible to you</TooltipContent>
                   </Tooltip>
                 )}
+                <Badge variant={skill.status === 'published' ? 'success' : 'info'}>
+                  {skill.status === 'published' ? 'Published' : 'Draft'}
+                </Badge>
               </div>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-ui-sm text-neutral3 line-clamp-1">{skill.description || 'No description'}</span>

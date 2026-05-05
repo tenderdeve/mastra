@@ -13,6 +13,7 @@ interface UpdateSkillParams {
   name?: string;
   description?: string;
   visibility?: 'private' | 'public';
+  status?: 'draft' | 'published';
   instructions?: string;
   files?: InMemoryFileNode[];
   workspaceId?: string;
@@ -40,7 +41,7 @@ export function useUpdateSkill() {
 
   return useMutation({
     mutationFn: async (params: UpdateSkillParams): Promise<StoredSkillResponse> => {
-      const { id, name, description, visibility, instructions, files, workspaceId } = params;
+      const { id, name, description, visibility, status, instructions, files, workspaceId } = params;
 
       // Write updated files to workspace filesystem (best-effort — DB is the source of truth)
       if (files?.length && workspaceId && canWriteWorkspace) {
@@ -66,6 +67,7 @@ export function useUpdateSkill() {
         name,
         description,
         visibility,
+        status,
         instructions: instructions ?? (files ? extractSkillInstructions(files) : undefined),
         license: files ? extractSkillLicense(files) : undefined,
         files,
