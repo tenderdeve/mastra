@@ -193,7 +193,10 @@ function summarize(records: TimingRecord[]) {
     const sorted = [...vals].sort((a, b) => a - b);
     const total = vals.reduce((a, b) => a + b, 0);
     const mean = total / vals.length;
-    const p = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!;
+    const p = (q: number) => {
+      const rank = Math.max(0, Math.ceil(q * sorted.length) - 1);
+      return sorted[Math.min(sorted.length - 1, rank)]!;
+    };
     rows.push({
       label,
       n: vals.length,

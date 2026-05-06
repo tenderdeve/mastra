@@ -134,6 +134,14 @@ export class ObservationStep {
     );
 
     // ── Check thresholds + buffer trigger (all steps) ──────────
+    // Refresh the turn record before reusing it in getStatus on steps > 0:
+    // fire-and-forget buffering or async observation completed during the
+    // previous step may have written new buffered chunks / observation tokens
+    // that aren't reflected in the cached `turn.record`. Step 0 is already
+    // freshly refreshed by `step0.refreshRecord.postReflect` above.
+    if (this.stepNumber > 0) {
+      await omTime('step.refreshRecord.preStatus', () => this.turn.refreshRecord());
+    }
     // Pre-fetch cross-thread context (resource scope) via the turn's per-loop cache,
     // so both getStatus calls and the later `refreshOtherThreadsContext()` reuse the
     // same fetch. See ObservationTurn.getOrLoadOtherThreadsContext.
