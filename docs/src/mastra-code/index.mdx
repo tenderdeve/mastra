@@ -1,13 +1,13 @@
 ---
 title: 'Mastra Code'
-description: 'Mastra Code is a terminal-based AI coding agent built with Mastra. It provides multi-model support, persistent conversations, coding tools, and a polished TUI.'
+description: 'Mastra Code is a terminal-based AI coding agent that never compacts. It provides multi-model support, persistent conversations, coding tools, and Observational Memory built-in.'
 packages:
   - 'mastracode'
 ---
 
 # Mastra Code
 
-Mastra Code is a terminal-based AI coding agent built on Mastra's [Harness](https://mastra.ai/reference/harness/harness-class), [Agent](https://mastra.ai/docs/agents/overview), and [Memory](https://mastra.ai/docs/memory/overview) primitives. It runs in your terminal, connects to thousands of AI models, and provides tools for reading, searching, editing, and executing code.
+Mastra Code is a terminal-based AI coding agent that never compacts. Built on Mastra's [Harness](https://mastra.ai/reference/harness/harness-class), [Agent](https://mastra.ai/docs/agents/overview), and [Memory](https://mastra.ai/docs/memory/overview) primitives. It runs in your terminal, connects to thousands of AI models, and provides tools for reading, searching, editing, and executing code.
 
 Mastra Code organizes its capabilities around these areas:
 
@@ -18,6 +18,8 @@ Mastra Code organizes its capabilities around these areas:
 
 ## When to use Mastra Code
 
+- **Long-running projects**: Mastra Code's persistent threads and [Observational Memory](https://mastra.ai/docs/memory/observational-memory) make it ideal for ongoing projects where context builds up over time.
+- **No compaction headaches**: With Observational Memory, you never have to worry about losing important context due to token limits. Mastra Code automatically manages what to remember and what to forget.
 - **Day-to-day coding**: Ask questions about your codebase, make edits, run tests, and manage Git.
 - **Code exploration**: Use Plan mode to analyze architecture and create implementation plans before writing code.
 - **Quick lookups**: Switch to Fast mode for brief answers and small edits with minimal latency.
