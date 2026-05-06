@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { PubSub } from '../../../../events/pubsub';
 import type { Mastra } from '../../../../mastra';
 import type { SpanType, AIModelGenerationSpan, ExportedSpan, IModelSpanTracker } from '../../../../observability';
+import { getStepAvailableToolNames } from '../../../../observability/utils';
 import { ProcessorRunner } from '../../../../processors/runner';
 import { execute } from '../../../../stream/aisdk/v5/execute';
 import { MastraModelOutput } from '../../../../stream/base/output';
@@ -290,6 +291,11 @@ export function createDurableLLMExecutionStep(_options?: DurableLLMExecutionStep
 
             // 8. Start MODEL_STEP span at the beginning of LLM execution
             modelSpanTracker?.startStep();
+            // Set MODEL_STEP availableTools from the post-processor tool set so
+            // per-step tool mutations (prepareStep, input processors) are visible.
+            modelSpanTracker?.updateStepAvailableTools?.(
+              getStepAvailableToolNames(currentTools as Record<string, unknown> | undefined),
+            );
 
             // 10. Execute LLM call
             const modelResult = execute({

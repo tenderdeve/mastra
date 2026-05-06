@@ -15,7 +15,7 @@ import type { MastraLanguageModel, SharedProviderOptions } from '../../../llm/mo
 import type { IMastraLogger } from '../../../logger';
 import { ConsoleLogger } from '../../../logger';
 import { createObservabilityContext, SpanType } from '../../../observability';
-import { executeWithContextSync } from '../../../observability/utils';
+import { executeWithContextSync, getStepAvailableToolNames } from '../../../observability/utils';
 import type { ProcessorStreamWriter } from '../../../processors/index';
 import { PrepareStepProcessor } from '../../../processors/processors/prepare-step';
 import { ProcessorRunner } from '../../../processors/runner';
@@ -389,6 +389,11 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
         : inputData.messageId || messageIdPassed;
       // Start the MODEL_STEP span at the beginning of LLM execution
       modelSpanTracker?.startStep();
+      // Seed MODEL_STEP availableTools from the loop's initial tool set;
+      // processInputStep / prepareStep below may refine this per-step.
+      modelSpanTracker?.updateStepAvailableTools?.(
+        getStepAvailableToolNames(tools, activeTools as readonly string[] | undefined),
+      );
 
       let modelResult;
       let warnings: any;
@@ -555,6 +560,14 @@ export function createLLMExecutionStep<TOOLS extends ToolSet = ToolSet, OUTPUT =
                     });
                   }
                 }
+                // Refresh MODEL_STEP with the post-processor tool set so per-step
+                // mutations (prepareStep, ToolSearchProcessor, etc.) are visible.
+                modelSpanTracker?.updateStepAvailableTools?.(
+                  getStepAvailableToolNames(
+                    currentStep.tools as Record<string, unknown> | undefined,
+                    currentStep.activeTools as readonly string[] | undefined,
+                  ),
+                );
               }
 
               // Convert any raw Mastra Tool objects returned by processors into CoreTool format.

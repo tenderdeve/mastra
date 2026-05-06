@@ -1360,4 +1360,64 @@ describe('ModelSpanTracker', () => {
       expect(Array.isArray(stepSpans[0]!.input)).toBe(true);
     });
   });
+
+  describe('updateStepAvailableTools', () => {
+    it('should set availableTools attribute on the current MODEL_STEP span', async () => {
+      const modelSpan = tracing.startSpan({
+        type: SpanType.MODEL_GENERATION,
+        name: 'test-generation',
+      });
+      const tracker = new ModelSpanTracker(modelSpan);
+
+      tracker.startStep();
+      tracker.updateStepAvailableTools(['searchDocs', 'lookupOrder']);
+
+      const chunks = [
+        { type: 'text-delta', payload: { text: 'ok' } },
+        { type: 'step-finish', payload: { output: {}, stepResult: { reason: 'stop' }, metadata: {} } },
+      ];
+      await consumeStream(tracker.wrapStream(createMockStream(chunks)));
+      modelSpan.end();
+
+      const stepSpans = testExporter.getSpansByType(SpanType.MODEL_STEP);
+      expect(stepSpans).toHaveLength(1);
+      expect(stepSpans[0]!.attributes?.availableTools).toEqual(['searchDocs', 'lookupOrder']);
+    });
+
+    it('should overwrite availableTools when called again (per-step mutation)', async () => {
+      const modelSpan = tracing.startSpan({
+        type: SpanType.MODEL_GENERATION,
+        name: 'test-generation',
+      });
+      const tracker = new ModelSpanTracker(modelSpan);
+
+      tracker.startStep();
+      tracker.updateStepAvailableTools(['toolA', 'toolB', 'toolC']);
+      // Simulate prepareStep / input processor narrowing the tool set
+      tracker.updateStepAvailableTools(['toolA']);
+
+      const chunks = [
+        { type: 'text-delta', payload: { text: 'ok' } },
+        { type: 'step-finish', payload: { output: {}, stepResult: { reason: 'stop' }, metadata: {} } },
+      ];
+      await consumeStream(tracker.wrapStream(createMockStream(chunks)));
+      modelSpan.end();
+
+      const stepSpans = testExporter.getSpansByType(SpanType.MODEL_STEP);
+      expect(stepSpans).toHaveLength(1);
+      expect(stepSpans[0]!.attributes?.availableTools).toEqual(['toolA']);
+    });
+
+    it('should be a no-op when no step span is active', () => {
+      const modelSpan = tracing.startSpan({
+        type: SpanType.MODEL_GENERATION,
+        name: 'test-generation',
+      });
+      const tracker = new ModelSpanTracker(modelSpan);
+
+      // No startStep() — should not throw
+      expect(() => tracker.updateStepAvailableTools(['foo'])).not.toThrow();
+      modelSpan.end();
+    });
+  });
 });

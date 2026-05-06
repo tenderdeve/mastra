@@ -25,6 +25,26 @@ export function generateSignalId(): string {
   return crypto.randomUUID();
 }
 
+/**
+ * Compute the names of tools the model can call on a single step, applying
+ * `activeTools` filtering when present. Used to populate the `availableTools`
+ * attribute on MODEL_STEP spans so observers can see per-step tool sets when
+ * they differ from AGENT_RUN (e.g. mutated by input processors or `prepareStep`).
+ */
+export function getStepAvailableToolNames(
+  tools?: Record<string, unknown> | undefined,
+  activeTools?: readonly string[] | undefined,
+): string[] | undefined {
+  if (activeTools && activeTools.length > 0) {
+    return [...activeTools];
+  }
+  if (tools) {
+    const keys = Object.keys(tools);
+    return keys.length > 0 ? keys : undefined;
+  }
+  return undefined;
+}
+
 // --- Lazy resolvers for executeWithContext / executeWithContextSync ---
 // The real implementations live in context-storage.ts (which imports AsyncLocalStorage).
 // context-storage.ts registers them at import time so that consumer code can call these

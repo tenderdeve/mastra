@@ -396,6 +396,23 @@ export class ModelSpanTracker {
   }
 
   /**
+   * Set or refresh the `availableTools` attribute on the current MODEL_STEP span.
+   * Called by the agentic loop when the per-step tool set is known and again
+   * if input processors or `prepareStep` mutate it before the model call.
+   * No-op when no step span is active.
+   */
+  updateStepAvailableTools(tools: string[] | undefined): void {
+    if (!this.#currentStepSpan) {
+      return;
+    }
+    this.#currentStepSpan.update({
+      attributes: {
+        availableTools: tools,
+      },
+    });
+  }
+
+  /**
    * End the current Model execution step with token usage, finish reason, output, and metadata
    */
   #endStepSpan<OUTPUT>(payload: StepFinishPayload<any, OUTPUT>) {

@@ -250,6 +250,12 @@ export interface ModelStepAttributes extends AIBaseAttributes {
   isContinued?: boolean;
   /** Result warnings */
   warnings?: Record<string, any>;
+  /**
+   * Names of tools the model could call on this step. May differ from the
+   * AGENT_RUN-level `availableTools` when input processors or `prepareStep`
+   * mutate the tool set per-step (`activeTools` filtering, replacing tools, etc.).
+   */
+  availableTools?: string[];
 }
 
 /**
@@ -843,6 +849,13 @@ export interface IModelSpanTracker {
   wrapStream<T extends { pipeThrough: Function }>(stream: T): T;
   startStep(payload?: StepStartPayload): void;
   updateStep?(payload?: StepStartPayload): void;
+
+  /**
+   * Update the current MODEL_STEP span's `availableTools` attribute.
+   * Called by the agentic loop when the per-step tool set is known and again
+   * if input processors or `prepareStep` mutate it before the model call.
+   */
+  updateStepAvailableTools?(tools: string[] | undefined): void;
 
   /**
    * Enable or disable deferred step closing for durable execution.
