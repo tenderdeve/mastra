@@ -40,10 +40,39 @@ export class BackgroundTaskWorker extends MastraWorker {
 
     if (deps.mastra) {
       this.#manager.__registerMastra(deps.mastra);
+      this.#wireStaticTools(deps.mastra);
     }
 
     await this.#manager.init(deps.pubsub);
     this.#running = true;
+  }
+
+  /**
+   * Populate the manager's static executor registry from tools registered
+   * on `Mastra`, so that cross-process dispatches can be resolved by tool
+   * name on this worker. Mirrors the wiring Mastra does for its own
+   * managed background-task manager — the worker owns a separate manager
+   * instance, so it has to populate its own registry.
+   */
+  #wireStaticTools(mastra: NonNullable<WorkerDeps['mastra']>): void {
+    const tools = (mastra as any).listTools?.() as Record<string, any> | undefined;
+    if (!tools || !this.#manager) return;
+    for (const [name, tool] of Object.entries(tools)) {
+      if (!tool || typeof tool.execute !== 'function') continue;
+      const execute = tool.execute.bind(tool);
+      this.#manager.registerStaticExecutor(name, {
+        execute: async (args, options) => {
+          return execute(
+            args as any,
+            {
+              toolCallId: '',
+              messages: [],
+              abortSignal: options?.abortSignal,
+            } as any,
+          );
+        },
+      });
+    }
   }
 
   async start(): Promise<void> {

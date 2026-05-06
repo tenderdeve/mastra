@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Event, EventCallback } from '@mastra/core/events';
+import { createClient } from 'redis';
+import type { RedisClientType } from 'redis';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { RedisStreamsPubSub } from './index';
 
@@ -273,6 +275,101 @@ describe('RedisStreamsPubSub', () => {
       const cap = captureCalls();
       // never subscribed — should not throw
       await expect(ps.unsubscribe(topic, cap.cbAutoAck)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('late-join semantics', () => {
+    it('subscribe after publish in a fresh group still receives the published message', async () => {
+      const producer = createPubSub();
+      const consumer = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const groupName = `late-${randomUUID()}`;
+
+      // Publish first, with no consumer group anywhere.
+      await producer.publish(topic, makeEvent({ type: 'before-subscribe' }));
+
+      // Now create a brand-new consumer group and assert it sees the backlog.
+      const cap = captureCalls();
+      await consumer.subscribe(topic, cap.cbAutoAck, { group: groupName });
+
+      await waitFor(() => cap.calls.length === 1, { timeoutMs: 5000 });
+      expect(cap.calls[0]!.event.type).toBe('before-subscribe');
+    });
+
+    it('an existing group keeps its own checkpoint and does not replay history', async () => {
+      const ps = createPubSub();
+      const keyPrefix = 'mastra:topic';
+      const topic = `t-${randomUUID()}`;
+      const streamKey = `${keyPrefix}:${topic}`;
+      const groupName = `existing-${randomUUID()}`;
+
+      // Publish event-1 first so the stream exists with at least one entry.
+      await ps.publish(topic, makeEvent({ type: 'event-1' }));
+
+      // Pre-create the group at '$' (latest) using the underlying client.
+      // This simulates a long-running group whose checkpoint is past event-1.
+      const direct = createClient({ url: REDIS_URL }) as RedisClientType;
+      await direct.connect();
+      try {
+        await direct.xGroupCreate(streamKey, groupName, '$');
+      } finally {
+        await direct.quit();
+      }
+
+      // Publish event-2 after the group is anchored at $; this is what the
+      // group should see when a subscriber joins.
+      await ps.publish(topic, makeEvent({ type: 'event-2' }));
+
+      const cap = captureCalls();
+      await ps.subscribe(topic, cap.cbAutoAck, { group: groupName });
+
+      // The BUSYGROUP path should leave the existing checkpoint intact, so
+      // event-1 stays unread (group started at $ which was after event-1).
+      // event-2 was published after the anchor and must be delivered.
+      await waitFor(() => cap.calls.length >= 1, { timeoutMs: 5000 });
+      await new Promise(r => setTimeout(r, 200));
+      const types = cap.calls.map(c => c.event.type);
+      expect(types).toContain('event-2');
+      expect(types).not.toContain('event-1');
+    });
+
+    it('XAUTOCLAIM reassigns idle pending messages to a sibling consumer', async () => {
+      const ps = new RedisStreamsPubSub({
+        url: REDIS_URL,
+        blockMs: 200,
+        // Aggressive reclaim settings so the test doesn't have to wait 30s.
+        reclaimIntervalMs: 250,
+        reclaimIdleMs: 500,
+      });
+      pubsubs.push(ps);
+
+      const topic = `t-${randomUUID()}`;
+      const groupName = `claim-${randomUUID()}`;
+
+      // First subscriber never acks/nacks — its pending entry will go idle.
+      const seenA: Event[] = [];
+      const cbA: EventCallback = event => {
+        seenA.push(event);
+        // intentionally never ack/nack
+      };
+      await ps.subscribe(topic, cbA, { group: groupName });
+
+      // Publish; subscriber A reads but never acks.
+      await ps.publish(topic, makeEvent({ type: 'sticky' }));
+      await waitFor(() => seenA.length === 1, { timeoutMs: 5000 });
+
+      // Subscriber B joins the same group. It can only see entries that A
+      // has not acked once XAUTOCLAIM moves them over.
+      const seenB: Event[] = [];
+      const cbB: EventCallback = (event, ack) => {
+        seenB.push(event);
+        void ack?.();
+      };
+      await ps.subscribe(topic, cbB, { group: groupName });
+
+      // Wait for autoclaim to fire (idleMs=500, intervalMs=250 + a margin).
+      await waitFor(() => seenB.length >= 1, { timeoutMs: 6000 });
+      expect(seenB[0]!.type).toBe('sticky');
     });
   });
 });

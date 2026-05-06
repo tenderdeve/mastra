@@ -1150,8 +1150,46 @@ export class Mastra<
     const bgManager = new BackgroundTaskManager(this.#backgroundTaskConfig);
     bgManager.__registerMastra(this);
     this.#backgroundTaskManager = bgManager;
+
+    // Wire statically-registered tools into the manager's name-keyed registry
+    // so cross-process workers can resolve dispatched tasks. Tools added later
+    // via `addTool()` are propagated through the same path.
+    const tools = this.#tools as Record<string, ToolAction<any, any, any, any>> | undefined;
+    if (tools) {
+      for (const [name, tool] of Object.entries(tools)) {
+        this.#registerToolWithBackgroundManager(name, tool);
+      }
+    }
+
     void bgManager.init(this.#pubsub).catch(error => {
       this.#logger?.error('Failed to initialize background task manager', error);
+    });
+  }
+
+  /**
+   * Build a `ToolExecutor` adapter for a Mastra-registered tool and stash it
+   * on the background task manager's static registry. Skipped if the tool has
+   * no `execute` (declarative-only tools, e.g. MCP descriptors).
+   */
+  #registerToolWithBackgroundManager(name: string, tool: ToolAction<any, any, any, any>): void {
+    if (!this.#backgroundTaskManager) return;
+    if (typeof tool.execute !== 'function') return;
+    const execute = tool.execute.bind(tool);
+    this.#backgroundTaskManager.registerStaticExecutor(name, {
+      execute: async (args, options) => {
+        // Cross-process workers don't have access to the producer's
+        // request/workspace context. Statically-resolvable tools should
+        // tolerate a minimal context (abortSignal only). Tools that need
+        // closure-captured state must run in-process via TaskContext.
+        return execute(
+          args as any,
+          {
+            toolCallId: '',
+            messages: [],
+            abortSignal: options?.abortSignal,
+          } as any,
+        );
+      },
     });
   }
 
@@ -2730,6 +2768,14 @@ export class Mastra<
     }
 
     tools[toolKey] = tool;
+
+    // If the background-task manager has already initialized, register the
+    // newly-added tool with its static registry so cross-process workers can
+    // resolve dispatches for it. If init hasn't happened yet, the registry
+    // will be populated wholesale in #ensureBackgroundTaskManager().
+    if (this.#backgroundTaskManager) {
+      this.#registerToolWithBackgroundManager(toolKey, tool);
+    }
   }
 
   /**

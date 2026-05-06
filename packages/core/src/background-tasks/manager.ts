@@ -32,6 +32,12 @@ export class BackgroundTaskManager {
   // Per-task contexts — keyed by task ID, holds closures from the caller's stream
   private taskContexts: Map<string, TaskContext> = new Map();
 
+  // Static executors keyed by tool name. Populated by Mastra when a tool is
+  // registered globally. Used as the fallback for cross-process dispatch where
+  // the per-task closure (taskContexts) is producer-local and unavailable on
+  // remote workers.
+  private staticExecutors: Map<string, ToolExecutor> = new Map();
+
   // Track active AbortControllers for running tasks (for cancellation + timeout)
   private activeAbortControllers: Map<string, AbortController> = new Map();
 
@@ -125,11 +131,51 @@ export class BackgroundTaskManager {
     this.taskContexts.delete(taskId);
   }
 
+  /**
+   * Register a static executor for a tool by name. The manager will use this
+   * to resolve dispatched tasks whose per-task `TaskContext` closure is not
+   * available in the current process — i.e. the cross-process worker case
+   * where the producer holds the closure and a remote worker received the
+   * dispatch event over PubSub.
+   *
+   * Tools registered on `Mastra` are wired into this registry automatically.
+   * Dynamically-built per-request tools that capture closure state (request
+   * context, agent-scoped memory) cannot be registered this way and will
+   * only execute in the producer process.
+   */
+  registerStaticExecutor(toolName: string, executor: ToolExecutor): void {
+    this.staticExecutors.set(toolName, executor);
+  }
+
+  /**
+   * Remove a previously-registered static executor.
+   */
+  unregisterStaticExecutor(toolName: string): void {
+    this.staticExecutors.delete(toolName);
+  }
+
+  /**
+   * Look up a static executor by tool name. Returns undefined if no static
+   * executor has been registered for that tool.
+   */
+  getStaticExecutor(toolName: string): ToolExecutor | undefined {
+    return this.staticExecutors.get(toolName);
+  }
+
   // --- Core operations ---
 
   /**
    * Enqueue a task for background execution.
    * Prefer `createBackgroundTask()` which returns a self-contained handle.
+   *
+   * Cross-process execution: when a remote `BackgroundTaskWorker` receives the
+   * dispatch over PubSub, it does NOT have access to the per-task `context`
+   * argument (closures don't cross process boundaries). The worker resolves
+   * the executor by `payload.toolName` against `BackgroundTaskManager`'s
+   * static registry — populated automatically for tools registered on
+   * `Mastra`. Tools built dynamically per-request (capturing request context
+   * or workspace state in their closure) only run in the producer process and
+   * fail with "No executor registered for tool ..." on remote workers.
    */
   async enqueue(payload: TaskPayload, context?: TaskContext): Promise<EnqueueResult> {
     if (this.shuttingDown) {
@@ -518,7 +564,7 @@ export class BackgroundTaskManager {
    * Handles a task.dispatch event. Returns true if the message was nacked (for retry).
    */
   private async handleDispatch(event: Event, nack?: () => Promise<void>): Promise<boolean> {
-    const { taskId, args, timeoutMs } = event.data;
+    const { taskId, toolName, args, timeoutMs } = event.data;
     const deliveryAttempt = event.deliveryAttempt ?? 1;
     let nacked = false;
 
@@ -535,10 +581,24 @@ export class BackgroundTaskManager {
     const runningTask = await storage.getTask(taskId);
     if (runningTask) await this.publishLifecycleEvent('task.running', runningTask);
 
-    // Look up per-task executor
+    // Resolve the executor. Two paths:
+    //   1. Per-task `TaskContext` registered on the producer (in-process). This
+    //      carries closure-captured state (e.g. agent memory hooks) and wins
+    //      when present.
+    //   2. Static executor registered by tool name. Used by remote workers
+    //      that received the dispatch via PubSub and don't have access to the
+    //      producer's per-task closure.
     const ctx = this.taskContexts.get(taskId);
-    if (!ctx?.executor) {
-      const errorInfo = { message: 'No executor registered for this task' };
+    const executor: ToolExecutor | undefined =
+      ctx?.executor ?? (typeof toolName === 'string' ? this.staticExecutors.get(toolName) : undefined);
+
+    if (!executor) {
+      const errorInfo = {
+        message:
+          typeof toolName === 'string'
+            ? `No executor registered for tool "${toolName}". Register the tool on Mastra (so workers can resolve it cross-process) or run the task in the same process as the producer.`
+            : 'No executor registered for this task',
+      };
       await storage.updateTask(taskId, {
         status: 'failed',
         error: errorInfo,
@@ -578,7 +638,7 @@ export class BackgroundTaskManager {
         });
       };
 
-      const result = await this.executeWithTimeout(taskId, ctx.executor, args, timeoutMs, onProgress);
+      const result = await this.executeWithTimeout(taskId, executor, args, timeoutMs, onProgress);
 
       const currentTask = await storage.getTask(taskId);
       if (!currentTask || (currentTask.status as BackgroundTaskStatus) === 'cancelled') {
