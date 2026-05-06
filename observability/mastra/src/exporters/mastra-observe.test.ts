@@ -1309,28 +1309,18 @@ describe('MastraObserveExporter', () => {
       ).toThrowError('MastraObserveExporter projectId must only contain letters, numbers, hyphens, and underscores.');
     });
 
-    it('should treat an invalid MASTRA_PROJECT_ID as unset', async () => {
+    it('should reject an invalid MASTRA_PROJECT_ID', () => {
       vi.stubEnv('MASTRA_PROJECT_ID', 'has spaces');
 
-      const derivedExporter = new MastraObserveExporter({
-        accessToken: 'sk_org_api_key',
-        endpoint: 'https://collector.example.com',
-      });
-
       try {
-        await derivedExporter.onMetricEvent(getMockMetricEvent());
-        await derivedExporter.flush();
-
-        expect(mockFetchWithRetry).toHaveBeenCalledWith(
-          'https://collector.example.com/ai/metrics/publish',
-          expect.objectContaining({
-            method: 'POST',
-            body: expect.any(String),
-          }),
-          3,
-        );
+        expect(
+          () =>
+            new MastraObserveExporter({
+              accessToken: 'sk_org_api_key',
+              endpoint: 'https://collector.example.com',
+            }),
+        ).toThrowError('MastraObserveExporter projectId must only contain letters, numbers, hyphens, and underscores.');
       } finally {
-        await derivedExporter.shutdown();
         vi.unstubAllEnvs();
       }
     });

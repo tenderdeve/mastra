@@ -7,8 +7,9 @@ Renamed two built-in observability exporters to clearer names. The originals are
 - `CloudExporter` → `MastraObserveExporter`
 - `DefaultExporter` → `MastraStorageExporter`
 
+**Before**
+
 ```ts
-// Before
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
 
 new Observability({
@@ -20,8 +21,11 @@ new Observability({
     },
   },
 });
+```
 
-// After
+**After**
+
+```ts
 import { Observability, MastraStorageExporter, MastraObserveExporter, SensitiveDataFilter } from '@mastra/observability';
 
 new Observability({
@@ -41,3 +45,5 @@ Constructor signatures and environment variables (`MASTRA_CLOUD_ACCESS_TOKEN`, `
 - `MastraStorageExporter` uses exporter `name` `mastra-storage-exporter`.
 
 The deprecated `CloudExporter` and `DefaultExporter` keep their original `CLOUD_EXPORTER_*` IDs, `mastra-cloud-observability-exporter` name, and `mastra-default-observability-exporter` name respectively.
+
+`MastraObserveExporter` also tightens `MASTRA_PROJECT_ID` validation: an invalid value in the environment now throws on construction instead of being silently dropped, matching the behavior already applied to `config.projectId`. Empty strings continue to be treated as unset.

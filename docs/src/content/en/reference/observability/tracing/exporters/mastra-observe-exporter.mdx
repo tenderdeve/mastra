@@ -9,7 +9,7 @@ import PropertiesTable from "@site/src/components/PropertiesTable";
 
 # MastraObserveExporter
 
-**Added in:** `@mastra/observability@1.8.0` (originally as `CloudExporter`)
+**Added in:** `@mastra/observability@1.12.0`. Earlier releases (`@mastra/observability@1.8.0` through `1.11.x`) export the same exporter as the deprecated `CloudExporter`.
 
 Sends tracing spans, logs, metrics, scores, and feedback to the Mastra platform for online visualization and monitoring.
 
@@ -40,7 +40,7 @@ new MastraObserveExporter(config?: MastraObserveExporterConfig)
 
 ```typescript
 interface MastraObserveExporterConfig extends BaseExporterConfig {
-  /** Maximum number of spans per batch. Default: 1000 */
+  /** Maximum number of buffered events per batch (spans, logs, metrics, scores, feedback). Default: 1000 */
   maxBatchSize?: number
 
   /** Maximum wait time before flushing in milliseconds. Default: 5000 */
@@ -269,27 +269,24 @@ Errors raised by `MastraObserveExporter` use the `MASTRA_OBSERVE_EXPORTER_*` `id
 
 ## `MastraObserveSpanRecord`
 
-Internal format for exported spans:
+Wire format for exported spans. The exporter spreads the original `AnyExportedSpan` (so the original field names are preserved) and layers a small set of platform-friendly aliases on top:
 
 ```typescript
-interface MastraObserveSpanRecord {
-  traceId: string
-  spanId: string
-  parentSpanId: string | null
-  name: string
-  spanType: string
-  attributes: Record<string, any> | null
-  metadata: Record<string, any> | null
-  startedAt: Date
-  endedAt: Date | null
-  input: any
-  output: any
-  error: any
-  isEvent: boolean
+type MastraObserveSpanRecord = AnyExportedSpan & {
+  // Aliases derived from the source span
+  spanId: string // alias for span.id
+  spanType: string // alias for span.type
+  startedAt: Date // alias for span.startTime
+  endedAt: Date | null // alias for span.endTime ?? null
+  error: AnyExportedSpan['errorInfo'] | null
+
+  // Stamped at export time
   createdAt: Date
   updatedAt: Date | null
 }
 ```
+
+The spread `AnyExportedSpan` also carries the original `id`, `type`, `name`, `traceId`, `parentSpanId`, `isRootSpan`, `isEvent`, `startTime`, `endTime`, `entityType`, `entityId`, `entityName`, `tags`, `attributes`, `metadata`, `input`, `output`, and `errorInfo`. See [Interfaces](/reference/observability/tracing/interfaces) for `AnyExportedSpan`.
 
 ## Usage
 
@@ -334,7 +331,7 @@ The original `CloudExporter` is preserved unchanged so dashboards or alert rules
 
 ### Other Exporters
 
-- [MastraStorageExporter](/reference/observability/tracing/exporters/default-exporter): Storage persistence
+- [MastraStorageExporter](/reference/observability/tracing/exporters/mastra-storage-exporter): Storage persistence
 - [ConsoleExporter](/reference/observability/tracing/exporters/console-exporter): Debug output
 - [Langfuse](/reference/observability/tracing/exporters/langfuse): Langfuse integration
 - [Braintrust](/reference/observability/tracing/exporters/braintrust): Braintrust integration

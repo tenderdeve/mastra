@@ -581,12 +581,12 @@ const sidebars = {
               items: [
                 {
                   type: 'doc',
-                  id: 'observability/tracing/exporters/default',
+                  id: 'observability/tracing/exporters/mastra-storage',
                   label: 'Default',
                 },
                 {
                   type: 'doc',
-                  id: 'observability/tracing/exporters/cloud',
+                  id: 'observability/tracing/exporters/mastra-observe',
                   label: 'Cloud',
                 },
                 {

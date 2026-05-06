@@ -25,6 +25,7 @@ Traces are created by:
 
 ```ts title="src/mastra/index.ts"
 import { Mastra } from '@mastra/core'
+import { LibSQLStore } from '@mastra/libsql'
 import {
   Observability,
   MastraStorageExporter,
@@ -71,8 +72,8 @@ Exporters determine where your trace data is sent and how it's stored. They inte
 
 Mastra provides two built-in exporters:
 
-- **[Default](/docs/observability/tracing/exporters/default)** - Persists traces to local storage for viewing in Studio
-- **[Cloud](/docs/observability/tracing/exporters/cloud)** - Sends observability data to hosted Mastra Studio for production monitoring and collaboration
+- **[Default](/docs/observability/tracing/exporters/mastra-storage)** - Persists traces to local storage for viewing in Studio
+- **[Cloud](/docs/observability/tracing/exporters/mastra-observe)** - Sends observability data to hosted Mastra Studio for production monitoring and collaboration
 
 ### External Exporters
 
@@ -266,7 +267,7 @@ export const mastra = new Mastra({
       production: {
         serviceName: 'my-service-prod',
         sampling: { type: 'ratio', probability: 0.01 },
-        exporters: [cloudExporter, langfuseExporter],
+        exporters: [mastraObserveExporter, langfuseExporter],
       },
     },
     configSelector: (context, availableTracers) => {
@@ -1177,8 +1178,8 @@ Mastra automatically creates spans for:
 
 ### Exporters
 
-- [MastraStorageExporter](/reference/observability/tracing/exporters/default-exporter): Storage persistence
-- [MastraObserveExporter](/reference/observability/tracing/exporters/cloud-exporter): Mastra platform integration
+- [MastraStorageExporter](/reference/observability/tracing/exporters/mastra-storage-exporter): Storage persistence
+- [MastraObserveExporter](/reference/observability/tracing/exporters/mastra-observe-exporter): Mastra platform integration
 - [ConsoleExporter](/reference/observability/tracing/exporters/console-exporter): Debug output
 - [Arize](/reference/observability/tracing/exporters/arize): Arize Phoenix and Arize AX integration
 - [Braintrust](/reference/observability/tracing/exporters/braintrust): Braintrust integration

@@ -328,7 +328,7 @@ const sidebars = {
                 },
                 {
                   type: 'doc',
-                  id: 'observability/tracing/exporters/cloud-exporter',
+                  id: 'observability/tracing/exporters/mastra-observe-exporter',
                   label: 'Cloud',
                 },
                 {
@@ -339,7 +339,7 @@ const sidebars = {
                 { type: 'doc', id: 'observability/tracing/exporters/datadog', label: 'Datadog' },
                 {
                   type: 'doc',
-                  id: 'observability/tracing/exporters/default-exporter',
+                  id: 'observability/tracing/exporters/mastra-storage-exporter',
                   label: 'Default',
                 },
                 { type: 'doc', id: 'observability/tracing/exporters/laminar', label: 'Laminar' },

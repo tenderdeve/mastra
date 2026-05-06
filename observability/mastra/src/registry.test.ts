@@ -647,7 +647,6 @@ describe('Observability Registry', () => {
       // Verify exporters
       const exporters = defaultInstance?.getExporters();
       expect(exporters).toHaveLength(2);
-      console.log(exporters);
       expect(exporters?.[0]).toBeInstanceOf(MastraStorageExporter);
       expect(exporters?.[1]).toBeInstanceOf(MastraObserveExporter);
 
@@ -786,10 +785,10 @@ describe('Observability Registry', () => {
     });
 
     it('should handle MastraObserveExporter gracefully when token is missing', async () => {
-      // Clear the token environment variable
-      const originalToken = process.env.MASTRA_CLOUD_ACCESS_TOKEN;
-      delete process.env.MASTRA_CLOUD_ACCESS_TOKEN;
-      vi.unstubAllEnvs(); // Make sure mock is cleared
+      // Empty string is treated as "missing" by the exporter; using vi.stubEnv
+      // keeps Vitest's env restoration intact so the suite-level afterEach
+      // can roll it back without leaking the test value into later tests.
+      vi.stubEnv('MASTRA_CLOUD_ACCESS_TOKEN', '');
 
       const logger = new ConsoleLogger({ level: LogLevel.DEBUG });
 
@@ -826,12 +825,7 @@ describe('Observability Registry', () => {
       // Should not throw when exporting
       await expect(exporter.exportTracingEvent(event)).resolves.not.toThrow();
 
-      // Restore mocks
       infoSpy.mockRestore();
-      // Restore env var safely (avoid setting to string "undefined")
-      if (originalToken !== undefined) {
-        process.env.MASTRA_CLOUD_ACCESS_TOKEN = originalToken;
-      }
     });
   });
 });
