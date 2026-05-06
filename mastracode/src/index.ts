@@ -22,7 +22,12 @@ import type { RequestContext } from '@mastra/core/request-context';
 import { MastraCompositeStore } from '@mastra/core/storage';
 import { DuckDBStore } from '@mastra/duckdb';
 
-import { Observability, MastraStorageExporter, MastraObserveExporter, SensitiveDataFilter } from '@mastra/observability';
+import {
+  Observability,
+  MastraStorageExporter,
+  MastraObserveExporter,
+  SensitiveDataFilter,
+} from '@mastra/observability';
 
 import { getDynamicInstructions } from './agents/instructions.js';
 import { getDynamicMemory } from './agents/memory.js';

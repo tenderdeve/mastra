@@ -1,7 +1,12 @@
 import { Mastra } from '@mastra/core/mastra';
 import { LibSQLStore } from '@mastra/libsql';
 import { PinoLogger } from '@mastra/loggers';
-import { Observability, MastraStorageExporter, MastraObserveExporter, SensitiveDataFilter } from '@mastra/observability';
+import {
+  Observability,
+  MastraStorageExporter,
+  MastraObserveExporter,
+  SensitiveDataFilter,
+} from '@mastra/observability';
 import { flashCardAgent } from './agents/flash-card-agent';
 
 export const mastra = new Mastra({

@@ -1,4 +1,9 @@
-import { Observability, MastraStorageExporter, MastraObserveExporter, SensitiveDataFilter } from '@mastra/observability';
+import {
+  Observability,
+  MastraStorageExporter,
+  MastraObserveExporter,
+  SensitiveDataFilter,
+} from '@mastra/observability';
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { financialModelingAgent } from './agents/financial-modeling-agent';

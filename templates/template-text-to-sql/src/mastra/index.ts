@@ -1,7 +1,12 @@
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { LibSQLStore } from '@mastra/libsql';
-import { Observability, MastraStorageExporter, MastraObserveExporter, SensitiveDataFilter } from '@mastra/observability';
+import {
+  Observability,
+  MastraStorageExporter,
+  MastraObserveExporter,
+  SensitiveDataFilter,
+} from '@mastra/observability';
 import { sqlAgent } from './agents/sql-agent';
 
 export const mastra = new Mastra({

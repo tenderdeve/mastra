@@ -1,7 +1,12 @@
 import { Mastra } from '@mastra/core/mastra';
 import { LibSQLStore } from '@mastra/libsql';
 import { weatherAgent, weatherToolLoopAgent } from './agents';
-import { Observability, MastraStorageExporter, MastraObserveExporter, SensitiveDataFilter } from '@mastra/observability';
+import {
+  Observability,
+  MastraStorageExporter,
+  MastraObserveExporter,
+  SensitiveDataFilter,
+} from '@mastra/observability';
 
 const storage = new LibSQLStore({
   id: 'mastra-storage',
