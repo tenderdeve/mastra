@@ -608,7 +608,7 @@ The command resolves the target server in this order:
 1. `http://localhost:4111` for a local `mastra dev` server.
 1. `.mastra-project.json` for a Mastra Platform project.
 
-Localhost requests do not send auth headers. Platform requests use the saved Mastra credentials or `MASTRA_API_TOKEN`. Explicit `--url` requests only send headers provided with `--header`.
+Automatic platform auth is only used when the CLI resolves a Mastra Platform target from `.mastra-project.json`. Localhost targets and explicit `--url` targets do not receive automatic credentials. Headers passed with `--header` are sent to any target, including localhost.
 
 ### Flags
 
@@ -643,8 +643,8 @@ Print the CLI-oriented request schema for a command that accepts JSON input. The
 `--schema` is available on leaf commands that accept JSON input. It is not available as a top-level `mastra api` flag.
 
 ```bash
-mastra api agent run --schema --pretty
-mastra api tool execute --schema --pretty
+mastra api agent run --schema
+mastra api tool execute --schema
 ```
 
 ### Input model
@@ -681,9 +681,9 @@ mastra api workflow run resume --help
 Use `--schema` on commands that accept JSON input to inspect the request shape returned by the target server:
 
 ```bash
-mastra api agent run --schema --pretty
-mastra api thread create --schema --pretty
-mastra api score create --schema --pretty
+mastra api agent run --schema
+mastra api thread create --schema
+mastra api score create --schema
 ```
 
 Some commands have important runtime requirements. For example, `mastra api memory current update` requires working memory to be enabled for the memory instance, and `mastra api workflow run resume` only works for suspended workflow runs.
