@@ -10,6 +10,7 @@ import type { ObservationTurn } from './observation-turn/index';
 import type { ObservationalMemory } from './observational-memory';
 import { isOmReproCaptureEnabled, safeCaptureJson, writeProcessInputStepReproCapture } from './repro-capture';
 import { insertTemporalGapMarkers } from './temporal-markers';
+import { omTime } from './timing';
 import type { TokenCounterModelContext } from './token-counter';
 
 /** Subset of Memory that the processor needs — avoids circular imports. */
@@ -86,6 +87,10 @@ export class ObservationalMemoryProcessor implements Processor<'observational-me
   // ─── Processor lifecycle hooks ──────────────────────────────────────────
 
   async processInputStep(args: ProcessInputStepArgs): Promise<MessageList | MastraDBMessage[]> {
+    return omTime('processor.processInputStep', () => this._processInputStep(args), { step: args.stepNumber });
+  }
+
+  private async _processInputStep(args: ProcessInputStepArgs): Promise<MessageList | MastraDBMessage[]> {
     const {
       messageList,
       requestContext,
@@ -131,7 +136,11 @@ export class ObservationalMemoryProcessor implements Processor<'observational-me
       // Repro capture setup
       const reproCaptureEnabled = isOmReproCaptureEnabled();
       const preRecordSnapshot = reproCaptureEnabled
-        ? (safeCaptureJson(await this.engine.getOrCreateRecord(threadId, resourceId)) as ObservationalMemoryRecord)
+        ? (safeCaptureJson(
+            await omTime('processor.repro.preRecord.getOrCreateRecord', () =>
+              this.engine.getOrCreateRecord(threadId, resourceId),
+            ),
+          ) as ObservationalMemoryRecord)
         : null;
       const preMessagesSnapshot = reproCaptureEnabled
         ? (safeCaptureJson(messageList.get.all.db()) as MastraDBMessage[])
@@ -179,7 +188,7 @@ export class ObservationalMemoryProcessor implements Processor<'observational-me
         });
         this.turn.writer = writer;
         this.turn.requestContext = requestContext;
-        await this.turn.start(this.memory);
+        await omTime('processor.turn.start', () => this.turn!.start(this.memory), { step: stepNumber });
         if (stepNumber === 0 && this.temporalMarkers) {
           await insertTemporalGapMarkers({ messageList, writer });
         }
@@ -201,7 +210,7 @@ export class ObservationalMemoryProcessor implements Processor<'observational-me
         const step = this.turn.step(stepNumber);
         let ctx;
         try {
-          ctx = await step.prepare();
+          ctx = await omTime('processor.step.prepare', () => step.prepare(), { step: stepNumber });
         } catch (error) {
           // Map observation errors through abort (processor-specific concern)
           const err = error instanceof Error ? error : new Error(String(error));
@@ -242,31 +251,39 @@ export class ObservationalMemoryProcessor implements Processor<'observational-me
         // isBufferingObservation set by fire-and-forget buffer()) are visible.
         // The cached this.turn.record is stale in production DBs where each
         // query returns a new row object.
-        const freshRecord = await this.engine.getOrCreateRecord(threadId, resourceId);
-        await this.engine.emitProgress({
-          record: freshRecord,
-          stepNumber,
-          pendingTokens: ctx.status.pendingTokens,
-          threshold: ctx.status.threshold,
-          effectiveObservationTokensThreshold: ctx.status.effectiveObservationTokensThreshold,
-          currentObservationTokens: freshRecord.observationTokenCount ?? 0,
-          writer,
-          threadId,
-          resourceId,
-        });
+        const freshRecord = await omTime('processor.postPrepare.getOrCreateRecord', () =>
+          this.engine.getOrCreateRecord(threadId, resourceId),
+        );
+        await omTime('processor.emitProgress', () =>
+          this.engine.emitProgress({
+            record: freshRecord,
+            stepNumber,
+            pendingTokens: ctx.status.pendingTokens,
+            threshold: ctx.status.threshold,
+            effectiveObservationTokensThreshold: ctx.status.effectiveObservationTokensThreshold,
+            currentObservationTokens: freshRecord.observationTokenCount ?? 0,
+            writer,
+            threadId,
+            resourceId,
+          }),
+        );
 
         // ── Token persistence (processor-specific) ──────────
         const allDbMsgs = messageList.get.all.db();
         const tokenCounter = this.engine.getTokenCounter();
-        const contextTokens = await tokenCounter.countMessagesAsync(allDbMsgs);
+        const contextTokens = await omTime('processor.postPrepare.countMessagesAsync', () =>
+          tokenCounter.countMessagesAsync(allDbMsgs),
+        );
         const otherThreadsContext = this.turn.context.otherThreadsContext;
         const otherThreadTokens = otherThreadsContext ? tokenCounter.countString(otherThreadsContext) : 0;
         const finalTotalPending = contextTokens + otherThreadTokens;
 
-        await this.engine
-          .getStorage()
-          .setPendingMessageTokens(freshRecord.id, finalTotalPending)
-          .catch(() => {});
+        await omTime('processor.setPendingMessageTokens', () =>
+          this.engine
+            .getStorage()
+            .setPendingMessageTokens(freshRecord.id, finalTotalPending)
+            .catch(() => {}),
+        );
 
         // ── Repro capture (processor-specific) ──────────────
         if (reproCaptureEnabled) {
@@ -295,6 +312,10 @@ export class ObservationalMemoryProcessor implements Processor<'observational-me
   }
 
   async processOutputResult(args: ProcessOutputResultArgs): Promise<MessageList | MastraDBMessage[]> {
+    return omTime('processor.processOutputResult', () => this._processOutputResult(args));
+  }
+
+  private async _processOutputResult(args: ProcessOutputResultArgs): Promise<MessageList | MastraDBMessage[]> {
     const { messageList, requestContext, state: _state } = args;
     const state = _state ?? ({} as Record<string, unknown>);
 
@@ -317,7 +338,7 @@ export class ObservationalMemoryProcessor implements Processor<'observational-me
         // and output processors are separate instances (see comment in processInputStep).
         const turn = (state.__omTurn as ObservationTurn | undefined) ?? this.turn;
         if (turn) {
-          await turn.end();
+          await omTime('processor.turn.end', () => turn.end());
           this.turn = undefined;
           state.__omTurn = undefined;
         }

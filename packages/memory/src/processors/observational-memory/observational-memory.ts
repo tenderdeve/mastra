@@ -207,6 +207,7 @@ import {
   resolveBlockAfter,
   resolveBufferTokens,
 } from './thresholds';
+import { omTime } from './timing';
 import { TokenCounter } from './token-counter';
 import type { TokenCounterModelContext } from './token-counter';
 import type {
@@ -1022,7 +1023,9 @@ export class ObservationalMemory {
    */
   async getOrCreateRecord(threadId: string, resourceId?: string): Promise<ObservationalMemoryRecord> {
     const ids = this.getStorageIds(threadId, resourceId);
-    let record = await this.storage.getObservationalMemory(ids.threadId, ids.resourceId);
+    let record = await omTime('engine.getOrCreateRecord.storage.getObservationalMemory', () =>
+      this.storage.getObservationalMemory(ids.threadId, ids.resourceId),
+    );
 
     if (!record) {
       // Capture the timezone used for Observer date formatting
@@ -2483,38 +2486,52 @@ ${formattedMessages}
    */
   /** @internal Used by ObservationTurn. */
   async getOtherThreadsContext(resourceId: string, currentThreadId: string): Promise<string | undefined> {
-    const { threads: allThreads } = await this.storage.listThreads({ filter: { resourceId } });
-    const messagesByThread = new Map<string, MastraDBMessage[]>();
+    return omTime(
+      'engine.getOtherThreadsContext',
+      async () => {
+        const { threads: allThreads } = await omTime('engine.getOtherThreadsContext.listThreads', () =>
+          this.storage.listThreads({ filter: { resourceId } }),
+        );
+        const messagesByThread = new Map<string, MastraDBMessage[]>();
 
-    // Fetch the OM record once so we can fall back to its lastObservedAt
-    // for threads whose metadata was never stamped.  See #15265.
-    const record = await this.getRecord(currentThreadId, resourceId);
-    const recordLastObservedAt = record?.lastObservedAt;
+        // Fetch the OM record once so we can fall back to its lastObservedAt
+        // for threads whose metadata was never stamped.  See #15265.
+        const record = await omTime('engine.getOtherThreadsContext.getRecord', () =>
+          this.getRecord(currentThreadId, resourceId),
+        );
+        const recordLastObservedAt = record?.lastObservedAt;
 
-    for (const thread of allThreads) {
-      if (thread.id === currentThreadId) continue;
+        for (const thread of allThreads) {
+          if (thread.id === currentThreadId) continue;
 
-      const omMetadata = getThreadOMMetadata(thread.metadata);
-      const threadLastObservedAt = omMetadata?.lastObservedAt ?? recordLastObservedAt;
-      const startDate = threadLastObservedAt ? new Date(new Date(threadLastObservedAt).getTime() + 1) : undefined;
+          const omMetadata = getThreadOMMetadata(thread.metadata);
+          const threadLastObservedAt = omMetadata?.lastObservedAt ?? recordLastObservedAt;
+          const startDate = threadLastObservedAt ? new Date(new Date(threadLastObservedAt).getTime() + 1) : undefined;
 
-      const result = await this.storage.listMessages({
-        threadId: thread.id,
-        perPage: false,
-        orderBy: { field: 'createdAt', direction: 'ASC' },
-        filter: startDate ? { dateRange: { start: startDate } } : undefined,
-      });
+          const result = await omTime('engine.getOtherThreadsContext.listMessages', () =>
+            this.storage.listMessages({
+              threadId: thread.id,
+              perPage: false,
+              orderBy: { field: 'createdAt', direction: 'ASC' },
+              filter: startDate ? { dateRange: { start: startDate } } : undefined,
+            }),
+          );
 
-      const filtered = result.messages.filter(m => !this.observedMessageIds.has(m.id));
+          const filtered = result.messages.filter(m => !this.observedMessageIds.has(m.id));
 
-      if (filtered.length > 0) {
-        messagesByThread.set(thread.id, filtered);
-      }
-    }
+          if (filtered.length > 0) {
+            messagesByThread.set(thread.id, filtered);
+          }
+        }
 
-    if (messagesByThread.size === 0) return undefined;
-    const blocks = await this.formatUnobservedContextBlocks(messagesByThread, currentThreadId);
-    return blocks || undefined;
+        if (messagesByThread.size === 0) return undefined;
+        const blocks = await omTime('engine.getOtherThreadsContext.formatUnobservedContextBlocks', () =>
+          this.formatUnobservedContextBlocks(messagesByThread, currentThreadId),
+        );
+        return blocks || undefined;
+      },
+      { threadCount: undefined },
+    );
   }
 
   /**
@@ -2636,7 +2653,22 @@ ${formattedMessages}
    * }
    * ```
    */
-  async getStatus(opts: { threadId: string; resourceId?: string; messages?: MastraDBMessage[] }): Promise<{
+  async getStatus(opts: {
+    threadId: string;
+    resourceId?: string;
+    messages?: MastraDBMessage[];
+    /**
+     * @internal Pre-fetched OM record. If provided, skips the initial getOrCreateRecord
+     * call and uses this instead. Used by ObservationTurn to dedupe per-step lookups.
+     */
+    record?: ObservationalMemoryRecord;
+    /**
+     * @internal Pre-fetched cross-thread context. The presence of this key (even with
+     * `value: undefined`) means "use this — do not call getOtherThreadsContext()".
+     * Used by ObservationTurn to dedupe per-loop fetches.
+     */
+    otherThreadsContextCache?: { value: string | undefined };
+  }): Promise<{
     record: ObservationalMemoryRecord;
     pendingTokens: number;
     threshold: number;
@@ -2653,7 +2685,9 @@ ${formattedMessages}
     scope: 'resource' | 'thread';
   }> {
     const { threadId, resourceId } = opts;
-    const record = await this.getOrCreateRecord(threadId, resourceId);
+    const record =
+      opts.record ??
+      (await omTime('engine.getStatus.getOrCreateRecord', () => this.getOrCreateRecord(threadId, resourceId)));
     const currentObservationTokens = record.observationTokenCount ?? 0;
 
     // Use provided messages or load from storage
@@ -2661,19 +2695,30 @@ ${formattedMessages}
     if (opts.messages) {
       unobservedMessages = this.getUnobservedMessages(opts.messages, record);
     } else {
-      const rawMessages = await this.loadMessagesFromStorage(
-        threadId,
-        resourceId,
-        record.lastObservedAt ? new Date(record.lastObservedAt) : undefined,
+      const rawMessages = await omTime('engine.getStatus.loadMessagesFromStorage', () =>
+        this.loadMessagesFromStorage(
+          threadId,
+          resourceId,
+          record.lastObservedAt ? new Date(record.lastObservedAt) : undefined,
+        ),
       );
       unobservedMessages = this.getUnobservedMessages(rawMessages, record);
     }
 
     // Count tokens
-    const contextWindowTokens = await this.tokenCounter.countMessagesAsync(unobservedMessages);
+    const contextWindowTokens = await omTime('engine.getStatus.countMessagesAsync', () =>
+      this.tokenCounter.countMessagesAsync(unobservedMessages),
+    );
     let otherThreadTokens = 0;
     if (this.scope === 'resource' && resourceId) {
-      const otherContext = await this.getOtherThreadsContext(resourceId, threadId);
+      let otherContext: string | undefined;
+      if (opts.otherThreadsContextCache) {
+        otherContext = opts.otherThreadsContextCache.value;
+      } else {
+        otherContext = await omTime('engine.getStatus.getOtherThreadsContext', () =>
+          this.getOtherThreadsContext(resourceId, threadId),
+        );
+      }
       otherThreadTokens = otherContext ? this.tokenCounter.countString(otherContext) : 0;
     }
     const pendingTokens = Math.max(0, contextWindowTokens + otherThreadTokens);

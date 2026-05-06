@@ -4,6 +4,7 @@ import { omDebug } from '../debug';
 import { filterObservedMessages } from '../message-utils';
 import { getLastActivityFromMessages, getLatestStepParts } from '../observational-memory';
 import { resolveRetentionFloor } from '../thresholds';
+import { omTime, omTimeSync, omTimer } from '../timing';
 
 import type { ObservationTurn } from './turn';
 import type { StepContext } from './types';
@@ -48,6 +49,11 @@ export class ObservationStep {
     const { threadId, resourceId, messageList } = this.turn;
     // Cast to any for internal access to private OM methods (Turn/Step are internal consumers)
     const om = this.turn.om;
+    // Per-step invalidation of the cross-thread context cache: the cache survives
+    // across the multiple internal calls within one step.prepare (getStatus.primary,
+    // getStatus.postObservation, refreshOtherThreadsContext) but never leaks across
+    // step boundaries — other threads in the resource may have changed in between.
+    this.turn.invalidateOtherThreadsContextCache();
     let activated = false;
     let observed = false;
     let buffered = false;
@@ -58,27 +64,31 @@ export class ObservationStep {
     // ── Step 0: Activate buffered chunks ──────────────────────
     if (this.stepNumber === 0) {
       const step0Messages = messageList.get.all.db();
-      const activation = await om.activate({
-        threadId,
-        resourceId,
-        checkThreshold: true,
-        messages: step0Messages,
-        currentModel: this.turn.actorModelContext,
-        writer: this.turn.writer,
-        messageList,
-      });
+      const activation = await omTime('step.step0.om.activate', () =>
+        om.activate({
+          threadId,
+          resourceId,
+          checkThreshold: true,
+          messages: step0Messages,
+          currentModel: this.turn.actorModelContext,
+          writer: this.turn.writer,
+          messageList,
+        }),
+      );
 
       if (activation.activated) {
         activated = true;
         if (activation.activatedMessageIds?.length) {
           messageList.removeByIds(activation.activatedMessageIds);
         }
-        await om.resetBufferingState({
-          threadId,
-          resourceId,
-          recordId: activation.record.id,
-        });
-        await this.turn.refreshRecord();
+        await omTime('step.step0.resetBufferingState', () =>
+          om.resetBufferingState({
+            threadId,
+            resourceId,
+            recordId: activation.record.id,
+          }),
+        );
+        await omTime('step.step0.refreshRecord', () => this.turn.refreshRecord());
       }
 
       // Check if reflection is needed (whether or not activation happened).
@@ -87,18 +97,20 @@ export class ObservationStep {
       const record = this.turn.record;
       const preReflectGeneration = record.generationCount;
       const obsTokens = record.observationTokenCount ?? 0;
-      await om.reflector.maybeReflect({
-        record,
-        observationTokens: obsTokens,
-        threadId,
-        writer: this.turn.writer,
-        messageList,
-        currentModel: this.turn.actorModelContext,
-        requestContext: this.turn.requestContext,
-        observabilityContext: this.turn.observabilityContext,
-        lastActivityAt: getLastActivityFromMessages(messageList.get.all.db()),
-      });
-      await this.turn.refreshRecord();
+      await omTime('step.step0.maybeReflect', () =>
+        om.reflector.maybeReflect({
+          record,
+          observationTokens: obsTokens,
+          threadId,
+          writer: this.turn.writer,
+          messageList,
+          currentModel: this.turn.actorModelContext,
+          requestContext: this.turn.requestContext,
+          observabilityContext: this.turn.observabilityContext,
+          lastActivityAt: getLastActivityFromMessages(messageList.get.all.db()),
+        }),
+      );
+      await omTime('step.step0.refreshRecord.postReflect', () => this.turn.refreshRecord());
       if (this.turn.record.generationCount > preReflectGeneration) {
         reflected = true;
       }
@@ -122,11 +134,19 @@ export class ObservationStep {
     );
 
     // ── Check thresholds + buffer trigger (all steps) ──────────
-    let statusSnapshot = await om.getStatus({
-      threadId,
-      resourceId,
-      messages: messageList.get.all.db(),
-    });
+    // Pre-fetch cross-thread context (resource scope) via the turn's per-loop cache,
+    // so both getStatus calls and the later `refreshOtherThreadsContext()` reuse the
+    // same fetch. See ObservationTurn.getOrLoadOtherThreadsContext.
+    const otherThreadsContextCache = await this.turn.getOrLoadOtherThreadsContext();
+    let statusSnapshot = await omTime('step.getStatus.primary', () =>
+      om.getStatus({
+        threadId,
+        resourceId,
+        messages: messageList.get.all.db(),
+        record: this.turn.record,
+        otherThreadsContextCache,
+      }),
+    );
 
     // Trigger buffering if interval boundary crossed (fire-and-forget, all steps)
     if (statusSnapshot.shouldBuffer && !hasIncompleteToolCalls) {
@@ -167,6 +187,7 @@ export class ObservationStep {
         }
       }
 
+      const bufferTimer = omTimer('step.buffer.fireAndForget');
       void om
         .buffer({
           threadId,
@@ -178,7 +199,9 @@ export class ObservationStep {
           requestContext: this.turn.requestContext,
           observabilityContext: this.turn.observabilityContext,
         })
+        .then(() => bufferTimer.stop({ ok: true }))
         .catch((err: Error) => {
+          bufferTimer.stop({ ok: false });
           omDebug(`[OM:buffer] fire-and-forget buffer failed: ${err?.message}`);
         });
       buffered = true;
@@ -191,7 +214,9 @@ export class ObservationStep {
       const newOutput = messageList.clear.response.db();
       const messagesToSave = [...newInput, ...newOutput];
       if (messagesToSave.length > 0) {
-        await om.persistMessages(messagesToSave, threadId, resourceId);
+        await omTime('step.persistMessages', () => om.persistMessages(messagesToSave, threadId, resourceId), {
+          count: messagesToSave.length,
+        });
         for (const msg of messagesToSave) {
           messageList.add(msg, 'memory');
         }
@@ -200,7 +225,7 @@ export class ObservationStep {
       // Threshold observation (step > 0 only, skip if tool calls pending)
       if (statusSnapshot.shouldObserve && !hasIncompleteToolCalls) {
         const preObsGeneration = this.turn.record.generationCount;
-        const obsResult = await this.runThresholdObservation();
+        const obsResult = await omTime('step.runThresholdObservation', () => this.runThresholdObservation());
         observerExchange = obsResult.observerExchange;
         if (obsResult.succeeded) {
           observed = true;
@@ -237,38 +262,56 @@ export class ObservationStep {
         }
       }
 
-      // Re-fetch status after observation/cleanup for the snapshot
-      statusSnapshot = await om.getStatus({
-        threadId,
-        resourceId,
-        messages: messageList.get.all.db(),
-      });
+      // Re-fetch status after observation/cleanup for the snapshot.
+      // The cache key naturally invalidates here because runThresholdObservation
+      // bumps record.generationCount; getOrLoadOtherThreadsContext re-fetches.
+      const postObsContextCache = await this.turn.getOrLoadOtherThreadsContext();
+      statusSnapshot = await omTime('step.getStatus.postObservation', () =>
+        om.getStatus({
+          threadId,
+          resourceId,
+          messages: messageList.get.all.db(),
+          record: this.turn.record,
+          otherThreadsContextCache: postObsContextCache,
+        }),
+      );
     }
 
     // ── Refresh cross-thread context (resource scope) ──────────
-    const otherThreadsContext = await this.turn.refreshOtherThreadsContext();
+    const otherThreadsContext = await omTime('step.refreshOtherThreadsContext', () =>
+      this.turn.refreshOtherThreadsContext(),
+    );
 
     // ── Build system messages (one per cache-stable chunk) ────
-    const systemMessage = await om.buildContextSystemMessages({
-      threadId,
-      resourceId,
-      record: this.turn.record,
-      unobservedContextBlocks: otherThreadsContext,
-    });
+    const systemMessage = await omTime('step.buildContextSystemMessages', () =>
+      om.buildContextSystemMessages({
+        threadId,
+        resourceId,
+        record: this.turn.record,
+        unobservedContextBlocks: otherThreadsContext,
+      }),
+    );
 
     // ── Filter observed messages ──────────────────────────────
     if (!didThresholdCleanup) {
       const fallbackCursor = this.turn.record.threadId
-        ? getThreadOMMetadata((await om.getStorage().getThreadById({ threadId: this.turn.record.threadId }))?.metadata)
-            ?.lastObservedMessageCursor
+        ? getThreadOMMetadata(
+            (
+              await omTime('step.filterObserved.getThreadById', () =>
+                om.getStorage().getThreadById({ threadId: this.turn.record.threadId! }),
+              )
+            )?.metadata,
+          )?.lastObservedMessageCursor
         : undefined;
 
-      filterObservedMessages({
-        messageList,
-        record: this.turn.record,
-        useMarkerBoundaryPruning: this.stepNumber === 0,
-        fallbackCursor,
-      });
+      omTimeSync('step.filterObservedMessages', () =>
+        filterObservedMessages({
+          messageList,
+          record: this.turn.record,
+          useMarkerBoundaryPruning: this.stepNumber === 0,
+          fallbackCursor,
+        }),
+      );
     }
 
     this._context = {

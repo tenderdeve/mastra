@@ -6,6 +6,7 @@ import type { ObservationalMemoryRecord } from '@mastra/core/storage';
 
 import type { ObservationalMemory } from '../observational-memory';
 import type { MemoryContextProvider } from '../processor';
+import { omTime } from '../timing';
 import type { ObservationModelContext } from '../types';
 
 import { ObservationStep } from './step';
@@ -43,6 +44,18 @@ export class ObservationTurn {
 
   /** Generation count at turn start — used to detect if reflection happened during the turn. */
   private _generationCountAtStart = -1;
+
+  /**
+   * Per-loop cache of `getOtherThreadsContext` (resource scope only). Lifetime is the
+   * agent loop because the turn lives on `state.__omTurn`.
+   *
+   * Cache key combines `record.generationCount` (bumps on every observation/reflection
+   * mutation in this thread) and the engine's global observed-message-id count
+   * (bumps on observations in any thread sharing the engine). When either changes
+   * we re-fetch.
+   */
+  private _otherThreadsContextCacheKey?: string;
+  private _otherThreadsContextCacheValue?: string | undefined;
 
   /** Memory context provider — set via start(). Used by steps for beforeBuffer persistence. */
   memory?: MemoryContextProvider;
@@ -115,12 +128,16 @@ export class ObservationTurn {
     if (this._started) throw new Error('Turn already started');
     this._started = true;
 
-    this._record = await this.om.getOrCreateRecord(this.threadId, this.resourceId);
+    this._record = await omTime('turn.start.getOrCreateRecord', () =>
+      this.om.getOrCreateRecord(this.threadId, this.resourceId),
+    );
     this._generationCountAtStart = this._record.generationCount;
     this.memory = memory;
 
     if (memory) {
-      const ctx = await memory.getContext({ threadId: this.threadId, resourceId: this.resourceId });
+      const ctx = await omTime('turn.start.memory.getContext', () =>
+        memory.getContext({ threadId: this.threadId, resourceId: this.resourceId }),
+      );
 
       // Add historical messages to the MessageList, filtering out system messages
       for (const msg of ctx.messages) {
@@ -184,21 +201,65 @@ export class ObservationTurn {
    * @internal
    */
   async refreshRecord(): Promise<void> {
-    this._record = await this.om.getOrCreateRecord(this.threadId, this.resourceId);
+    this._record = await omTime('turn.refreshRecord.getOrCreateRecord', () =>
+      this.om.getOrCreateRecord(this.threadId, this.resourceId),
+    );
+  }
+
+  /**
+   * Get cross-thread context for resource scope, using the per-loop cache.
+   *
+   * Returns a `{ value }` wrapper so callers can pass it directly to `getStatus`'s
+   * `otherThreadsContextCache` option (the wrapper distinguishes "no other threads"
+   * — `value: undefined` — from "fetch fresh" — no key at all).
+   *
+   * For non-resource scope, returns `{ value: undefined }` without any DB work.
+   * @internal
+   */
+  async getOrLoadOtherThreadsContext(): Promise<{ value: string | undefined }> {
+    if (this.om.scope !== 'resource' || !this.resourceId) {
+      return { value: undefined };
+    }
+    const key = this.otherThreadsContextCacheKey();
+    if (this._otherThreadsContextCacheKey === key) {
+      return { value: this._otherThreadsContextCacheValue };
+    }
+    const value = await omTime('turn.refreshOtherThreadsContext.getOtherThreadsContext', () =>
+      this.om.getOtherThreadsContext(this.resourceId!, this.threadId),
+    );
+    this._otherThreadsContextCacheKey = key;
+    this._otherThreadsContextCacheValue = value;
+    if (this._context) {
+      this._context.otherThreadsContext = value;
+    }
+    return { value };
   }
 
   /**
    * Refresh cross-thread context for resource scope. Called per-step.
+   * Backed by the per-loop cache; only refetches when the cache key changes.
    * @internal
    */
   async refreshOtherThreadsContext(): Promise<string | undefined> {
-    if (this.om.scope === 'resource' && this.resourceId) {
-      const otherThreadsContext = await this.om.getOtherThreadsContext(this.resourceId!, this.threadId);
-      if (this._context) {
-        this._context.otherThreadsContext = otherThreadsContext;
-      }
-      return otherThreadsContext;
-    }
-    return this._context?.otherThreadsContext;
+    const { value } = await this.getOrLoadOtherThreadsContext();
+    return value;
+  }
+
+  /**
+   * Force the next `getOrLoadOtherThreadsContext()` to re-fetch.
+   * Called whenever something we know affects unobserved-set membership but doesn't
+   * trigger a record generationCount bump (e.g. tests, manual mutation).
+   * @internal
+   */
+  invalidateOtherThreadsContextCache(): void {
+    this._otherThreadsContextCacheKey = undefined;
+    this._otherThreadsContextCacheValue = undefined;
+  }
+
+  private otherThreadsContextCacheKey(): string {
+    const generationCount = this._record?.generationCount ?? 0;
+    const lastObservedAt = this._record?.lastObservedAt ? new Date(this._record.lastObservedAt).getTime() : 0;
+    const observedIdsSize = this.om.observedMessageIds.size;
+    return `${generationCount}|${lastObservedAt}|${observedIdsSize}`;
   }
 }
