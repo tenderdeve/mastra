@@ -2,4 +2,6 @@
 '@mastra/memory': patch
 ---
 
-Reuse cross-thread context within an OM step in resource scope. Observational memory now caches `getOtherThreadsContext` for the duration of a single `processInputStep`, so the three internal callsites (status check, post-observation status, and turn refresh) share one fetch instead of recomputing it. The cache is invalidated at every step boundary and whenever the local OM record's generation count changes, so behavior is unchanged. In benchmarks with 50 sibling threads in the same resource, this halves per-step OM overhead (~65 ms → ~31 ms on InMemoryStore; the win scales linearly with sibling-thread message volume on real DB backends).
+Improved observational memory performance for agents using resource-scoped memory across many threads.
+
+When an agent runs in resource scope, sibling threads' message context is now reused within a single agent step instead of being recomputed multiple times. This cuts per-step OM overhead roughly in half once a resource has more than a handful of threads, with the win growing as sibling-thread message volume grows. Behavior is unchanged.
