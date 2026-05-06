@@ -11,16 +11,6 @@
       "permanent": true
     },
     {
-      "source": "/reference/observability/tracing/exporters/cloud-exporter",
-      "destination": "/reference/observability/tracing/exporters/mastra-observe-exporter",
-      "permanent": true
-    },
-    {
-      "source": "/reference/observability/tracing/exporters/default-exporter",
-      "destination": "/reference/observability/tracing/exporters/mastra-storage-exporter",
-      "permanent": true
-    },
-    {
       "source": "/docs/getting-started/start",
       "destination": "/docs",
       "permanent": true

@@ -21,8 +21,8 @@ export const mastra = new Mastra({
       default: {
         serviceName: 'mastra',
         exporters: [
-          new MastraStorageExporter(), // Persists traces to storage for Mastra Studio
-          new MastraObserveExporter(), // Sends observability data to hosted Mastra Studio (if MASTRA_CLOUD_ACCESS_TOKEN is set)
+          new MastraStorageExporter(), // Persists observability events to Mastra Storage
+          new MastraObserveExporter(), // Sends observability events to Mastra Observe (if MASTRA_CLOUD_ACCESS_TOKEN is set)
         ],
         spanOutputProcessors: [
           new SensitiveDataFilter(), // Redacts sensitive data like passwords, tokens, keys

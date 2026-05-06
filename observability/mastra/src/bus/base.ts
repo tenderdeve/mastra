@@ -8,7 +8,7 @@
  * - Clean shutdown flushes then clears subscribers
  *
  * Buffering/batching is intentionally NOT done here — individual exporters
- * own their own batching strategy (e.g. MastraObserveExporter batches uploads).
+ * own their own batching strategy.
  */
 
 import { MastraBase } from '@mastra/core/base';

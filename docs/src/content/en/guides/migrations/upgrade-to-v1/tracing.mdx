@@ -13,6 +13,12 @@ If you upgrade Mastra packages to v1 without migrating your `telemetry:` config 
 Complete this migration in the same change that bumps your Mastra packages, and verify traces appear in [Mastra Studio](/docs/studio/observability) before considering the upgrade complete. If you previously hosted on Mastra Cloud, also follow the [Mastra Cloud migration guide](/guides/migrations/mastra-cloud) — the new platform requires a new access token and a Studio project before `MastraObserveExporter` can route data to it.
 :::
 
+:::note[Exporter rename]
+
+`MastraObserveExporter` (sends data to Mastra Observe) replaces the previous `CloudExporter`, and `MastraStorageExporter` (persists data to Mastra Storage) replaces the previous `DefaultExporter`. The original classes still ship from `@mastra/observability` and behave identically, but they are deprecated. New code should use `MastraObserveExporter` and `MastraStorageExporter`; existing imports of `CloudExporter`/`DefaultExporter` continue to work until they are removed in a future major version.
+
+:::
+
 ## Migration paths
 
 ### From OTEL-based Telemetry (0.x)
@@ -56,8 +62,8 @@ export const mastra = new Mastra({
       default: {
         serviceName: 'mastra',
         exporters: [
-          new MastraStorageExporter(), // Persists traces to storage for Studio
-          new MastraObserveExporter(), // Sends observability data to hosted Mastra Studio (if MASTRA_CLOUD_ACCESS_TOKEN is set)
+          new MastraStorageExporter(), // Persists observability events to Mastra Storage
+          new MastraObserveExporter(), // Sends observability events to Mastra Observe (if MASTRA_CLOUD_ACCESS_TOKEN is set)
         ],
         spanOutputProcessors: [
           new SensitiveDataFilter(), // Redacts sensitive data like passwords, tokens, keys

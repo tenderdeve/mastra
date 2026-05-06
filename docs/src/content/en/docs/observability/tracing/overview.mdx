@@ -39,8 +39,8 @@ export const mastra = new Mastra({
       default: {
         serviceName: 'mastra',
         exporters: [
-          new MastraStorageExporter(), // Persists traces to storage for Studio
-          new MastraObserveExporter(), // Sends observability data to hosted Mastra Studio (if MASTRA_CLOUD_ACCESS_TOKEN is set)
+          new MastraStorageExporter(), // Persists observability events to Mastra Storage
+          new MastraObserveExporter(), // Sends observability events to Mastra Observe (if MASTRA_CLOUD_ACCESS_TOKEN is set)
         ],
         spanOutputProcessors: [
           new SensitiveDataFilter(), // Redacts sensitive data like passwords, tokens, keys
@@ -60,8 +60,8 @@ This configuration includes:
 - **Service Name**: `"mastra"` - identifies your service in traces
 - **Sampling**: `"always"` by default (100% of traces)
 - **Exporters**:
-  - `MastraStorageExporter` - Persists traces to your configured storage for Studio
-  - `MastraObserveExporter` - Sends observability data to hosted Mastra Studio (requires `MASTRA_CLOUD_ACCESS_TOKEN`)
+  - `MastraStorageExporter` - Persists observability events to Mastra Storage
+  - `MastraObserveExporter` - Sends observability events to Mastra Observe (requires `MASTRA_CLOUD_ACCESS_TOKEN`)
 - **Span Output Processors**: `SensitiveDataFilter` - Redacts sensitive fields
 
 ## Exporters
@@ -72,8 +72,8 @@ Exporters determine where your trace data is sent and how it's stored. They inte
 
 Mastra provides two built-in exporters:
 
-- **[Default](/docs/observability/tracing/exporters/mastra-storage)** - Persists traces to local storage for viewing in Studio
-- **[Cloud](/docs/observability/tracing/exporters/mastra-observe)** - Sends observability data to hosted Mastra Studio for production monitoring and collaboration
+- **[Mastra Storage](/docs/observability/tracing/exporters/mastra-storage)** - Persists observability events to Mastra Storage for viewing in Studio
+- **[Mastra Observe](/docs/observability/tracing/exporters/mastra-observe)** - Sends observability events to Mastra Observe for production monitoring and collaboration
 
 ### External Exporters
 

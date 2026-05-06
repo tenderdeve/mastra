@@ -251,8 +251,8 @@ export const mastra = new Mastra({
 })
 ```
 
-- `MastraStorageExporter` persists traces to your storage backend for [Studio](/docs/studio/observability).
-- `MastraObserveExporter` Sends observability data to hosted Mastra Studio when `MASTRA_CLOUD_ACCESS_TOKEN` is set.
+- `MastraStorageExporter` persists observability events to Mastra Storage for [Studio](/docs/studio/observability).
+- `MastraObserveExporter` sends observability events to Mastra Observe when `MASTRA_CLOUD_ACCESS_TOKEN` is set.
 - `SensitiveDataFilter` redacts passwords, tokens, and keys from span data before export.
 
 See the [observability overview](/docs/observability/overview) for the full configuration, including composite storage with DuckDB for metrics.

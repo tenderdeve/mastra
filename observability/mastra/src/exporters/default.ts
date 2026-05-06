@@ -23,7 +23,13 @@ import { BaseExporter } from './base';
 import { EventBuffer } from './event-buffer';
 import type { BufferedEvent, RetryCount, UpdateSpanPartial } from './event-buffer';
 
-/** Configuration for the DefaultExporter's batching, retry, and strategy behavior. */
+/**
+ * Configuration for the DefaultExporter's batching, retry, and strategy behavior.
+ *
+ * @deprecated Use `MastraStorageExporterConfig` from `@mastra/observability` instead.
+ * This interface is kept for backward compatibility and will be removed in a
+ * future major version.
+ */
 interface DefaultExporterConfig extends BaseExporterConfig {
   maxBatchSize?: number; // Default: 1000 spans
   maxBufferSize?: number; // Default: 10000 spans

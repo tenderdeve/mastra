@@ -25,8 +25,8 @@ export const mastra = new Mastra({
       default: {
         serviceName: 'my-app',
         exporters: [
-          new MastraStorageExporter(), // Persists traces for Mastra Studio
-          new MastraObserveExporter(), // Sends to Mastra platform
+          new MastraStorageExporter(), // Persists observability events to Mastra Storage
+          new MastraObserveExporter(), // Sends observability events to Mastra Observe
         ],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },

@@ -73,8 +73,8 @@ export const mastra = new Mastra({
       default: {
         serviceName: 'mastra',
         exporters: [
-          new MastraStorageExporter(), // Persists traces to storage for Studio
-          new MastraObserveExporter(), // Sends observability data to hosted Mastra Studio (requires MASTRA_CLOUD_ACCESS_TOKEN)
+          new MastraStorageExporter(), // Persists observability events to Mastra Storage
+          new MastraObserveExporter(), // Sends observability events to Mastra Observe (requires MASTRA_CLOUD_ACCESS_TOKEN)
         ],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
@@ -123,7 +123,7 @@ new MastraStorageExporter({
 
 Different storage providers support different tracing strategies. Some providers support observability for production workloads, while others are intended primarily for local development.
 
-If you set the strategy to `'auto'`, the `MastraStorageExporter` automatically selects the optimal strategy for the storage provider. If you set the strategy to a mode that the storage provider doesn't support, you will get an error message.
+If you set the strategy to `'auto'`, the `MastraStorageExporter` automatically selects the optimal strategy for the storage provider. If you set an explicit strategy that the storage provider doesn't support, the exporter logs a warning and falls back to the provider's preferred strategy.
 
 ### Providers with Observability Support
 
