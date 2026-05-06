@@ -202,20 +202,20 @@ export interface ModelGenerationAttributes extends AIBaseAttributes {
   resultType?: 'tool_selection' | 'response_generation' | 'reasoning' | 'planning';
   /** Token usage statistics */
   usage?: UsageStats;
-  /** Model parameters */
-  parameters?: {
-    maxOutputTokens?: number;
-    temperature?: number;
-    topP?: number;
-    topK?: number;
-    presencePenalty?: number;
-    frequencyPenalty?: number;
-    stopSequences?: string[];
-    seed?: number;
-    maxRetries?: number;
-    abortSignal?: any;
-    headers?: Record<string, string | undefined>;
-  };
+  /**
+   * Provider-agnostic model call settings (e.g. temperature, maxOutputTokens,
+   * topP, stopSequences, and any other params accepted by the underlying SDK).
+   * Loosely typed so any new param accepted by the model flows through without
+   * a schema update.
+   */
+  parameters?: Record<string, unknown>;
+  /**
+   * Provider-specific options (e.g. `{ openai: { reasoningEffort: 'high' } }`,
+   * `{ google: { thinkingConfig: { thinkingBudget: 0 } } }`). Kept separate from
+   * `parameters` so consumers can distinguish provider-agnostic call settings
+   * from provider-scoped options.
+   */
+  providerOptions?: Record<string, unknown>;
   /** Whether this was a streaming response */
   streaming?: boolean;
   /** Reason the generation finished */

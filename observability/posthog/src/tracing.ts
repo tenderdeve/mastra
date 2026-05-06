@@ -455,8 +455,9 @@ export class PosthogExporter extends TrackingExporter<
     Object.assign(props, formatUsageMetrics(attrs.usage));
 
     if (attrs.parameters) {
-      if (attrs.parameters.temperature !== undefined) props.$ai_temperature = attrs.parameters.temperature;
-      if (attrs.parameters.maxOutputTokens !== undefined) props.$ai_max_tokens = attrs.parameters.maxOutputTokens;
+      const params = attrs.parameters;
+      if (typeof params.temperature === 'number') props.$ai_temperature = params.temperature;
+      if (typeof params.maxOutputTokens === 'number') props.$ai_max_tokens = params.maxOutputTokens;
     }
     if (attrs.streaming !== undefined) props.$ai_stream = attrs.streaming;
 

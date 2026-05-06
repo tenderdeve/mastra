@@ -230,29 +230,30 @@ export function getAttributes(span: AnyExportedSpan): Attributes {
 
     // Parameters using OTEL conventions
     if (modelAttrs.parameters) {
-      if (modelAttrs.parameters.temperature !== undefined) {
-        attributes[ATTR_GEN_AI_REQUEST_TEMPERATURE] = modelAttrs.parameters.temperature;
+      const params = modelAttrs.parameters;
+      if (typeof params.temperature === 'number') {
+        attributes[ATTR_GEN_AI_REQUEST_TEMPERATURE] = params.temperature;
       }
-      if (modelAttrs.parameters.maxOutputTokens !== undefined) {
-        attributes[ATTR_GEN_AI_REQUEST_MAX_TOKENS] = modelAttrs.parameters.maxOutputTokens;
+      if (typeof params.maxOutputTokens === 'number') {
+        attributes[ATTR_GEN_AI_REQUEST_MAX_TOKENS] = params.maxOutputTokens;
       }
-      if (modelAttrs.parameters.topP !== undefined) {
-        attributes[ATTR_GEN_AI_REQUEST_TOP_P] = modelAttrs.parameters.topP;
+      if (typeof params.topP === 'number') {
+        attributes[ATTR_GEN_AI_REQUEST_TOP_P] = params.topP;
       }
-      if (modelAttrs.parameters.topK !== undefined) {
-        attributes[ATTR_GEN_AI_REQUEST_TOP_K] = modelAttrs.parameters.topK;
+      if (typeof params.topK === 'number') {
+        attributes[ATTR_GEN_AI_REQUEST_TOP_K] = params.topK;
       }
-      if (modelAttrs.parameters.presencePenalty !== undefined) {
-        attributes[ATTR_GEN_AI_REQUEST_PRESENCE_PENALTY] = modelAttrs.parameters.presencePenalty;
+      if (typeof params.presencePenalty === 'number') {
+        attributes[ATTR_GEN_AI_REQUEST_PRESENCE_PENALTY] = params.presencePenalty;
       }
-      if (modelAttrs.parameters.frequencyPenalty !== undefined) {
-        attributes[ATTR_GEN_AI_REQUEST_FREQUENCY_PENALTY] = modelAttrs.parameters.frequencyPenalty;
+      if (typeof params.frequencyPenalty === 'number') {
+        attributes[ATTR_GEN_AI_REQUEST_FREQUENCY_PENALTY] = params.frequencyPenalty;
       }
-      if (modelAttrs.parameters.stopSequences) {
-        attributes[ATTR_GEN_AI_REQUEST_STOP_SEQUENCES] = JSON.stringify(modelAttrs.parameters.stopSequences);
+      if (Array.isArray(params.stopSequences)) {
+        attributes[ATTR_GEN_AI_REQUEST_STOP_SEQUENCES] = JSON.stringify(params.stopSequences);
       }
-      if (modelAttrs.parameters.seed) {
-        attributes[ATTR_GEN_AI_REQUEST_SEED] = modelAttrs.parameters.seed;
+      if (typeof params.seed === 'number') {
+        attributes[ATTR_GEN_AI_REQUEST_SEED] = params.seed;
       }
     }
 

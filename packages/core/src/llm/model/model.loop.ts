@@ -158,6 +158,7 @@ export class MastraLLMVNext extends MastraBase {
         provider: firstModel.provider,
         streaming: true,
         parameters: modelSettings,
+        providerOptions,
       },
       metadata: {
         runId,
