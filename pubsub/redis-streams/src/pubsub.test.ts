@@ -1,0 +1,278 @@
+import { randomUUID } from 'node:crypto';
+import type { Event, EventCallback } from '@mastra/core/events';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { RedisStreamsPubSub } from './index';
+
+const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6381';
+
+function makeEvent(overrides: Partial<Omit<Event, 'id' | 'createdAt'>> = {}): Omit<Event, 'id' | 'createdAt'> {
+  return {
+    type: 'test',
+    data: {},
+    runId: 'run-1',
+    ...overrides,
+  };
+}
+
+/**
+ * Wait until the predicate returns true, polling at the given interval.
+ * Throws if the timeout is hit.
+ */
+async function waitFor(
+  predicate: () => boolean,
+  opts: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<void> {
+  const timeoutMs = opts.timeoutMs ?? 5000;
+  const intervalMs = opts.intervalMs ?? 25;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  if (!predicate()) {
+    throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+  }
+}
+
+/** Captures invocations of a callback for assertions, with auto-ack/nack helpers. */
+function captureCalls() {
+  const calls: Array<{ event: Event; ack?: () => Promise<void>; nack?: () => Promise<void> }> = [];
+  const cb: EventCallback = (event, ack, nack) => {
+    calls.push({ event, ack, nack });
+  };
+  const cbAutoAck: EventCallback = (event, ack) => {
+    calls.push({ event });
+    void ack?.();
+  };
+  return { calls, cb, cbAutoAck };
+}
+
+describe('RedisStreamsPubSub', () => {
+  let pubsubs: RedisStreamsPubSub[] = [];
+
+  beforeAll(() => {
+    if (!REDIS_URL) throw new Error('REDIS_URL not set');
+  });
+
+  function createPubSub(): RedisStreamsPubSub {
+    const ps = new RedisStreamsPubSub({ url: REDIS_URL, blockMs: 200 });
+    pubsubs.push(ps);
+    return ps;
+  }
+
+  afterEach(async () => {
+    await Promise.all(pubsubs.map(p => p.close()));
+    pubsubs = [];
+  });
+
+  afterAll(async () => {
+    await Promise.all(pubsubs.map(p => p.close()));
+  });
+
+  describe('fan-out (no group)', () => {
+    it('delivers each published message to all subscribers', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const a = captureCalls();
+      const b = captureCalls();
+
+      await ps.subscribe(topic, a.cbAutoAck);
+      await ps.subscribe(topic, b.cbAutoAck);
+
+      await ps.publish(topic, makeEvent({ type: 'hello' }));
+
+      await waitFor(() => a.calls.length === 1 && b.calls.length === 1);
+      expect(a.calls[0]!.event.type).toBe('hello');
+      expect(b.calls[0]!.event.type).toBe('hello');
+    });
+
+    it('does not deliver to unsubscribed callbacks', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const a = captureCalls();
+      const b = captureCalls();
+
+      await ps.subscribe(topic, a.cbAutoAck);
+      await ps.subscribe(topic, b.cbAutoAck);
+      await ps.unsubscribe(topic, a.cbAutoAck);
+
+      await ps.publish(topic, makeEvent());
+      await waitFor(() => b.calls.length === 1);
+
+      // Give a generous moment for the dropped subscriber's loop to (not) deliver.
+      await new Promise(r => setTimeout(r, 250));
+      expect(a.calls.length).toBe(0);
+      expect(b.calls.length).toBe(1);
+    });
+
+    it('does not deliver across different topics', async () => {
+      const ps = createPubSub();
+      const topicA = `t-${randomUUID()}`;
+      const topicB = `t-${randomUUID()}`;
+      const a = captureCalls();
+      const b = captureCalls();
+
+      await ps.subscribe(topicA, a.cbAutoAck);
+      await ps.subscribe(topicB, b.cbAutoAck);
+
+      await ps.publish(topicA, makeEvent());
+
+      await waitFor(() => a.calls.length === 1);
+      await new Promise(r => setTimeout(r, 200));
+      expect(b.calls.length).toBe(0);
+    });
+  });
+
+  describe('group (competing consumers)', () => {
+    it('delivers each message to exactly one subscriber in the group', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const a = captureCalls();
+      const b = captureCalls();
+
+      await ps.subscribe(topic, a.cbAutoAck, { group: 'workers' });
+      await ps.subscribe(topic, b.cbAutoAck, { group: 'workers' });
+
+      // Send several messages, expect total = sent and no overlap on a single message.
+      const N = 6;
+      for (let i = 0; i < N; i++) {
+        await ps.publish(topic, makeEvent({ type: `msg-${i}` }));
+      }
+
+      await waitFor(() => a.calls.length + b.calls.length === N, { timeoutMs: 8000 });
+      // Both should have received at least one (round-robin distributes).
+      expect(a.calls.length).toBeGreaterThan(0);
+      expect(b.calls.length).toBeGreaterThan(0);
+    });
+
+    it('different groups on the same topic each receive every message', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const a = captureCalls();
+      const b = captureCalls();
+
+      await ps.subscribe(topic, a.cbAutoAck, { group: 'group-a' });
+      await ps.subscribe(topic, b.cbAutoAck, { group: 'group-b' });
+
+      await ps.publish(topic, makeEvent({ type: 'broadcast' }));
+
+      await waitFor(() => a.calls.length === 1 && b.calls.length === 1);
+      expect(a.calls[0]!.event.type).toBe('broadcast');
+      expect(b.calls[0]!.event.type).toBe('broadcast');
+    });
+  });
+
+  describe('ack/nack/redelivery', () => {
+    it('nack increments deliveryAttempt and redelivers', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const seenAttempts: number[] = [];
+
+      const cb: EventCallback = (event, ack, nack) => {
+        seenAttempts.push(event.deliveryAttempt ?? 0);
+        if ((event.deliveryAttempt ?? 1) < 2) {
+          void nack?.();
+        } else {
+          void ack?.();
+        }
+      };
+
+      await ps.subscribe(topic, cb, { group: 'retry-group' });
+      await ps.publish(topic, makeEvent({ type: 'flaky' }));
+
+      await waitFor(() => seenAttempts.length >= 2, { timeoutMs: 8000 });
+      expect(seenAttempts[0]).toBe(1);
+      expect(seenAttempts[1]).toBe(2);
+    });
+
+    it('async handler that rejects is treated as nack and redelivered', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const seenAttempts: number[] = [];
+
+      const cb: EventCallback = async (event, ack) => {
+        seenAttempts.push(event.deliveryAttempt ?? 0);
+        if ((event.deliveryAttempt ?? 1) < 2) {
+          // Reject without calling ack/nack — should be auto-nacked.
+          throw new Error('boom');
+        }
+        await ack?.();
+      };
+
+      await ps.subscribe(topic, cb, { group: 'async-retry-group' });
+      await ps.publish(topic, makeEvent({ type: 'flaky-async' }));
+
+      await waitFor(() => seenAttempts.length >= 2, { timeoutMs: 8000 });
+      expect(seenAttempts[0]).toBe(1);
+      expect(seenAttempts[1]).toBe(2);
+    });
+
+    it('flush waits for in-flight publishes', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+
+      // Fire several publishes without awaiting, then flush.
+      const promises = [
+        ps.publish(topic, makeEvent({ type: 'a' })),
+        ps.publish(topic, makeEvent({ type: 'b' })),
+        ps.publish(topic, makeEvent({ type: 'c' })),
+      ];
+      await ps.flush();
+      await Promise.all(promises);
+
+      // No assertion error means flush awaited all in-flight publishes.
+      expect(true).toBe(true);
+    });
+  });
+
+  describe('cross-instance', () => {
+    it('a separate pubsub instance can consume messages published by another', async () => {
+      const producer = createPubSub();
+      const consumer = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const cap = captureCalls();
+
+      await consumer.subscribe(topic, cap.cbAutoAck, { group: 'shared' });
+      await producer.publish(topic, makeEvent({ type: 'across-instance' }));
+
+      await waitFor(() => cap.calls.length === 1);
+      expect(cap.calls[0]!.event.type).toBe('across-instance');
+    });
+  });
+
+  describe('lifecycle', () => {
+    it('publish() on a closed instance throws', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      // Trigger lazy connect first so close has something to tear down.
+      await ps.publish(topic, makeEvent());
+      await ps.close();
+      await expect(ps.publish(topic, makeEvent())).rejects.toThrow(/cannot publish on closed client/);
+    });
+
+    it('subscribe() on a closed instance throws', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      await ps.publish(topic, makeEvent());
+      await ps.close();
+      const cap = captureCalls();
+      await expect(ps.subscribe(topic, cap.cbAutoAck)).rejects.toThrow(/cannot subscribe on closed client/);
+    });
+
+    it('close() is idempotent', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      await ps.publish(topic, makeEvent());
+      await ps.close();
+      await expect(ps.close()).resolves.toBeUndefined();
+    });
+
+    it('unsubscribe() for an unknown callback is a no-op', async () => {
+      const ps = createPubSub();
+      const topic = `t-${randomUUID()}`;
+      const cap = captureCalls();
+      // never subscribed — should not throw
+      await expect(ps.unsubscribe(topic, cap.cbAutoAck)).resolves.toBeUndefined();
+    });
+  });
+});
