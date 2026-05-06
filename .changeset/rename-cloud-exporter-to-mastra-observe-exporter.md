@@ -38,12 +38,3 @@ new Observability({
   },
 });
 ```
-
-Constructor signatures and environment variables (`MASTRA_CLOUD_ACCESS_TOKEN`, `MASTRA_PROJECT_ID`, `MASTRA_CLOUD_TRACES_ENDPOINT`) are unchanged. The renamed classes use updated identifiers internally:
-
-- `MastraObserveExporter` uses error IDs prefixed `MASTRA_OBSERVE_EXPORTER_*` and exporter `name` `mastra-observe-exporter`.
-- `MastraStorageExporter` uses exporter `name` `mastra-storage-exporter`.
-
-The deprecated `CloudExporter` and `DefaultExporter` keep their original `CLOUD_EXPORTER_*` IDs, `mastra-cloud-observability-exporter` name, and `mastra-default-observability-exporter` name respectively.
-
-`MastraObserveExporter` also tightens `MASTRA_PROJECT_ID` validation: an invalid value in the environment now throws on construction instead of being silently dropped, matching the behavior already applied to `config.projectId`. Empty strings continue to be treated as unset.
