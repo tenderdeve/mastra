@@ -4,6 +4,7 @@ import { useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import type { TraceListMode } from '../trace-filters';
 import { useInView } from '@/hooks/use-in-view';
+import { is403ForbiddenError } from '@/lib/query-utils';
 
 type ListBranchesArgs = ListTracesArgs;
 type ListBranchesResponse = Omit<ListTracesResponse, 'spans'> & {
@@ -107,6 +108,8 @@ export const useTraces = ({ filters, listMode = 'traces' }: TracesFilters) => {
     select: selectUniqueTraces,
     placeholderData: keepPreviousData,
     retry: false,
+    // Disable polling on 403 to prevent flickering
+    refetchInterval: query => (is403ForbiddenError(query.state.error) ? false : 10000),
   });
 
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
